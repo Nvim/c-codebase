@@ -40,3 +40,10 @@ clean:
 
 .PHONY: all $(ARENA_LIB) clean
 
+###################################################################
+
+TEST_SRC=$(wildcard tests/*.c) $(wildcard tests/*/*.c)
+TEST_OBJS=$(TEST_SRC:.c=.o)
+test: clean $(ARENA_LIB) $(TEST_OBJS)
+	$(CC) -o $(OUTDIR)/tests $(TEST_OBJS) -Lout -larena
+	LD_LIBRARY_PATH=$(OUTDIR) $(OUTDIR)/tests
