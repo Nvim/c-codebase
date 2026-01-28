@@ -1,0 +1,25 @@
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  performance-*,
+  portability-*,
+  readability-*,
+  misc-*,
+  -readability-magic-numbers,
+  -misc-unused-parameters,
+  -bugprone-easily-swappable-parameters
+
+WarningsAsErrors: ''
+
+AnalyzeTemporaryDtors: false
+
+CheckOptions:
+  - key: readability-identifier-naming.FunctionCase
+    value: lower_case
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.ConstantCase
+    value: UPPER_CASE
