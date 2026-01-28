@@ -11,5 +11,5 @@ void log_out(FILE* stream, char const* msg, ...) {
 	vsnprintf(log, LOG_MAX_LEN, msg, arg_ptr);
 	va_end(arg_ptr);
 
-	fprintf(stream, "[ERROR]: %s\n", log);
+	fprintf(stream, "%s\n", log);
 }

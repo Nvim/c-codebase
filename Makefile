@@ -2,6 +2,7 @@ CC = clang
 CPPFLAGS = -D_DEFAULT_SOURCE
 CFLAGS = -Wall -Wextra -Werror -std=c99 -Wvla -Wno-gnu-zero-variadic-macro-arguments -Iinclude
 LDFLAGS = -shared
+DEBUG_FLAGS = -glldb -Og -fno-omit-frame-pointer
 VPATH = src
 RM=rm -f
 OUTDIR=out
@@ -15,6 +16,7 @@ $(OUTDIR):
 
 ARENA_SRC=$(wildcard src/arena/*.c) $(wildcard src/arena/*/*.c)
 ARENA_LIB = $(OUTDIR)/libarena.so
+ARENA_DEBUG_LIB = $(OUTDIR)/libarena_debug.so
 ARENA_OBJS=$(ARENA_SRC:.c=.o)
 
 arena: $(ARENA_LIB)
@@ -22,18 +24,12 @@ $(ARENA_LIB): CFLAGS += -pedantic -fvisibility=hidden -fPIC -Isrc
 $(ARENA_LIB): LDFLAGS += -Wl,--no-undefined
 $(ARENA_LIB): $(ARENA_OBJS) $(COMMON_OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^
-#	ar rcs $@ $^
 
-debug: CFLAGS += -glldb -D_DBG -D_LOG -fvisibility=default
-debug: CFLAGS := $(filter-out -fvisibility=hidden, $(CFLAGS))
-debug: CFLAGS := $(filter-out -fPIC, $(CFLAGS))
-debug: LDFLAGS += -glldb -D_DBG -D_LOG
-debug: $(ARENA_OBJS)
+arena_debug: $(ARENA_DEBUG_LIB)
+$(ARENA_DEBUG_LIB): CFLAGS += $(DEBUG_FLAGS) -D_DEBUG -fvisibility=default -Isrc
+$(ARENA_DEBUG_LIB): CFLAGS := $(filter-out -fvisibility=hidden, $(CFLAGS))
+$(ARENA_DEBUG_LIB): $(ARENA_OBJS) $(COMMON_OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^
-
-asan: CFLAGS += -fsanitize=address -D_DBG -D_LOG
-asan: LDFLAGS += -fsanitize=address -D_DBG -D_LOG
-asan: clean $(ARENA_LIB)
 
 clean:
 	$(RM) $(ARENA_LIB) $(ARENA_OBJS)
@@ -44,6 +40,7 @@ clean:
 
 TEST_SRC=$(wildcard tests/*.c) $(wildcard tests/*/*.c)
 TEST_OBJS=$(TEST_SRC:.c=.o)
+test: CFLAGS += $(DEBUG_FLAGS) -D_DEBUG
 test: clean $(ARENA_LIB) $(TEST_OBJS)
 	$(CC) -o $(OUTDIR)/tests $(TEST_OBJS) -Lout -larena
 	LD_LIBRARY_PATH=$(OUTDIR) $(OUTDIR)/tests

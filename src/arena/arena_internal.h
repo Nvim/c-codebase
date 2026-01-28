@@ -19,7 +19,10 @@ static inline size_t arena_impl_total_size(arena_impl* arena) {
 }
 
 static inline size_t arena_impl_remaining(arena_impl* arena) {
-	return arena->allocation_size - (size_t)arena->current;
+	char* max = (char*)arena->begin + arena->allocation_size;
+	char* current = arena->current;
+	if (max <= current) { return 0; }
+	return max - current;
 }
 
 #endif // !ARENA_INTERNAL_H

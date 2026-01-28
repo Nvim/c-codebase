@@ -8,26 +8,24 @@
 
 void log_out(FILE* stream, char const* msg, ...);
 
-// void LOG_error(const char* msg, ...) {
-// 	fprintf(stderr, "[ERROR]: ");
-// 	log_out(stderr, msg, __VA_ARGS__);
-// }
+#define LOG_ERR(msg, ...)                                                      \
+	{                                                                          \
+		fprintf(stderr, "[ERROR]: ");                                          \
+		log_out(stderr, msg, ##__VA_ARGS__);                                   \
+	}
 
-#define LOG_ERR(msg, ...) { \
-	fprintf(stderr, "[ERROR]: "); \
-	log_out(stderr, msg, ##__VA_ARGS__);  \
-}
+#define LOG_INFO(msg, ...)                                                     \
+	{                                                                          \
+		fprintf(stderr, "[INFO]: ");                                           \
+		log_out(stderr, msg, ##__VA_ARGS__);                                   \
+	}
 
-#define LOG_INFO(msg, ...) { \
-	fprintf(stderr, "[INFO]: "); \
-	log_out(stderr, msg, ##__VA_ARGS__);  \
-}
-
-#ifdef DEBUG
-#define LOG_DEBUG(msg, ...) { \
-	fprintf(stderr, "[DEBUG]: "); \
-	log_out(stderr, msg, __VA_ARGS__);  \
-}
+#ifdef _DEBUG
+#define LOG_DEBUG(msg, ...)                                                    \
+	{                                                                          \
+		fprintf(stderr, "[DEBUG]: ");                                          \
+		log_out(stderr, msg, ##__VA_ARGS__);                                   \
+	}
 #else
 #define LOG_DEBUG(msg, ...)
 #endif
@@ -42,4 +40,3 @@ static inline size_t align_up(size_t value, size_t alignment) {
 }
 
 #endif // !UTIL_H
-

@@ -7,9 +7,9 @@
 typedef struct arena_t arena_t;
 
 /**
- * @brief Creates an new arena, allocating `size` bytes of memory.
+ * @brief Creates a new arena with a default alignment of sizeof(uintptr_t).
  *
- * @param size The amount of underlying memory
+ * @param size The amount of underlying memory (may be rounded up for alignment)
  */
 LIB_EXPORT arena_t* arena_create(size_t size);
 
@@ -35,7 +35,7 @@ LIB_EXPORT void* arena_alloc(arena_t* arena, size_t size);
  * @param elem_count Number of array element to allocate
  */
 LIB_EXPORT void* arena_alloc_array(arena_t* arena, size_t elem_size,
-						size_t elem_count);
+								   size_t elem_count);
 
 /**
  * @brief Restore the arena to it's original state. No memory is freed
