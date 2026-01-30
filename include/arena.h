@@ -3,8 +3,10 @@
 
 #include "visibility.h"
 #include <stddef.h>
+#include <stdbool.h>
 
 typedef struct arena_t arena_t;
+typedef struct arena_checkpoint arena_checkpoint;
 
 /**
  * @brief Creates a new arena with a default alignment of sizeof(uintptr_t).
@@ -67,5 +69,9 @@ LIB_EXPORT size_t arena_get_usage(arena_t* arena);
  *
  */
 LIB_EXPORT size_t arena_get_remaining(arena_t* arena);
+
+LIB_EXPORT arena_checkpoint* arena_get_checkpoint(arena_t* arena);
+
+LIB_EXPORT void arena_restore_checkpoint(arena_t* arena, arena_checkpoint* checkpoint, bool zero);
 
 #endif // !ARENA_H

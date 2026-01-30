@@ -51,9 +51,9 @@ void* arena_alloc(arena_t* arena, size_t size) {
 		return NULL;
 	}
 
+	void* ret = impl->current;
 	impl->current = (char*)impl->current + size;
-
-	return impl->current;
+	return ret;
 }
 
 void* arena_alloc_array(arena_t* arena, size_t elem_size, size_t elem_count) {
@@ -61,20 +61,8 @@ void* arena_alloc_array(arena_t* arena, size_t elem_size, size_t elem_count) {
 		LOG_ERR("arena_alloc_array: invalid arena handle: %p", arena);
 		return NULL;
 	}
-	arena_impl* impl = (arena_impl*)arena;
-
-	size_t size = align_up(elem_size * elem_count, impl->alignment);
-	size_t remaining = arena_impl_remaining(impl);
-	if (remaining < size) {
-		// TODO: growable
-		LOG_ERR("arena_alloc_array: not enough space for %zu. (%zu left)", size,
-				arena_impl_remaining(impl));
-		return NULL;
-	}
-
-	impl->current = (char*)impl->current + size;
-
-	return impl->current;
+	size_t size = elem_size * elem_count;
+	return arena_alloc(arena, size);
 }
 
 void* arena_reset(arena_t* arena) {
@@ -135,4 +123,37 @@ size_t arena_get_remaining(arena_t* arena) {
 
 	size_t remaining = arena_impl_remaining(impl);
 	return remaining;
+}
+
+arena_checkpoint* arena_get_checkpoint(arena_t* arena) {
+	if (!arena) {
+		LOG_ERR("arena_get_checkpoint: invalid arena handle: %p", arena);
+		return NULL;
+	}
+	arena_impl* impl = (arena_impl*)arena;
+
+	LOG_DEBUG("setting checkpoint at %p.", impl->current);
+	return impl->current;
+}
+
+void arena_restore_checkpoint(arena_t* arena, arena_checkpoint* checkpoint,
+							  bool zero) {
+	if (!arena) {
+		LOG_ERR("arena_restore_checkpoint: invalid arena handle: %p", arena);
+		return;
+	}
+	arena_impl* impl = (arena_impl*)arena;
+	void* p = checkpoint;
+
+	if (impl->current == p) { return; }
+
+	if ((char*)impl->current < (char*)p) {
+		LOG_ERR("arena_restore_checkpoint: invalid checkpoint: %p", checkpoint);
+		return;
+	}
+
+	void* prev = impl->current;
+	size_t offset = (char*)p - (char*)prev;
+	impl->current = p;
+	if (zero) { memset(impl->current, 0, offset); }
 }

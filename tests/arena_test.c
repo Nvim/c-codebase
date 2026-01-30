@@ -2,6 +2,8 @@
 #include "unity.h"
 #include <string.h>
 
+#include "arena_internal.h"
+
 void setUp(void) {
 	// set stuff up here
 }
@@ -110,6 +112,8 @@ void test_arena_get_usage_and_remaining_misaligned(void) {
 
 void test_arena_reset(void) {
 	arena_t* arena = arena_create(64);
+	arena_impl* impl = (arena_impl*)arena;
+	void* begin = impl->begin;
 
 	void* p1 = arena_alloc(arena, 32);
 	TEST_ASSERT_NOT_NULL(p1);
@@ -119,6 +123,7 @@ void test_arena_reset(void) {
 	TEST_ASSERT_NOT_NULL(base);
 	TEST_ASSERT_EQUAL_size_t(0, arena_get_usage(arena));
 	TEST_ASSERT_EQUAL_size_t(64, arena_get_remaining(arena));
+	TEST_ASSERT_EQUAL(begin, impl->current);
 
 	void* p2 = arena_alloc(arena, 64);
 	TEST_ASSERT_NOT_NULL(p2);
@@ -144,6 +149,74 @@ void test_arena_reset_zero(void) {
 	arena_destroy(arena);
 }
 
+void test_arena_checkpoint(void) {
+	arena_t* arena = arena_create(64);
+
+	uint8_t* p = arena_alloc(arena, 16);
+	TEST_ASSERT_NOT_NULL(p);
+
+	arena_checkpoint* check = arena_get_checkpoint(arena);
+	TEST_ASSERT_NOT_NULL(p);
+
+	uint8_t* p2 = arena_alloc(arena, 12);
+	TEST_ASSERT_NOT_NULL(p2);
+	TEST_ASSERT_EQUAL((void*)p2, (void*)check);
+
+	arena_restore_checkpoint(arena, check, false);
+	uint8_t* p3 = arena_alloc(arena, 14);
+	TEST_ASSERT_EQUAL(p2, p3);
+}
+
+void test_arena_checkpoint_begin(void) {
+	arena_t* arena = arena_create(32);
+	arena_checkpoint* check = arena_get_checkpoint(arena);
+
+	arena_impl* impl = (arena_impl*)arena;
+	TEST_ASSERT_EQUAL(impl->begin, check);
+
+	void* cur = impl->current;
+	arena_restore_checkpoint(arena, check, false);
+	TEST_ASSERT_EQUAL(impl->current, cur);
+}
+
+void test_arena_checkpoint_restore_invalid(void) {
+	arena_t* arena = arena_create(32);
+	arena_impl* impl = (arena_impl*)arena;
+
+	arena_alloc(arena, 8);
+	arena_alloc(arena, 8);
+
+	arena_checkpoint* check = arena_get_checkpoint(arena);
+
+	arena_reset(arena);
+	void* cur = impl->current;
+	arena_restore_checkpoint(arena, check, false);
+	TEST_ASSERT_EQUAL(impl->current, cur);
+}
+
+void test_arena_checkpoint_reset_zero(void) {
+	arena_t* arena = arena_create(32);
+	int* arr = arena_alloc_array(arena, sizeof(int), 4);
+
+	void* check;
+	for (int i = 0; i < 4; i++) {
+		arr[i] = i;
+		if (i == 2) { check = arena_get_checkpoint(arena); }
+	}
+
+	// Data should still be there:
+	arena_restore_checkpoint(arena, check, false);
+	TEST_ASSERT_EQUAL(arr[2], 2);
+	TEST_ASSERT_EQUAL(arr[3], 3);
+
+	// Everything is wiped:
+	arena_restore_checkpoint(arena, (arena_checkpoint*)&arr[0], true);
+	TEST_ASSERT_EQUAL(arr[0], 0);
+	TEST_ASSERT_EQUAL(arr[1], 0);
+	TEST_ASSERT_EQUAL(arr[2], 0);
+	TEST_ASSERT_EQUAL(arr[3], 0);
+}
+
 /* ------------------------------------------------------------------------- */
 
 int main(void) {
@@ -158,6 +231,10 @@ int main(void) {
 	RUN_TEST(test_arena_get_usage_and_remaining);
 	RUN_TEST(test_arena_reset);
 	RUN_TEST(test_arena_reset_zero);
+	RUN_TEST(test_arena_checkpoint);
+	RUN_TEST(test_arena_checkpoint_begin);
+	RUN_TEST(test_arena_checkpoint_restore_invalid);
+	RUN_TEST(test_arena_checkpoint_reset_zero);
 
 	return UNITY_END();
 }

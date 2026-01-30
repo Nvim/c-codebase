@@ -9,10 +9,12 @@ OUTDIR=out
 COMMON_SRC=$(wildcard src/common/*.c) $(wildcard src/common/*/*.c)
 COMMON_OBJS=$(COMMON_SRC:.c=.o)
 
-all: common
+all: common arena
 
 $(OUTDIR):
 	mkdir -p $(OUTDIR)
+
+###################################################################
 
 ARENA_SRC=$(wildcard src/arena/*.c) $(wildcard src/arena/*/*.c)
 ARENA_LIB = $(OUTDIR)/libarena.so
@@ -31,16 +33,17 @@ $(ARENA_DEBUG_LIB): CFLAGS := $(filter-out -fvisibility=hidden, $(CFLAGS))
 $(ARENA_DEBUG_LIB): $(ARENA_OBJS) $(COMMON_OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^
 
+
+TEST_SRC=$(wildcard tests/*.c) $(wildcard tests/*/*.c)
+TEST_OBJS=$(TEST_SRC:.c=.o)
+test: CFLAGS += $(DEBUG_FLAGS) -D_DEBUG -Isrc/arena
+test: clean $(ARENA_LIB) $(TEST_OBJS)
+	$(CC) -o $(OUTDIR)/tests $(TEST_OBJS) -Lout -larena
+	LD_LIBRARY_PATH=$(OUTDIR) $(OUTDIR)/tests
+
+###################################################################
+
 clean:
 	$(RM) $(ARENA_LIB) $(ARENA_OBJS)
 
 .PHONY: all $(ARENA_LIB) clean
-
-###################################################################
-
-TEST_SRC=$(wildcard tests/*.c) $(wildcard tests/*/*.c)
-TEST_OBJS=$(TEST_SRC:.c=.o)
-test: CFLAGS += $(DEBUG_FLAGS) -D_DEBUG
-test: clean $(ARENA_LIB) $(TEST_OBJS)
-	$(CC) -o $(OUTDIR)/tests $(TEST_OBJS) -Lout -larena
-	LD_LIBRARY_PATH=$(OUTDIR) $(OUTDIR)/tests
