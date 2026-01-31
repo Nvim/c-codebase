@@ -1,5 +1,6 @@
 #include "arena_internal.h"
 #include <arena.h>
+#include <platform.h>
 
 #include "common/util.h"
 

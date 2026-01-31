@@ -4,6 +4,12 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#if !defined(__clang__)
+#error "Unsupported compiler"
+#endif
+
+#define STATIC_ASSERT _Static_assert
+
 #define LOG_MAX_LEN 1024
 
 void log_out(FILE* stream, char const* msg, ...);
@@ -29,14 +35,5 @@ void log_out(FILE* stream, char const* msg, ...);
 #else
 #define LOG_DEBUG(msg, ...)
 #endif
-
-/* @brief: rounds value up to next alignment multiple */
-static inline size_t align_up(size_t value, size_t alignment) {
-	size_t idk = (alignment - 1);
-	size_t res;
-	int over = __builtin_uaddl_overflow(idk, value, &res);
-	if (over == 0) { return res & ~(alignment - 1); }
-	return 0;
-}
 
 #endif // !UTIL_H

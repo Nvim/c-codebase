@@ -33,13 +33,23 @@ $(ARENA_DEBUG_LIB): CFLAGS := $(filter-out -fvisibility=hidden, $(CFLAGS))
 $(ARENA_DEBUG_LIB): $(ARENA_OBJS) $(COMMON_OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^
 
+### TEST ###
 
-TEST_SRC=$(wildcard tests/*.c) $(wildcard tests/*/*.c)
-TEST_OBJS=$(TEST_SRC:.c=.o)
-test: CFLAGS += $(DEBUG_FLAGS) -D_DEBUG -Isrc/arena
-test: clean $(ARENA_LIB) $(TEST_OBJS)
-	$(CC) -o $(OUTDIR)/tests $(TEST_OBJS) -Lout -larena
-	LD_LIBRARY_PATH=$(OUTDIR) $(OUTDIR)/tests
+test: arena_test platform_memory_test
+
+ARENA_TEST_SRC=$(wildcard tests/arena_*.c tests/unity.c)
+ARENA_TEST_OBJS=$(ARENA_TEST_SRC:.c=.o)
+arena_test: CFLAGS += $(DEBUG_FLAGS) -D_DEBUG -Isrc/arena
+arena_test: clean $(ARENA_LIB) $(ARENA_TEST_OBJS)
+	$(CC) -o $(OUTDIR)/arena_test $(ARENA_TEST_OBJS) -Lout -larena
+	LD_LIBRARY_PATH=$(OUTDIR) $(OUTDIR)/arena_test
+
+PLATFORM_MEMORY_TEST_SRC=$(wildcard tests/platform_memory_test.c tests/unity.c)
+PLATFORM_MEMORY_TEST_OBJS=$(PLATFORM_MEMORY_TEST_SRC:.c=.o)
+platform_memory_test: CFLAGS += $(DEBUG_FLAGS) -D_DEBUG -Isrc/common
+platform_memory_test: clean $(ARENA_LIB) $(PLATFORM_MEMORY_TEST_OBJS)
+	$(CC) -o $(OUTDIR)/platform_memory_test $(PLATFORM_MEMORY_TEST_OBJS) -Lout -larena
+	LD_LIBRARY_PATH=$(OUTDIR) $(OUTDIR)/platform_memory_test
 
 ###################################################################
 
