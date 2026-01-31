@@ -22,20 +22,20 @@ void test_arena_create_and_destroy(void) {
 }
 
 void test_arena_create_aligned(void) {
-	arena_t* arena = arena_create_aligned(1024, 16);
+	arena_t* arena = arena_create_aligned(1024, 128);
 	TEST_ASSERT_NOT_NULL(arena);
 
 	void* ptr = arena_alloc(arena, 1);
 	TEST_ASSERT_NOT_NULL(ptr);
-	TEST_ASSERT_EQUAL_UINT(0, ((uintptr_t)ptr) % 16);
+	TEST_ASSERT_EQUAL_UINT(0, ((uintptr_t)ptr) % 128);
 
 	ptr = arena_alloc(arena, 24);
 	TEST_ASSERT_NOT_NULL(ptr);
-	TEST_ASSERT_EQUAL_UINT(0, ((uintptr_t)ptr) % 16);
+	TEST_ASSERT_EQUAL_UINT(0, ((uintptr_t)ptr) % 128);
 
 	ptr = arena_alloc(arena, 111);
 	TEST_ASSERT_NOT_NULL(ptr);
-	TEST_ASSERT_EQUAL_UINT(0, ((uintptr_t)ptr) % 16);
+	TEST_ASSERT_EQUAL_UINT(0, ((uintptr_t)ptr) % 128);
 
 	arena_destroy(arena);
 }
@@ -92,7 +92,7 @@ void test_arena_get_usage_and_remaining(void) {
 }
 
 /*
- * NOTE: Assumes 8 bytes alignment.
+ * [NOTE]: Assumes 8 bytes alignment.
  * 100 -> 104
  * 50 -> 56
  */

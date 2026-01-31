@@ -2,26 +2,73 @@
 #define ARENA_H
 
 #include "visibility.h"
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 typedef struct arena_t arena_t;
 typedef struct arena_checkpoint arena_checkpoint;
 
+typedef enum arena_flags {
+	ARENA_GROWING,		  // Arena will automatically grow when needed
+	ARENA_ZERO_ALWAYS,	  // Memory will always be zeroed out
+	ARENA_LOG,			  // Debug logs will be printed
+	ARENA_TRACE,		  // Arena state will be dumped to file
+	ARENA_MAX_FLAGS,	  // Arena's memory has been allocated externally
+	ARENA_EXTERNAL_MEMORY // Arena's memory has been allocated externally
+} arena_flags;
+#define ARENA_DUMP_PATH "arena.log"
+
+typedef struct arena_create_info {
+	size_t initial_size; // Allocation size
+	size_t max_size;	 // Ignored if growable bit isn't set
+	uint8_t alignment;
+	arena_flags flags;
+} arena_create_info;
+
 /**
- * @brief Creates a new arena with a default alignment of sizeof(uintptr_t).
+ * @brief Creates a new fixed size arena with a default alignment of
+ * sizeof(uintptr_t).
  *
  * @param size The amount of underlying memory (may be rounded up for alignment)
  */
 LIB_EXPORT arena_t* arena_create(size_t size);
 
 /**
- * @brief Creates an new arena, allocating `size` bytes of memory.
+ * @brief Creates an new fixed_size arena, allocating `size` bytes of memory.
  *
  * @param size The amount of underlying memory
  * @param alignment The default memory alignment to use for this arena
  */
 LIB_EXPORT arena_t* arena_create_aligned(size_t size, size_t alignment);
+
+/**
+ * @brief Creates an arena using the settings from `info`
+ * @param info Arena settings. Can't be externally owned.
+ */
+LIB_EXPORT arena_t* arena_create_from_config(arena_create_info info);
+
+/**
+ * @brief Creates a new arena from an existing chunk of memory.
+ *
+ * @param Memory pointer to the underlying memory to be used
+ * @param info Other arena settings. Can't be growable.
+ *
+ * [NOTE]: The arena's capacity will be less than the passed size, in order to
+ * fit the arena header at the beginning of the block. Add `arena_header_size`
+ * to your desired allocation size, making sure it matches desired alignment.
+ * [NOTE]: Memory won't be initially touched, even if `ARENA_ZERO_ALWAYS` is
+ * passed.
+ */
+LIB_EXPORT arena_t* arena_create_from_memory(void* memory,
+											 arena_create_info info);
+
+/**
+ * @brief Size of the internal header at the beginning of every arena's memory
+ * block. Use this to query the right size when pre-allocating a buffer.
+ * [NOTE]: This size might not match your alignment requirements.
+ */
+LIB_EXPORT size_t arena_header_size(void);
 
 /**
  * @brief Allocate memory from the arena.
@@ -54,7 +101,6 @@ LIB_EXPORT void* arena_reset_zero(arena_t* arena);
 
 /**
  * @brief Desctoy the arena. The underlying memory is released
- *
  */
 LIB_EXPORT void arena_destroy(arena_t* arena);
 
@@ -72,6 +118,8 @@ LIB_EXPORT size_t arena_get_remaining(arena_t* arena);
 
 LIB_EXPORT arena_checkpoint* arena_get_checkpoint(arena_t* arena);
 
-LIB_EXPORT void arena_restore_checkpoint(arena_t* arena, arena_checkpoint* checkpoint, bool zero);
+LIB_EXPORT void arena_restore_checkpoint(arena_t* arena,
+										 arena_checkpoint* checkpoint,
+										 bool zero);
 
 #endif // !ARENA_H
