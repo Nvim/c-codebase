@@ -1,6 +1,5 @@
-#include <platform.h>
-
-#include "common/util.h"
+#include <core/platform.h>
+#include <core/log.h>
 
 #include <stdbool.h>
 #include <stdint.h>

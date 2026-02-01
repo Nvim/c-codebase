@@ -1,8 +1,7 @@
 #include "arena_internal.h"
-#include <arena.h>
-#include <platform.h>
-
-#include "common/util.h"
+#include <containers/arena.h>
+#include <core/platform.h>
+#include <core/log.h>
 
 #include <assert.h>
 #include <stdint.h>

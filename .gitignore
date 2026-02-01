@@ -1,5 +1,6 @@
 .cache
 *.o
 *.so
+build/
 compile_commands.json
 out/*

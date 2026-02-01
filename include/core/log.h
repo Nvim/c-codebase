@@ -1,6 +1,7 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+#include "visibility.h"
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -8,11 +9,9 @@
 #error "Unsupported compiler"
 #endif
 
-#define STATIC_ASSERT _Static_assert
-
 #define LOG_MAX_LEN 1024
 
-void log_out(FILE* stream, char const* msg, ...);
+LIB_EXPORT void log_out(FILE* stream, char const* msg, ...);
 
 #define LOG_ERR(msg, ...)                                                      \
 	{                                                                          \
