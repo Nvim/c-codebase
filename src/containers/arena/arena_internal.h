@@ -15,12 +15,11 @@ typedef struct arena_impl {
 	size_t max_size;		// Adress space upper bound
 	uint8_t alignment;
 	uint8_t flags;
-	size_t _pad;
+	size_t _pad[3]; // Force power of 2 at compile-time
 } arena_impl;
 
 static size_t const ARENA_HEADER_SIZE = sizeof(arena_impl);
-// [TODO]: hide this behind generic macro
-STATIC_ASSERT(sizeof(arena_impl) == 48ul, "Bad arena_impl size");
+STATIC_ASSERT(sizeof(arena_impl) == 64ul, "Bad arena_impl size");
 
 static inline size_t arena_impl_total_size(arena_impl* arena) {
 	return arena->allocation_size + sizeof(arena_impl);

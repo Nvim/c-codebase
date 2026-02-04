@@ -61,6 +61,14 @@ LIB_EXPORT void platform_memory_free(void* memory);
 LIB_EXPORT void* platform_memory_reserve(size_t size);
 
 /**
+ * @brief De-reeserve memory address space.
+ *
+ * @param memory Page-aligned base address, or NULL on failure.
+ * @param size Size of the reserved space in bytes (need not be page-aligned).
+ */
+LIB_EXPORT bool platform_memory_dereserve(void* memory, size_t size);
+
+/**
  * @brief Commit memory address space, aligned up to OS memory page size.
  *
  * @param memory Beginning of the memory region to commit (must be page-aligned)

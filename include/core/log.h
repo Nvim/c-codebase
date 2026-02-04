@@ -19,6 +19,12 @@ LIB_EXPORT void log_out(FILE* stream, char const* msg, ...);
 		log_out(stderr, msg, ##__VA_ARGS__);                                   \
 	}
 
+#define LOG_WARN(msg, ...)                                                     \
+	{                                                                          \
+		fprintf(stderr, "[WARN]: ");                                           \
+		log_out(stderr, msg, ##__VA_ARGS__);                                   \
+	}
+
 #define LOG_INFO(msg, ...)                                                     \
 	{                                                                          \
 		fprintf(stderr, "[INFO]: ");                                           \

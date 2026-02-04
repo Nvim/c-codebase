@@ -24,6 +24,10 @@ void tearDown(void)
 /* ============================================================
    Alignment helpers
    ============================================================ */
+void test_align_aligned(void) {
+	TEST_ASSERT_EQUAL(8, align_up(8, 8));
+	TEST_ASSERT_EQUAL(16, align_up(9, 8));
+}
 
 void test_page_begin(void)
 {
@@ -125,6 +129,7 @@ int main(void)
 {
     UNITY_BEGIN();
 
+	RUN_TEST(test_align_aligned);
     RUN_TEST(test_page_begin);
     RUN_TEST(test_next_page_always_advances);
 

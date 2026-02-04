@@ -1,7 +1,7 @@
 #include "arena_internal.h"
 #include <containers/arena.h>
-#include <core/platform.h>
 #include <core/log.h>
+#include <core/platform.h>
 
 #include <assert.h>
 #include <stdint.h>
@@ -15,11 +15,15 @@
 	}
 
 static arena_impl* _arena_create_internal(arena_create_info info) {
-	bool growable = info.flags & ARENA_GROWING;
+	if (!info.alignment) {
+		LOG_ERR("arena_create: bad alignment");
+		return NULL;
+	}
 
+	bool const growable = info.flags & ARENA_GROWING;
 	if (growable) {
 		if (info.max_size == 0 || info.max_size < info.alignment) {
-			LOG_ERR("arena_create: alignment");
+			LOG_ERR("arena_create: invalid max size");
 			return NULL;
 		}
 	} else {
@@ -29,31 +33,69 @@ static arena_impl* _arena_create_internal(arena_create_info info) {
 		}
 	}
 
-	size_t size_align = align_up(info.initial_size, info.alignment);
+	size_t const header_size_align =
+		align_up(ARENA_HEADER_SIZE, info.alignment);
+	size_t const size_align = align_up(info.initial_size, info.alignment);
+	size_t const max_size_align = align_up(info.max_size, info.alignment);
+	void* memory;
 
-	// [TODO]: mmap reserve if growable
+	if (!growable) {
+		/**
+		 * [TODO]: Non-growing arena doesn't need to be page-aligned.
+		 * Page-aligned guarantees that `begin` will always be right after
+		 * `header_size_align`, which makes computing offsets easier since gap
+		 * between header and begin is always identical
+		 */
 
-	/* [NOTE]: Because of alignment, 1st allocation may be not be right after
-	 * header, so we align requested size AND header size.
-	 * For example, here, header is 48 bytes, but a 32 byte alignment
-	 * will require begin on 64:
-	 * [HEADER] [pad] [BEGIN]
-	 * 0    47    63  64
-	 */
-	void* memory =
-		malloc(size_align + align_up(ARENA_HEADER_SIZE, info.alignment));
-	if (!memory) {
-		LOG_ERR("arena_create: arena allocation failed");
-		return NULL;
+		// memory = platform_memory_alloc(size_align + header_size_align);
+		// if (!memory) {
+		// 	LOG_ERR("arena_create: arena allocation failed");
+		// 	return NULL;
+		// }
+		size_t const commit_size = align_up(size_align + header_size_align,
+											platform_memory_page_size());
+		memory = platform_memory_reserve(commit_size);
+		if (!memory) {
+			LOG_ERR(
+				"arena_create: arena allocation for %zu (%zu requested) failed",
+				commit_size, info.initial_size);
+			return NULL;
+		}
+
+		if (!platform_memory_commit(memory, commit_size)) {
+			LOG_ERR("arena_create: couldn't commit memory");
+			if (!platform_memory_dereserve(memory, commit_size)) {
+				LOG_ERR("arena_create: couldn't de-reserve memory");
+			}
+			return NULL;
+		}
+	} else {
+		LOG_INFO("Creating growing arena");
+		size_t const reserve_size = max_size_align + header_size_align;
+		size_t const commit_size = align_up(size_align + header_size_align,
+											platform_memory_page_size());
+
+		memory = platform_memory_reserve(reserve_size);
+		if (!memory) {
+			LOG_ERR("arena_create: arena allocation failed");
+			return NULL;
+		}
+
+		if (!platform_memory_commit(memory, commit_size)) {
+			LOG_ERR("arena_create: couldn't commit memory");
+			if (!platform_memory_dereserve(memory, reserve_size)) {
+				LOG_ERR("arena_create: couldn't de-reserve memory");
+			}
+			return NULL;
+		}
 	}
 
-	size_t begin = (size_t)memory + ARENA_HEADER_SIZE;
-	begin = align_up(begin, info.alignment);
+	size_t begin = (size_t)memory + header_size_align;
 	arena_impl* impl = memory;
 	{
 		impl->flags = info.flags;
 		impl->alignment = info.alignment;
-		impl->max_size = info.max_size;
+		impl->max_size = (growable) ? info.max_size : 0;
 		impl->allocation_size = size_align;
 		impl->begin = (void*)begin;
 		impl->current = impl->begin;
@@ -65,6 +107,8 @@ static arena_impl* _arena_create_internal(arena_create_info info) {
 
 	DEBUG(impl, "arena_create: allocated: %zu (%zu requested)", size_align,
 		  info.initial_size);
+	DEBUG(impl, "arena_create: memory chunk is at %p, begin is at %p", memory,
+		  impl->begin);
 	return impl;
 }
 
@@ -81,6 +125,7 @@ arena_t* arena_create_aligned(size_t size, size_t alignment) {
 	memset(&info, 0, sizeof(info));
 	info.initial_size = size;
 	info.alignment = alignment;
+	info.flags |= ARENA_LOG;
 	return (arena_t*)_arena_create_internal(info);
 }
 
@@ -193,17 +238,45 @@ void arena_destroy(arena_t* arena) {
 	}
 	arena_impl* impl = (arena_impl*)arena;
 
-	if (impl->flags & ARENA_EXTERNAL_MEMORY) { return; }
+	if (impl->flags & ARENA_EXTERNAL_MEMORY) {
+		LOG_WARN("arena_destroy: called on externally backed arena. Ignoring.",
+				 arena);
+		return;
+	}
 
 	if (!impl->begin || !impl->allocation_size) {
-		LOG_INFO("arena has no allocation");
+		LOG_WARN("arena_destroy: arena has no allocation");
 		return;
 	}
 
 	if (impl->flags & ARENA_ZERO_ALWAYS) {
 		memset(impl->begin, 0, impl->allocation_size);
 	}
-	free(arena);
+
+	size_t const header_size_align =
+		align_up(ARENA_HEADER_SIZE, impl->alignment);
+	if (impl->flags & ARENA_GROWING) {
+		assert(arena == platform_memory_page_begin(arena));
+
+		// size_t const to_decommit =
+		// 	align_up(impl->allocation_size + header_size_align,
+		// 			 platform_memory_page_size());
+		size_t const to_dereserve = impl->max_size + header_size_align;
+
+		// if (!platform_memory_decommit(arena, to_decommit)) {
+		// 	LOG_ERR("arena_destroy: couldn't decommit arena memory");
+		// }
+		if (!platform_memory_dereserve(arena, to_dereserve)) {
+			LOG_ERR("arena_destroy: couldn't dereserve arena memory");
+		}
+	} else {
+		assert(arena == platform_memory_page_begin(arena));
+		size_t const to_dereserve = impl->allocation_size + header_size_align;
+		if (!platform_memory_dereserve(arena, to_dereserve)) {
+			LOG_ERR("arena_destroy: couldn't dereserve arena memory");
+		}
+		// platform_memory_free(arena);
+	}
 }
 
 size_t arena_get_usage(arena_t* arena) {
