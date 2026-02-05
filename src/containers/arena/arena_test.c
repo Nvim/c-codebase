@@ -39,7 +39,7 @@ void test_arena_create_aligned(void) {
 			TEST_ASSERT_EQUAL(arena_alignment % ARENA_HEADER_SIZE, 0);
 		}
 
-		arena_t* arena = arena_create_aligned(1024, arena_alignment);
+		arena_t* arena = arena_create_aligned(2048, arena_alignment);
 		arena_impl* impl = (arena_impl*)arena;
 		TEST_ASSERT_NOT_NULL(impl);
 
@@ -53,6 +53,7 @@ void test_arena_create_aligned(void) {
 			TEST_ASSERT_EQUAL((size_t)impl->begin,
 							  (size_t)impl + arena_alignment);
 		}
+		TEST_ASSERT_EQUAL(arena_alignment, impl->alignment);
 
 		// Test some allocs
 		void* ptr = arena_alloc(arena, 1);
@@ -248,11 +249,11 @@ void test_arena_checkpoint_reset_zero(void) {
 
 	// [TODO]: Broken :/
 	// Everything is wiped:
-	// arena_restore_checkpoint(arena, (arena_checkpoint*)arr, true);
-	// TEST_ASSERT_EQUAL(arr[0], 0);
-	// TEST_ASSERT_EQUAL(arr[1], 0);
-	// TEST_ASSERT_EQUAL(arr[2], 0);
-	// TEST_ASSERT_EQUAL(arr[3], 0);
+	arena_restore_checkpoint(arena, (arena_checkpoint*)arr, true);
+	TEST_ASSERT_EQUAL(arr[0], 0);
+	TEST_ASSERT_EQUAL(arr[1], 0);
+	TEST_ASSERT_EQUAL(arr[2], 0);
+	TEST_ASSERT_EQUAL(arr[3], 0);
 	arena_destroy(arena);
 }
 

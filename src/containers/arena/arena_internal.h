@@ -13,9 +13,9 @@ typedef struct arena_impl {
 	void* current;
 	size_t allocation_size; // Actual commited memory
 	size_t max_size;		// Adress space upper bound
-	uint8_t alignment;
+	size_t alignment;
 	uint8_t flags;
-	size_t _pad[3]; // Force power of 2 at compile-time
+	size_t _pad[2]; // Force power of 2 at compile-time
 } arena_impl;
 
 static size_t const ARENA_HEADER_SIZE = sizeof(arena_impl);

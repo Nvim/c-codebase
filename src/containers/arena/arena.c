@@ -328,10 +328,9 @@ void arena_restore_checkpoint(arena_t* arena, arena_checkpoint* checkpoint,
 		return;
 	}
 
-	void* prev = impl->current;
-	size_t offset = (char*)p - (char*)prev;
+	size_t offset = (char*)impl->current - (char*)p;
 	impl->current = p;
 	if (zero || impl->flags & ARENA_ZERO_ALWAYS) {
-		memset(impl->current, 0, offset);
+		memset(p, 0, offset);
 	}
 }
