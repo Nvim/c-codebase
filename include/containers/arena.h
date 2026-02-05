@@ -10,13 +10,12 @@ typedef struct arena_t arena_t;
 typedef struct arena_checkpoint arena_checkpoint;
 
 typedef enum arena_flags {
-	ARENA_GROWING,		   // Arena will automatically grow when needed
-	ARENA_ZERO_ALWAYS,	   // Memory will always be zeroed out
-	ARENA_LOG,			   // Debug logs will be printed
-	ARENA_TRACE,		   // Arena state will be dumped to file
-	ARENA_MAX_FLAGS,	   // Arena's memory has been allocated externally
-	ARENA_EXTERNAL_MEMORY, // Arena's memory has been allocated externally
-	ARENA_FLAGS_COUNT
+	ARENA_GROWING = 1 << 0,			// Arena will automatically grow when needed
+	ARENA_ZERO_ALWAYS = 1 << 1,		// Memory will always be zeroed out
+	ARENA_LOG = 1 << 2,				// Debug logs will be printed
+	ARENA_TRACE = 1 << 3,			// Arena state will be dumped to file
+	ARENA_EXTERNAL_MEMORY = 1 << 4, // Memory has been allocated externally
+	ARENA_FLAGS_COUNT = 1 << 5
 } arena_flags;
 #define ARENA_DUMP_PATH "arena.log"
 
@@ -24,10 +23,8 @@ typedef struct arena_create_info {
 	size_t initial_size; // Allocation size
 	size_t max_size;	 // Ignored if growable bit isn't set
 	size_t alignment;
-	uint8_t flags;
+	arena_flags flags;
 } arena_create_info;
-_Static_assert(ARENA_FLAGS_COUNT < UINT8_MAX,
-			   "too many arena flags for uint8_t");
 
 /**
  * @brief Creates a new fixed size arena with a default alignment of

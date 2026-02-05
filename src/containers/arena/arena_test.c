@@ -247,7 +247,6 @@ void test_arena_checkpoint_reset_zero(void) {
 	TEST_ASSERT_EQUAL(arr[2], 2);
 	TEST_ASSERT_EQUAL(arr[3], 3);
 
-	// [TODO]: Broken :/
 	// Everything is wiped:
 	arena_restore_checkpoint(arena, (arena_checkpoint*)arr, true);
 	TEST_ASSERT_EQUAL(arr[0], 0);
@@ -255,6 +254,47 @@ void test_arena_checkpoint_reset_zero(void) {
 	TEST_ASSERT_EQUAL(arr[2], 0);
 	TEST_ASSERT_EQUAL(arr[3], 0);
 	arena_destroy(arena);
+}
+
+typedef struct sixtyfour {
+	size_t a[8];
+} sixtyfour;
+_Static_assert(sizeof(sixtyfour) == 64, "");
+
+// [NOTE]: Assumes 4096 page size
+void test_arena_growing(void) {
+	arena_create_info info = {
+		.alignment = 16,
+		.initial_size = 2048,
+		.max_size = 16384,
+		.flags = ARENA_GROWING | ARENA_LOG,
+	};
+	arena_t* arena = arena_create_from_config(info);
+	TEST_ASSERT_NOT_NULL(arena);
+
+	arena_impl* impl = (arena_impl*)arena;
+	TEST_ASSERT_EQUAL(2048, impl->allocation_size); // Committed whole page
+	TEST_ASSERT_EQUAL(16384, impl->max_size);
+
+	// No gap between header and 1st alloc:
+	TEST_ASSERT_EQUAL((size_t)impl + ARENA_HEADER_SIZE, (size_t)impl->begin);
+
+	// Alloc 2048. Should be full, but not grown yet
+	sixtyfour* arr = arena_alloc_array(arena, 64, 32);
+	TEST_ASSERT_NOT_NULL(arr);
+	TEST_ASSERT_EQUAL(2048, impl->allocation_size);
+	TEST_ASSERT_EQUAL(0, arena_get_remaining(arena));
+	TEST_ASSERT_EQUAL(2048, arena_get_usage(arena));
+
+	// Alloc some more. Should grow to match committed size:
+	// [64][2048][1984] = 4096 total
+	sixtyfour* arr2 = arena_alloc_array(arena, 64, 31);
+	TEST_ASSERT_NOT_NULL(arr2);
+	TEST_ASSERT_EQUAL(4096 - 64, impl->allocation_size);
+	TEST_ASSERT_EQUAL(0, arena_get_remaining(arena));
+	TEST_ASSERT_EQUAL(4096 - 64, arena_get_usage(arena));
+
+	// [TODO]: commit more
 }
 
 /* ------------------------------------------------------------------------- */
@@ -275,6 +315,7 @@ int main(void) {
 	RUN_TEST(test_arena_checkpoint_begin);
 	RUN_TEST(test_arena_checkpoint_restore_invalid);
 	RUN_TEST(test_arena_checkpoint_reset_zero);
+	RUN_TEST(test_arena_growing);
 
 	return UNITY_END();
 }

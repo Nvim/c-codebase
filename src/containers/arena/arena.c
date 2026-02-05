@@ -37,6 +37,8 @@ static arena_impl* _arena_create_internal(arena_create_info info) {
 		align_up(ARENA_HEADER_SIZE, info.alignment);
 	size_t const size_align = align_up(info.initial_size, info.alignment);
 	size_t const max_size_align = align_up(info.max_size, info.alignment);
+	size_t const commit_size =
+		align_up(size_align + header_size_align, platform_memory_page_size());
 	void* memory;
 
 	if (!growable) {
@@ -52,8 +54,6 @@ static arena_impl* _arena_create_internal(arena_create_info info) {
 		// 	LOG_ERR("arena_create: arena allocation failed");
 		// 	return NULL;
 		// }
-		size_t const commit_size = align_up(size_align + header_size_align,
-											platform_memory_page_size());
 		memory = platform_memory_reserve(commit_size);
 		if (!memory) {
 			LOG_ERR(
@@ -72,8 +72,6 @@ static arena_impl* _arena_create_internal(arena_create_info info) {
 	} else {
 		LOG_INFO("Creating growing arena");
 		size_t const reserve_size = max_size_align + header_size_align;
-		size_t const commit_size = align_up(size_align + header_size_align,
-											platform_memory_page_size());
 
 		memory = platform_memory_reserve(reserve_size);
 		if (!memory) {
@@ -184,10 +182,20 @@ void* arena_alloc(arena_t* arena, size_t size) {
 
 	size_t remaining = arena_impl_remaining(impl);
 	if (remaining < size) {
-		// [TODO]: growable
-		LOG_ERR("arena_alloc: not enough space for %zu. (%zu left)", size,
-				arena_impl_remaining(impl));
-		return NULL;
+		if (!(impl->flags & ARENA_GROWING)) {
+			LOG_ERR("arena_alloc: not enough space for %zu. (%zu left)", size,
+					arena_impl_remaining(impl));
+			return NULL;
+		}
+
+		// We can safely extend current up to this address:
+		void* commit_boundary = platform_memory_next_page(impl->current);
+		impl->allocation_size = (size_t)commit_boundary - (size_t)impl->begin;
+
+		remaining = arena_impl_remaining(impl);
+		if (remaining < size) {
+			// [TODO]: commit more
+		}
 	}
 
 	void* ret = impl->current;
@@ -286,7 +294,7 @@ size_t arena_get_usage(arena_t* arena) {
 	}
 	arena_impl* impl = (arena_impl*)arena;
 
-	size_t used = (char*)impl->current - (char*)impl->begin;
+	size_t used = (size_t)impl->current - (size_t)impl->begin;
 	return used;
 }
 
@@ -330,7 +338,5 @@ void arena_restore_checkpoint(arena_t* arena, arena_checkpoint* checkpoint,
 
 	size_t offset = (char*)impl->current - (char*)p;
 	impl->current = p;
-	if (zero || impl->flags & ARENA_ZERO_ALWAYS) {
-		memset(p, 0, offset);
-	}
+	if (zero || impl->flags & ARENA_ZERO_ALWAYS) { memset(p, 0, offset); }
 }
