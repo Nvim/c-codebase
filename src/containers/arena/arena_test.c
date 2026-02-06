@@ -279,22 +279,59 @@ void test_arena_growing(void) {
 	// No gap between header and 1st alloc:
 	TEST_ASSERT_EQUAL((size_t)impl + ARENA_HEADER_SIZE, (size_t)impl->begin);
 
-	// Alloc 2048. Should be full, but not grown yet
-	sixtyfour* arr = arena_alloc_array(arena, 64, 32);
-	TEST_ASSERT_NOT_NULL(arr);
-	TEST_ASSERT_EQUAL(2048, impl->allocation_size);
-	TEST_ASSERT_EQUAL(0, arena_get_remaining(arena));
-	TEST_ASSERT_EQUAL(2048, arena_get_usage(arena));
+	{ // Alloc 2048. Should be full, but not grown yet
+		sixtyfour* arr = arena_alloc_array(arena, 64, 32); // 2048 bytes
+		TEST_ASSERT_NOT_NULL(arr);
+		TEST_ASSERT_EQUAL(2048, impl->allocation_size);
+		TEST_ASSERT_EQUAL(0, arena_get_remaining(arena));
+		TEST_ASSERT_EQUAL(2048, arena_get_usage(arena));
+		TEST_ASSERT_EQUAL((size_t)impl->begin + 2040, (size_t)&arr[31].a[7]);
+	}
 
 	// Alloc some more. Should grow to match committed size:
-	// [64][2048][1984] = 4096 total
-	sixtyfour* arr2 = arena_alloc_array(arena, 64, 31);
-	TEST_ASSERT_NOT_NULL(arr2);
-	TEST_ASSERT_EQUAL(4096 - 64, impl->allocation_size);
-	TEST_ASSERT_EQUAL(0, arena_get_remaining(arena));
-	TEST_ASSERT_EQUAL(4096 - 64, arena_get_usage(arena));
+	{ // [64][2048][1984] = 4096 total
+		sixtyfour* arr2 = arena_alloc_array(arena, 64, 31); // 1984 bytes
+		TEST_ASSERT_NOT_NULL(arr2);
+		TEST_ASSERT_EQUAL(4096 - ARENA_HEADER_SIZE, impl->allocation_size);
+		TEST_ASSERT_EQUAL(0, arena_get_remaining(arena));
+		TEST_ASSERT_EQUAL(4096 - ARENA_HEADER_SIZE, arena_get_usage(arena));
 
-	// [TODO]: commit more
+		// Try write last address:
+		size_t* last_addr = &arr2[30].a[7];
+		*last_addr = 71;
+		TEST_ASSERT_EQUAL(71, *last_addr);
+		TEST_ASSERT_EQUAL((size_t)impl->begin + 4024, (size_t)&arr2[30].a[7]);
+	}
+
+	// Commit one more page
+	{
+		sixtyfour* arr3 = arena_alloc_array(arena, 64, 32); // 2048 bytes again
+		TEST_ASSERT_NOT_NULL(arr3);
+		TEST_ASSERT_EQUAL(8192 - ARENA_HEADER_SIZE, impl->allocation_size);
+		TEST_ASSERT_EQUAL(2048, arena_get_remaining(arena));
+		TEST_ASSERT_EQUAL(4096 + 2048 - ARENA_HEADER_SIZE,
+						  arena_get_usage(arena));
+
+		// Try writing:
+		size_t* last_addr = &arr3[31].a[7];
+		*last_addr = 24;
+		TEST_ASSERT_EQUAL(24, *last_addr);
+
+		size_t last_elem_off = 2048 + 1984 + 2048; // 3 allocs
+		last_elem_off -= 64; // 1 sixtyfour
+		last_elem_off += 8*7; // 7 size_t
+		TEST_ASSERT_EQUAL((size_t)impl->begin + last_elem_off, (size_t)&arr3[31].a[7]);
+	}
+}
+
+void test_arena_grow_too_much(void) {
+	// [TODO]: try to go beyond max_size
+}
+
+void test_arena_grow_non_maxed_current(void) {
+	// [TODO]: try to make an alloc that will trigger growing
+	// even though current isn't at the very end
+	// (used: 4000, alloc_size: 4096 -> try alloc 120)
 }
 
 /* ------------------------------------------------------------------------- */

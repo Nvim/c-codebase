@@ -53,6 +53,10 @@ void* platform_memory_next_page(void* addr) {
 	return (void*)((((uintptr_t)addr | _page_mask) + 1));
 }
 
+void* platform_memory_page_end(void* addr) {
+	return (void*)(((uintptr_t)addr | _page_mask));
+}
+
 void* platform_memory_alloc(size_t size) { return malloc(size); }
 
 void platform_memory_free(void* memory) { free(memory); }

@@ -41,6 +41,11 @@ LIB_EXPORT void* platform_memory_page_begin(void* addr);
 LIB_EXPORT void* platform_memory_next_page(void* addr);
 
 /**
+ * @brief Returns the last byte of current page
+ */
+LIB_EXPORT void* platform_memory_page_end(void* addr);
+
+/**
  * @brief Simple malloc wrapper.
  *
  * @param size The desired size in bytes

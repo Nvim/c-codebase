@@ -188,13 +188,53 @@ void* arena_alloc(arena_t* arena, size_t size) {
 			return NULL;
 		}
 
-		// We can safely extend current up to this address:
-		void* commit_boundary = platform_memory_next_page(impl->current);
-		impl->allocation_size = (size_t)commit_boundary - (size_t)impl->begin;
+		bool const is_page_full =
+			(size_t)impl->current % platform_memory_page_size() == 0;
+
+		// First, extend to current page's end
+		if (!is_page_full) {
+			void* commit_boundary = platform_memory_next_page(impl->current);
+			impl->allocation_size =
+				(size_t)commit_boundary - (size_t)impl->begin;
+			DEBUG(
+				impl,
+				"arena_alloc: extended allocation to page end (new size: %zu)",
+				impl->allocation_size);
+		}
 
 		remaining = arena_impl_remaining(impl);
 		if (remaining < size) {
-			// [TODO]: commit more
+			// Commit more pages:
+			size_t const needed = size - remaining;
+			DEBUG(impl, "arena_alloc: %zu now remaining. Needed: %zu",
+				  remaining, needed);
+			size_t const reserved = impl->max_size - impl->allocation_size;
+			if (needed > reserved) {
+				LOG_ERR("arena_alloc: not enough space in growable arena for "
+						"%zu. (%zu left)",
+						needed, reserved);
+				return NULL;
+			}
+
+			size_t const needed_align =
+				align_up(needed, platform_memory_page_size());
+
+			void* next_page = impl->current;
+			if (!is_page_full) {
+				next_page = platform_memory_next_page(impl->current);
+			}
+
+			if (!platform_memory_commit(next_page, needed_align)) {
+				LOG_ERR("arena_alloc: couldn't commit %zu bytes out of "
+						"growable arena.",
+						needed_align);
+				return NULL;
+			}
+			impl->allocation_size += needed_align;
+			DEBUG(
+				impl,
+				"arena_alloc: committed %zu more bytes of reserved space at %p",
+				needed_align, next_page);
 		}
 	}
 
