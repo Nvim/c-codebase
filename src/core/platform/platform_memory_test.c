@@ -48,11 +48,13 @@ void test_next_page_always_advances(void) {
 }
 
 void test_page_end(void) {
-	TEST_ASSERT_EQUAL(page_size-1, platform_memory_page_end((void*)0));
-	TEST_ASSERT_EQUAL(page_size-1, platform_memory_page_end((void*)8));
-	TEST_ASSERT_EQUAL(page_size-1, platform_memory_page_end((void*)(page_size-1)));
+	TEST_ASSERT_EQUAL(page_size - 1, platform_memory_page_end((void*)0));
+	TEST_ASSERT_EQUAL(page_size - 1, platform_memory_page_end((void*)8));
+	TEST_ASSERT_EQUAL(page_size - 1,
+					  platform_memory_page_end((void*)(page_size - 1)));
 
-	TEST_ASSERT_EQUAL(page_size*2-1, platform_memory_page_end((void*)page_size));
+	TEST_ASSERT_EQUAL(page_size * 2 - 1,
+					  platform_memory_page_end((void*)page_size));
 }
 
 /* ============================================================

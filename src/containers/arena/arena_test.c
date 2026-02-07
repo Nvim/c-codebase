@@ -318,20 +318,82 @@ void test_arena_growing(void) {
 		TEST_ASSERT_EQUAL(24, *last_addr);
 
 		size_t last_elem_off = 2048 + 1984 + 2048; // 3 allocs
-		last_elem_off -= 64; // 1 sixtyfour
-		last_elem_off += 8*7; // 7 size_t
-		TEST_ASSERT_EQUAL((size_t)impl->begin + last_elem_off, (size_t)&arr3[31].a[7]);
+		last_elem_off -= 64;					   // 1 sixtyfour
+		last_elem_off += 8 * 7;					   // 7 size_t
+		TEST_ASSERT_EQUAL((size_t)impl->begin + last_elem_off,
+						  (size_t)&arr3[31].a[7]);
 	}
-}
-
-void test_arena_grow_too_much(void) {
-	// [TODO]: try to go beyond max_size
+	arena_destroy(arena);
 }
 
 void test_arena_grow_non_maxed_current(void) {
 	// [TODO]: try to make an alloc that will trigger growing
 	// even though current isn't at the very end
 	// (used: 4000, alloc_size: 4096 -> try alloc 120)
+	TEST_ASSERT_TRUE(true);
+}
+
+void test_arena_grow_too_much(void) {
+	arena_create_info info = {
+		.alignment = 16,
+		.initial_size = 4096 - ARENA_HEADER_SIZE,
+		.max_size = 16384,
+		.flags = ARENA_GROWING | ARENA_LOG,
+	};
+	arena_t* arena = arena_create_from_config(info);
+	TEST_ASSERT_NULL(arena);
+
+	arena_impl* impl = (arena_impl*)arena;
+	TEST_ASSERT_TRUE(
+		((size_t)impl + impl->allocation_size + ARENA_HEADER_SIZE) % 4096 == 0);
+
+	{ // 1st alloc to fill page
+		size_t prev = impl->allocation_size;
+		void* ptr = arena_alloc(arena, 4096 - ARENA_HEADER_SIZE);
+		TEST_ASSERT_NOT_NULL(ptr);
+		TEST_ASSERT_EQUAL(prev, impl->allocation_size); // shouldn't grow
+	}
+
+	for (int i = 0; i < 3; i++) {
+		void* ptr = arena_alloc(arena, 4096);
+		TEST_ASSERT_NOT_NULL(ptr);
+		memset(ptr, i * 10, 4096);
+		TEST_ASSERT_EQUAL(i * 10, ((char*)ptr)[0]);
+		TEST_ASSERT_EQUAL(i * 10, ((char*)ptr)[4095]);
+	}
+
+	// 64 free bytes left because of header:
+	TEST_ASSERT_EQUAL(impl->max_size - ARENA_HEADER_SIZE,
+					  impl->allocation_size);
+	TEST_ASSERT_EQUAL(16320, arena_get_usage(arena));
+
+	// They are on a separate page:
+	// [64][4032][4096][4096][4096][FREE 64]
+	// ^         ^     ^     ^     ^
+	TEST_ASSERT_TRUE((size_t)impl->current % 4096 == 0);
+	TEST_ASSERT_EQUAL(
+		0, arena_get_remaining(arena)); // amount before next "growth"
+
+	{ // Could extend to page end, but hard cap at max_size
+		size_t prev = impl->allocation_size;
+		size_t* ptr = arena_alloc(arena, 65);
+		TEST_ASSERT_NULL(ptr);
+		TEST_ASSERT_EQUAL(prev, impl->allocation_size);
+
+		// We still have these 64 bytes though
+		ptr = arena_alloc(arena, 32);
+		TEST_ASSERT_NOT_NULL(ptr);
+		TEST_ASSERT_EQUAL(prev + 64, impl->allocation_size);
+		ptr[3] = 823;
+		TEST_ASSERT_EQUAL(823, ptr[3]);
+
+		ptr = arena_alloc(arena, 32);
+		TEST_ASSERT_NOT_NULL(ptr);
+		TEST_ASSERT_EQUAL(prev + 64, impl->allocation_size);
+		ptr[3] = 237;
+		TEST_ASSERT_EQUAL(237, ptr[3]);
+	}
+	arena_destroy(arena);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -353,6 +415,7 @@ int main(void) {
 	RUN_TEST(test_arena_checkpoint_restore_invalid);
 	RUN_TEST(test_arena_checkpoint_reset_zero);
 	RUN_TEST(test_arena_growing);
+	RUN_TEST(test_arena_grow_too_much);
 
 	return UNITY_END();
 }

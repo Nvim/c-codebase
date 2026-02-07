@@ -14,6 +14,9 @@
 		if (impl->flags & ARENA_LOG) { LOG_DEBUG(msg, ##__VA_ARGS__); }        \
 	}
 
+static void extend_to_page_end(arena_impl* impl);
+static bool commit_more(arena_impl* impl, size_t size, bool is_page_full);
+
 static arena_impl* _arena_create_internal(arena_create_info info) {
 	if (!info.alignment) {
 		LOG_ERR("arena_create: bad alignment");
@@ -70,7 +73,6 @@ static arena_impl* _arena_create_internal(arena_create_info info) {
 			return NULL;
 		}
 	} else {
-		LOG_INFO("Creating growing arena");
 		size_t const reserve_size = max_size_align + header_size_align;
 
 		memory = platform_memory_reserve(reserve_size);
@@ -86,6 +88,8 @@ static arena_impl* _arena_create_internal(arena_create_info info) {
 			}
 			return NULL;
 		}
+		LOG_INFO("Creating growing arena (%zu reserve, %zu initial commit)",
+				 reserve_size, commit_size);
 	}
 
 	size_t begin = (size_t)memory + header_size_align;
@@ -103,7 +107,7 @@ static arena_impl* _arena_create_internal(arena_create_info info) {
 		memset(impl->begin, 0, impl->allocation_size);
 	}
 
-	DEBUG(impl, "arena_create: allocated: %zu (%zu requested)", size_align,
+	DEBUG(impl, "arena_create: committed: %zu (%zu requested)", size_align,
 		  info.initial_size);
 	DEBUG(impl, "arena_create: memory chunk is at %p, begin is at %p", memory,
 		  impl->begin);
@@ -188,53 +192,24 @@ void* arena_alloc(arena_t* arena, size_t size) {
 			return NULL;
 		}
 
+		if (arena_get_usage(arena) + size > impl->max_size) {
+			LOG_ERR("not enough space in growable arena for %zu.", size);
+			return NULL;
+		}
+
 		bool const is_page_full =
 			(size_t)impl->current % platform_memory_page_size() == 0;
 
 		// First, extend to current page's end
-		if (!is_page_full) {
-			void* commit_boundary = platform_memory_next_page(impl->current);
-			impl->allocation_size =
-				(size_t)commit_boundary - (size_t)impl->begin;
-			DEBUG(
-				impl,
-				"arena_alloc: extended allocation to page end (new size: %zu)",
-				impl->allocation_size);
-		}
+		if (!is_page_full) { extend_to_page_end(impl); }
 
 		remaining = arena_impl_remaining(impl);
 		if (remaining < size) {
 			// Commit more pages:
-			size_t const needed = size - remaining;
-			DEBUG(impl, "arena_alloc: %zu now remaining. Needed: %zu",
-				  remaining, needed);
-			size_t const reserved = impl->max_size - impl->allocation_size;
-			if (needed > reserved) {
-				LOG_ERR("arena_alloc: not enough space in growable arena for "
-						"%zu. (%zu left)",
-						needed, reserved);
+			if (!commit_more(impl, size, is_page_full)) {
+				LOG_ERR("arena_grow: couldn't commit more pages");
 				return NULL;
 			}
-
-			size_t const needed_align =
-				align_up(needed, platform_memory_page_size());
-
-			void* next_page = impl->current;
-			if (!is_page_full) {
-				next_page = platform_memory_next_page(impl->current);
-			}
-
-			if (!platform_memory_commit(next_page, needed_align)) {
-				LOG_ERR("arena_alloc: couldn't commit %zu bytes out of "
-						"growable arena.",
-						needed_align);
-				return NULL;
-			}
-			impl->allocation_size += needed_align;
-			DEBUG(
-				impl,
-				"arena_alloc: committed %zu more bytes of reserved space at %p",
-				needed_align, next_page);
 		}
 	}
 
@@ -379,4 +354,55 @@ void arena_restore_checkpoint(arena_t* arena, arena_checkpoint* checkpoint,
 	size_t offset = (char*)impl->current - (char*)p;
 	impl->current = p;
 	if (zero || impl->flags & ARENA_ZERO_ALWAYS) { memset(p, 0, offset); }
+}
+
+static void extend_to_page_end(arena_impl* impl) {
+	size_t commit_boundary = (size_t)platform_memory_next_page(impl->current);
+	size_t extended_size = commit_boundary - (size_t)impl->begin;
+	if (extended_size <= impl->max_size) {
+		impl->allocation_size = commit_boundary - (size_t)impl->begin;
+		DEBUG(impl,
+			  "arena_alloc: extended allocation to page end (new size: "
+			  "%zu)",
+			  impl->allocation_size);
+	} else {
+		impl->allocation_size = impl->max_size;
+		DEBUG(impl,
+			  "arena_alloc: extended allocation to max_size (new size: "
+			  "%zu)",
+			  impl->allocation_size);
+	}
+}
+
+static bool commit_more(arena_impl* impl, size_t size, bool is_page_full) {
+	size_t remaining = arena_impl_remaining(impl);
+	size_t const needed = size - remaining;
+	size_t const reserved = impl->max_size - impl->allocation_size;
+	DEBUG(impl, "arena_alloc: %zu remaining. Needed: %zu", remaining, needed);
+
+	if (needed > reserved) {
+		LOG_ERR("arena_alloc: not enough space in growable arena for "
+				"%zu. (%zu left)",
+				needed, reserved);
+		return false;
+	}
+
+	size_t const needed_align = align_up(needed, platform_memory_page_size());
+
+	void* next_page = impl->current;
+	if (!is_page_full) { next_page = platform_memory_next_page(impl->current); }
+
+	if (!platform_memory_commit(next_page, needed_align)) {
+		LOG_ERR("arena_alloc: couldn't commit %zu bytes out of "
+				"growable arena.",
+				needed_align);
+		return false;
+	}
+	impl->allocation_size += needed_align;
+	if (impl->allocation_size > impl->max_size) {
+		impl->allocation_size = impl->max_size;
+	}
+	DEBUG(impl, "arena_alloc: committed %zu more bytes of reserved space at %p",
+		  needed_align, next_page);
+	return true;
 }

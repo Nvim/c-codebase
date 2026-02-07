@@ -100,7 +100,7 @@ LIB_EXPORT void* arena_reset(arena_t* arena);
 LIB_EXPORT void* arena_reset_zero(arena_t* arena);
 
 /**
- * @brief Desctoy the arena. The underlying memory is released
+ * @brief Destroy the arena. The underlying memory is released
  */
 LIB_EXPORT void arena_destroy(arena_t* arena);
 
@@ -111,8 +111,9 @@ LIB_EXPORT void arena_destroy(arena_t* arena);
 LIB_EXPORT size_t arena_get_usage(arena_t* arena);
 
 /**
- * @brief Get remaining amount of memory before reallocation in bytes.
+ * @brief Get remaining amount of memory in bytes.
  *
+ * @note: If arena is growable, returns amount before next growth operation.
  */
 LIB_EXPORT size_t arena_get_remaining(arena_t* arena);
 
