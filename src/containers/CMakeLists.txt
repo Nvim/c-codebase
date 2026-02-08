@@ -6,3 +6,4 @@ target_include_directories(containers PUBLIC ${PROJECT_SOURCE_DIR}/include)
 target_link_libraries(containers PUBLIC compile_flags core)
 
 add_subdirectory(arena)
+add_subdirectory(string)

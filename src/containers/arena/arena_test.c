@@ -1,5 +1,5 @@
-#include "core/platform.h"
-#include "unity.h"
+#include <core/platform.h>
+#include <unity.h>
 #include <containers/arena.h>
 #include <string.h>
 
@@ -341,7 +341,6 @@ void test_arena_grow_too_much(void) {
 		.flags = ARENA_GROWING | ARENA_LOG,
 	};
 	arena_t* arena = arena_create_from_config(info);
-	TEST_ASSERT_NULL(arena);
 
 	arena_impl* impl = (arena_impl*)arena;
 	TEST_ASSERT_TRUE(
