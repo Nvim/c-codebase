@@ -169,7 +169,7 @@ bool string_compare(string* s1, string* s2) {
 		LOG_ERR("string_compare: invalid parameters");
 		return false;
 	}
-	if (s1->len != !s2->len) { return false; }
+	if (s1->len != s2->len) { return false; }
 
 	if (s1->str == s2->str) { return true; }
 
@@ -196,16 +196,26 @@ bool string_replace(arena_t* arena, string* out, string* s, string* pattern,
 		return false;
 	}
 
-	if (!s->len || string_compare(s, pattern) == 0) {
-		return string_copy(arena, out, pattern);
+	// Empty source str is a failure. Rest are handeled
+	if(!s->len) {
+		LOG_ERR("string_replace: can't replace on empty string");
+		return false;
 	}
 
-	if (!pattern->len || pattern->len > s->len) { return string_copy(arena, out, s); }
+	if (string_compare(s, pattern)) {
+		return string_copy(arena, out, replacement);
+	}
+
+	// Bad pattern -> return s untouched
+	if (!pattern->len || pattern->len > s->len || !pattern->len) {
+		return string_copy(arena, out, s);
+	}
 
 	// Build array of occurences indices:
 	size_t p_len = pattern->len;
 	size_t max_occurences = s->len / p_len;
-	arena_t* scratch = arena_create(max_occurences);
+	assert(max_occurences != 0);
+	arena_t* scratch = arena_create(max_occurences * sizeof(size_t));
 	if (!scratch) {
 		LOG_ERR("string_replace: couldn't create scratch arena");
 		return false;
@@ -214,29 +224,34 @@ bool string_replace(arena_t* arena, string* out, string* s, string* pattern,
 	size_t* indices =
 		arena_alloc_array(scratch, sizeof(size_t), max_occurences);
 	if (!indices) {
-		LOG_ERR("string_replace: couldn't allocate temp array");
+		LOG_ERR("string_replace: couldn't allocate temp array for %zu "
+				"max_occurences",
+				max_occurences);
 		arena_destroy(scratch);
 		return false;
 	}
 
 	size_t occurences = 0;
 	size_t i = 0;
-	while (i < s->len) {
+	while (i < s->len && s->len - i >= p_len) {
 		string tmp = {
 			.str = &s->str[i],
 			.len = s->len - i,
 		};
 
-		if (string_contains(&tmp, pattern) != STRING_NPOS) {
-			indices[occurences++] = i;
-			i += p_len;
+		size_t match_idx = string_contains(&tmp, pattern);
+		if (match_idx != STRING_NPOS) {
+			indices[occurences++] = match_idx+i;
+			i = match_idx+i+1;
+		} else {
+			break;
 		}
-		i++;
 	}
 
 	if (!occurences) {
+		LOG_INFO("string_replace: no occurences of pattern");
 		arena_destroy(scratch);
-		return s;
+		return string_copy(arena, out, s); // No match isn't a failure
 	}
 
 	// Now that we know occurences, we can build result:
@@ -254,8 +269,8 @@ bool string_replace(arena_t* arena, string* out, string* s, string* pattern,
 	i = 0;
 	size_t s_idx = 0;
 	while (i < buf_len) {
-		assert(current_occ < occurences);
-		if (i == indices[current_occ]) {
+		assert(current_occ <= occurences);
+		if (s_idx == indices[current_occ]) {
 			memcpy(&buf[i], replacement->str, r_len);
 			current_occ++;
 			i += r_len;

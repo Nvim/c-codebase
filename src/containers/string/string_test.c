@@ -117,9 +117,89 @@ void test_string_compare(void) {
 	TEST_ASSERT_FALSE(string_compare(NULL, &s));
 	TEST_ASSERT_FALSE(string_compare(&s, NULL));
 
-	// [TODO]:
-	// TEST_ASSERT_TRUE(string_compare(&s, &s4));
-	// TEST_ASSERT_TRUE(string_compare(&s, &s));
+	TEST_ASSERT_TRUE(string_compare(&s, &s4));
+	TEST_ASSERT_TRUE(string_compare(&s, &s));
+}
+
+void test_string_replace(void) {
+	typedef struct test {
+		char const *str, *pattern, *replacement;
+		char const* expect;
+		bool ret;
+	} test;
+
+#define TEST_COUNT 9
+	test const tests[TEST_COUNT] = {
+		// Successful replaces:
+		{.str = "hello",
+		 .pattern = "hell",
+		 .replacement = "op",
+		 .expect = "opo",
+		 .ret = true},
+		{.str = "helloh",
+		 .pattern = "h",
+		 .replacement = "vv",
+		 .expect = "vvellovv",
+		 .ret = true},
+		{.str = "helloh",
+		 .pattern = "h",
+		 .replacement = "z",
+		 .expect = "zelloz",
+		 .ret = true},
+		{.str = "helloh",
+		 .pattern = "ll",
+		 .replacement = " verylongtext ",
+		 .expect = "he verylongtext oh",
+		 .ret = true},
+		// Not found:
+		{.str = "hello",
+		 .pattern = "hey",
+		 .replacement = "op",
+		 .expect = "hello",
+		 .ret = true},
+		{.str = "hello",
+		 .pattern = "o8",
+		 .replacement = "x",
+		 .expect = "hello",
+		 .ret = true},
+		// Pattern too long:
+		{.str = "h",
+		 .pattern = "hhh",
+		 .replacement = "x",
+		 .expect = "h",
+		 .ret = true},
+		// Same string and pattern:
+		{.str = "same$",
+		 .pattern = "same$",
+		 .replacement = "x",
+		 .expect = "x",
+		 .ret = true},
+		// Newlines and tabs:
+		{.str = "I'm\t weird \n but should \rwork",
+		 .pattern = "should",
+		 .replacement = "will",
+		 .expect = "I'm\t weird \n but will \rwork",
+		 .ret = true},
+	};
+
+	for (size_t i = 0; i < TEST_COUNT; i++) {
+		arena_checkpoint* cp = arena_get_checkpoint(arena);
+		string str, pattern, replacement, expect, out;
+
+		test t = tests[i];
+		TEST_ASSERT_TRUE(string_create(arena, &str, t.str));
+		TEST_ASSERT_TRUE(string_create(arena, &pattern, t.pattern));
+		TEST_ASSERT_TRUE(string_create(arena, &replacement, t.replacement));
+		TEST_ASSERT_TRUE(string_create(arena, &expect, t.expect));
+
+		TEST_ASSERT_EQUAL(
+			t.ret, string_replace(arena, &out, &str, &pattern, &replacement));
+		char msg[256];
+		snprintf(msg, 256, "bad strlen for string %s", out.str);
+		TEST_ASSERT_EQUAL_MESSAGE(strlen(t.expect), out.len, msg);
+		TEST_ASSERT_EQUAL(0, strncmp(t.expect, out.str, out.len));
+		arena_restore_checkpoint(arena, cp, true);
+	}
 }
 
 int main(void) {
@@ -132,5 +212,6 @@ int main(void) {
 	RUN_TEST(test_string_contains_basic);
 	RUN_TEST(test_string_contains_same_str);
 	RUN_TEST(test_string_compare);
+	RUN_TEST(test_string_replace);
 	return UNITY_END();
 }
