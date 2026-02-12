@@ -2,6 +2,7 @@
 #include <containers/string.h>
 #include <core/log.h>
 #include <core/platform.h>
+#include <ctype.h>
 #include <string.h>
 
 STATIC_ASSERT(sizeof(string) == 16, "unexpected string size");
@@ -197,7 +198,7 @@ bool string_replace(arena_t* arena, string* out, string* s, string* pattern,
 	}
 
 	// Empty source str is a failure. Rest are handeled
-	if(!s->len) {
+	if (!s->len) {
 		LOG_ERR("string_replace: can't replace on empty string");
 		return false;
 	}
@@ -241,8 +242,8 @@ bool string_replace(arena_t* arena, string* out, string* s, string* pattern,
 
 		size_t match_idx = string_contains(&tmp, pattern);
 		if (match_idx != STRING_NPOS) {
-			indices[occurences++] = match_idx+i;
-			i = match_idx+i+1;
+			indices[occurences++] = match_idx + i;
+			i = match_idx + i + 1;
 		} else {
 			break;
 		}
@@ -284,5 +285,49 @@ bool string_replace(arena_t* arena, string* out, string* s, string* pattern,
 
 	out->len = buf_len;
 	out->str = buf;
-	return out;
+	return true;
+}
+
+bool string_ltrim(string* str, size_t n) {
+	if (!str || n >= str->len) {
+		LOG_ERR("string_ltrim: invalid parameters");
+		return false;
+	}
+
+	str->str += n;
+	str->len -= n;
+	return true;
+}
+
+bool string_rtrim(string* str, size_t n) {
+	if (!str || n >= str->len) {
+		LOG_ERR("string_rtrim: invalid parameters");
+		return false;
+	}
+
+	str->len -= n;
+	return true;
+}
+
+bool string_trimspace(string* str) {
+	if (!str) {
+		LOG_ERR("string_trimspace: invalid parameter");
+		return false;
+	}
+	size_t i = 0;
+	size_t j = str->len - 1;
+
+	while (isspace(str->str[i]) != 0) { i++; }
+	while (isspace(str->str[j]) != 0) { j--; }
+
+	if (i >= j) {
+		LOG_ERR("string_trimspace: empty string");
+		return false;
+	}
+
+	str->len -= (str->len - j-1);
+	str->len -= i;
+	str->str += i;
+
+	return true;
 }

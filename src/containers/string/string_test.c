@@ -202,6 +202,74 @@ void test_string_replace(void) {
 	}
 }
 
+void test_string_ltrim(void) {
+	string s;
+	TEST_ASSERT_TRUE(string_create(arena, &s, "abcdef"));
+
+	TEST_ASSERT_TRUE(string_ltrim(&s, 0));
+	TEST_ASSERT_EQUAL(6, s.len);
+
+	TEST_ASSERT_TRUE(string_ltrim(&s, 2));
+	TEST_ASSERT_EQUAL(4, s.len);
+	TEST_ASSERT_EQUAL('c', *s.str);
+	TEST_ASSERT_EQUAL('f', s.str[s.len-1]);
+
+	TEST_ASSERT_FALSE(string_ltrim(&s, 4));
+	TEST_ASSERT_FALSE(string_ltrim(&s, 5));
+}
+
+void test_string_rtrim(void) {
+	string s;
+	TEST_ASSERT_TRUE(string_create(arena, &s, "abcdef"));
+
+	TEST_ASSERT_TRUE(string_rtrim(&s, 0));
+	TEST_ASSERT_EQUAL(6, s.len);
+
+	TEST_ASSERT_TRUE(string_rtrim(&s, 2));
+	TEST_ASSERT_EQUAL(4, s.len);
+	TEST_ASSERT_EQUAL('a', *s.str);
+	TEST_ASSERT_EQUAL('d', s.str[s.len-1]);
+
+	TEST_ASSERT_FALSE(string_rtrim(&s, 4));
+	TEST_ASSERT_FALSE(string_rtrim(&s, 5));
+}
+
+void test_string_trimspace(void) {
+	string none;
+	string lead;
+	string trail;
+	string both;
+	TEST_ASSERT_TRUE(string_create(arena, &none, "leading and trailing"));
+	TEST_ASSERT_TRUE(
+		string_create(arena, &lead, "\t  \n	 leading and trailing"));
+	TEST_ASSERT_TRUE(
+		string_create(arena, &trail, "leading and trailing\t  \r\n "));
+	TEST_ASSERT_TRUE(
+		string_create(arena, &both, "   \t leading and trailing\t  \r\n "));
+
+	TEST_ASSERT_TRUE(string_trimspace(&none));
+	TEST_ASSERT_TRUE(string_trimspace(&lead));
+	TEST_ASSERT_TRUE(string_trimspace(&trail));
+	TEST_ASSERT_TRUE(string_trimspace(&both));
+
+	size_t len = strlen("leading and trailing");
+	TEST_ASSERT_EQUAL(20, len);
+	TEST_ASSERT_EQUAL(len, none.len);
+	TEST_ASSERT_EQUAL(len, lead.len);
+	TEST_ASSERT_EQUAL(len, trail.len);
+	TEST_ASSERT_EQUAL(len, both.len);
+
+	char cstr[20];
+	strncpy(cstr, none.str, len);
+	TEST_ASSERT_EQUAL(0, strncmp(cstr, "leading and trailing", len));
+	strncpy(cstr, lead.str, len);
+	TEST_ASSERT_EQUAL(0, strncmp(cstr, "leading and trailing", len));
+	strncpy(cstr, trail.str, len);
+	TEST_ASSERT_EQUAL(0, strncmp(cstr, "leading and trailing", len));
+	strncpy(cstr, both.str, len);
+	TEST_ASSERT_EQUAL(0, strncmp(cstr, "leading and trailing", len));
+}
+
 int main(void) {
 	UNITY_BEGIN();
 
@@ -213,5 +281,8 @@ int main(void) {
 	RUN_TEST(test_string_contains_same_str);
 	RUN_TEST(test_string_compare);
 	RUN_TEST(test_string_replace);
+	RUN_TEST(test_string_ltrim);
+	RUN_TEST(test_string_rtrim);
+	RUN_TEST(test_string_trimspace);
 	return UNITY_END();
 }
