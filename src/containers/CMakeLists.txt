@@ -7,3 +7,4 @@ target_link_libraries(containers PUBLIC compile_flags core)
 
 add_subdirectory(arena)
 add_subdirectory(string)
+add_subdirectory(hashtable)

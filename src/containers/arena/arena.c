@@ -313,6 +313,15 @@ size_t arena_get_usage(arena_t* arena) {
 	return used;
 }
 
+void* arena_get_base(arena_t* arena) {
+	if (!arena) {
+		LOG_ERR("arena_get_usage: invalid arena handle: %p", arena);
+		return 0;
+	}
+	arena_impl* impl = (arena_impl*)arena;
+	return impl->begin;
+}
+
 size_t arena_get_remaining(arena_t* arena) {
 	if (!arena) {
 		LOG_ERR("arena_get_remaining: invalid arena handle: %p", arena);

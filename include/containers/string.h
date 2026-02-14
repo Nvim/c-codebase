@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <visibility.h>
 
-typedef struct string_t {
+typedef struct string {
 	char* str;
 	size_t len;
 } string;

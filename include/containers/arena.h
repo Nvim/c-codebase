@@ -87,6 +87,12 @@ LIB_EXPORT void* arena_alloc_array(arena_t* arena, size_t elem_size,
 								   size_t elem_count);
 
 /**
+ * Convinient macros for pushing data
+ */
+#define arena_push(arena, type) (type*)arena_alloc(arena, sizeof(type))
+#define arena_push_array(arena, type, count) (type*)arena_alloc_array(arena, sizeof(type), count)
+
+/**
  * @brief Restore the arena to it's original state. No memory is freed
  *
  * @return The beginning of arena
@@ -109,6 +115,12 @@ LIB_EXPORT void arena_destroy(arena_t* arena);
  *
  */
 LIB_EXPORT size_t arena_get_usage(arena_t* arena);
+
+/**
+ * @brief Get beginning address of usable memory.
+ *
+ */
+LIB_EXPORT void* arena_get_base(arena_t* arena);
 
 /**
  * @brief Get remaining amount of memory in bytes.
