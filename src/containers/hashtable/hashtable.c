@@ -1,24 +1,9 @@
+#include "hashtable_internal.h"
+
 #include <containers/arena.h>
-#include <containers/hashtable.h>
 #include <containers/string.h>
 #include <core/log.h>
-#include <core/platform.h>
 #include <string.h>
-
-typedef struct ht_impl {
-	uint32_t max_allocs;  // Size requested by user
-	uint32_t elem_size;	  // sizeof(elem)
-	uint32_t alloc_count; // Allocation count
-	void* memory; // Bigger than needed, so table is never fuller than HT_RATIO
-	hash_fn func;
-} ht_impl;
-
-STATIC_ASSERT(sizeof(ht_impl) == 32, "");
-
-static size_t _allocation_size(uint32_t count, uint32_t elem_size) {
-	size_t max_size = (1.f / HT_RATIO) * (float)count;
-	return align_up(max_size * elem_size, 8);
-}
 
 static bool _is_elem_null(void* elem, uint32_t elem_size) {
 	for (uint32_t i = 0; i < elem_size; i++) {
@@ -35,7 +20,7 @@ hashtable_t* hashtable_create(arena_t* arena, uint32_t count,
 	}
 
 	// [TODO]: overflow check
-	size_t allocation_size = _allocation_size(count, elem_size);
+	size_t allocation_size = ht_allocation_size(count, elem_size);
 
 	// [TODO]: make a function for growning arena remaining
 	if (arena_get_remaining(arena) < sizeof(ht_impl) + allocation_size) {
@@ -128,7 +113,7 @@ LIB_EXPORT void hashtable_reset(hashtable_t* ht) {
 	}
 
 	ht_impl* h = (ht_impl*)ht;
-	size_t allocation_size = _allocation_size(h->max_allocs, h->elem_size);
+	size_t allocation_size = ht_allocation_size(h->max_allocs, h->elem_size);
 	memset(h->memory, 0, allocation_size);
 	h->alloc_count = 0;
 }
