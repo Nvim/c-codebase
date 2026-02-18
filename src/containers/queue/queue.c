@@ -18,7 +18,7 @@ static void* _queue_get_at(queue_impl* q, size_t idx) {
 }
 
 queue_t* queue_create(arena_t* arena, size_t max_size, size_t elem_size) {
-	if (!arena || max_size == 0 || elem_size == 0 || elem_size >= max_size) {
+	if (!arena || max_size == 0 || elem_size == 0) {
 		LOG_ERR("queue_create: invalid parameters");
 		return NULL;
 	}
@@ -113,7 +113,7 @@ LIB_EXPORT bool queue_empty(queue_t* queue) {
 size_t queue_get_usage(queue_t* queue) {
 	if (!queue) {
 		LOG_ERR("queue_get_usage: invalid parameter");
-		return false;
+		return 0;
 	}
 
 	queue_impl* impl = (queue_impl*)queue;
@@ -123,7 +123,7 @@ size_t queue_get_usage(queue_t* queue) {
 size_t queue_get_remaining(queue_t* queue) {
 	if (!queue) {
 		LOG_ERR("queue_get_usage: invalid parameter");
-		return false;
+		return 0;
 	}
 
 	queue_impl* impl = (queue_impl*)queue;
