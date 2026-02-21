@@ -5,7 +5,7 @@
 #include <core/log.h>
 #include <string.h>
 
-array_t* array_create(arena_t* arena, size_t size, size_t elem_size) {
+array_t* _array_create(arena_t* arena, size_t size, size_t elem_size) {
 	if (!arena || size == 0 || elem_size == 0) {
 		LOG_ERR("array_create: invalid parameters");
 		return NULL;
@@ -38,7 +38,7 @@ array_t* array_create(arena_t* arena, size_t size, size_t elem_size) {
 	return (array_t*)arr;
 }
 
-size_t array_size(array_t* array) {
+size_t _array_size(array_t* array) {
 	if (!array) {
 		LOG_ERR("array_size: invalid array");
 		return 0;
@@ -47,7 +47,7 @@ size_t array_size(array_t* array) {
 	return arr->size;
 }
 
-size_t array_stride(array_t* array) {
+size_t _array_stride(array_t* array) {
 	if (!array) {
 		LOG_ERR("array_stride: invalid array");
 		return 0;
@@ -56,8 +56,34 @@ size_t array_stride(array_t* array) {
 	return arr->elem_size;
 }
 
-bool array_get(array_t* array, void* out, size_t index) {
-	if (!array || !out || index >= array_size(array)) {
+bool _array_at(array_t* array, void** out, size_t index) {
+	if (!array || index >= _array_size(array)) {
+		LOG_ERR("array_at: invalid parameters");
+		return false;
+	}
+
+	array_impl* arr = (array_impl*)array;
+
+	void* addr = (char*)arr->memory + (index * arr->elem_size);
+	*out = addr;
+	return true;
+}
+
+bool _array_at_const(array_t* array, void const ** out, size_t index) {
+	if (!array || index >= _array_size(array)) {
+		LOG_ERR("array_at: invalid parameters");
+		return false;
+	}
+
+	array_impl* arr = (array_impl*)array;
+
+	void* const addr = (char*)arr->memory + (index * arr->elem_size);
+	*out = addr;
+	return true;
+}
+
+bool _array_get(array_t* array, void* out, size_t index) {
+	if (!array || !out || index >= _array_size(array)) {
 		LOG_ERR("array_at: invalid parameters");
 		return false;
 	}
@@ -69,8 +95,8 @@ bool array_get(array_t* array, void* out, size_t index) {
 	return true;
 }
 
-bool array_set(array_t* array, size_t index, void* value) {
-	if (!array || index >= array_size(array)) {
+bool _array_set(array_t* array, void* value, size_t index) {
+	if (!array || index >= _array_size(array)) {
 		LOG_ERR("array_set: invalid parameters");
 		return false;
 	}
@@ -83,7 +109,7 @@ bool array_set(array_t* array, size_t index, void* value) {
 	return true;
 }
 
-void array_clear(array_t* array) {
+void _array_clear(array_t* array) {
 	if (!array) {
 		LOG_ERR("array_clear: invalid parameters");
 		return;
