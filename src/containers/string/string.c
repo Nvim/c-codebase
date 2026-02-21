@@ -33,6 +33,53 @@ bool string_create(arena_t* arena, string* out, const char* cstr) {
 	return true;
 }
 
+bool string_create_fmt(arena_t* arena, string* out, char const* cstr, ...) {
+	if (!arena || !out || !cstr) {
+		LOG_ERR("string_create: invalid parameters");
+		return false;
+	}
+
+	/* Determine required size.  */
+	int n = 0;
+	va_list ap;
+	va_start(ap, cstr);
+	n = vsnprintf(NULL, 0, cstr, ap);
+	va_end(ap);
+
+	if (n < 0) {
+		LOG_ERR("string_create_fmt: couldn't compute string length");
+		return false;
+	}
+
+	size_t len = n;
+	if (!len) {
+		LOG_ERR("string_create_fmt: can't create empty string");
+		return false;
+	}
+
+	char* buf = arena_alloc(arena, len + 1);
+	if (!buf) {
+		LOG_ERR("string_create_fmt: couldn't allocate new string buffer");
+		return false;
+	}
+
+	va_start(ap, cstr);
+	n = vsnprintf(buf, len + 1, cstr, ap);
+	va_end(ap);
+
+	if (n < 0) {
+		LOG_ERR("string_create_fmt: couldn't format string to buffer");
+		return false;
+	}
+
+	assert((size_t)n == len);
+
+	out->len = len;
+	out->str = buf;
+
+	return true;
+}
+
 bool string_copy(arena_t* arena, string* out, string* s) {
 	if (!arena || !out || !s) {
 		LOG_ERR("string_copy: invalid parameters");
@@ -325,7 +372,7 @@ bool string_trimspace(string* str) {
 		return false;
 	}
 
-	str->len -= (str->len - j-1);
+	str->len -= (str->len - j - 1);
 	str->len -= i;
 	str->str += i;
 

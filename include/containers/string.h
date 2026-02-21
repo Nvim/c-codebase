@@ -17,6 +17,16 @@ typedef struct arena_t arena_t;
 static size_t const STRING_NPOS = UINT64_MAX;
 
 /**
+ * @note Printing length-based strings requires specific printf specifier to
+ * only print up to a specific length, since string is no null terminated:
+ * printf("string: %.*s", (int)s.len, s.str);
+ * The following macros allow easier syntax:
+ * printf("string is: " STR_FMT, STR_FMT_ARGS(s));
+ */
+#define STR_FMT "%.*s"
+#define STR_FMT_ARGS(s) (int)s.len, s.str
+
+/**
  * @brief Creates a new string.
  *
  * @param arena The arena to allocate from.
@@ -25,6 +35,17 @@ static size_t const STRING_NPOS = UINT64_MAX;
  * @return false if empty parameters or allocation failure.
  */
 LIB_EXPORT bool string_create(arena_t* arena, string* out, char const* cstr);
+
+/**
+ * @brief Creates a new string with formatting.
+ *
+ * @param arena The arena to allocate from.
+ * @param out The resulting string.
+ * @param cstr String data, followed by formatting arguments. Can't be empty.
+ * @return false if empty parameters or allocation failure.
+ */
+LIB_EXPORT bool string_create_fmt(arena_t* arena, string* out, char const* cstr,
+								  ...);
 
 /**
  * @brief Copies an existing string

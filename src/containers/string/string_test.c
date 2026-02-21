@@ -28,6 +28,49 @@ void test_string_create(void) {
 	TEST_ASSERT_EQUAL(align_up(prev_usage + 11, 8), arena_get_usage(arena));
 }
 
+void test_string_create_fmt(void) {
+	string s;
+	TEST_ASSERT_TRUE(string_create(arena, &s, "Hello -42 World"));
+	TEST_ASSERT_EQUAL(15, s.len);
+
+	string fmt;
+	TEST_ASSERT_TRUE(
+		string_create_fmt(arena, &fmt, "Hello %d %s", -42, "World"));
+	TEST_ASSERT_EQUAL(s.len, fmt.len);
+	TEST_ASSERT_NOT_NULL(fmt.str);
+
+	TEST_ASSERT_TRUE(string_compare(&s, &fmt));
+}
+
+void test_string_format_args(void) {
+	char buf[256];
+
+	{
+		char const* expect = "Hello World!";
+		string s;
+		TEST_ASSERT_TRUE(string_create(arena, &s, "World"));
+
+		sprintf(buf, "Hello " STR_FMT "!", STR_FMT_ARGS(s));
+
+		TEST_ASSERT_EQUAL(0, strncmp(buf, expect, 12));
+	}
+
+	memset(buf, 0, 256);
+
+	{ // Harder one
+		char const* expect = "Hello 42.88 World!";
+		string hello;
+		TEST_ASSERT_TRUE(string_create(arena, &hello, "Hello"));
+		string world;
+		TEST_ASSERT_TRUE(string_create_fmt(arena, &world, "%.2f World", 42.88));
+
+		sprintf(buf, STR_FMT " " STR_FMT "!", STR_FMT_ARGS(hello),
+				STR_FMT_ARGS(world));
+
+		TEST_ASSERT_EQUAL(0, strncmp(buf, expect, strlen(expect)));
+	}
+}
+
 void test_string_create_empty(void) {
 	char const* cstr = "";
 
@@ -212,7 +255,7 @@ void test_string_ltrim(void) {
 	TEST_ASSERT_TRUE(string_ltrim(&s, 2));
 	TEST_ASSERT_EQUAL(4, s.len);
 	TEST_ASSERT_EQUAL('c', *s.str);
-	TEST_ASSERT_EQUAL('f', s.str[s.len-1]);
+	TEST_ASSERT_EQUAL('f', s.str[s.len - 1]);
 
 	TEST_ASSERT_FALSE(string_ltrim(&s, 4));
 	TEST_ASSERT_FALSE(string_ltrim(&s, 5));
@@ -228,7 +271,7 @@ void test_string_rtrim(void) {
 	TEST_ASSERT_TRUE(string_rtrim(&s, 2));
 	TEST_ASSERT_EQUAL(4, s.len);
 	TEST_ASSERT_EQUAL('a', *s.str);
-	TEST_ASSERT_EQUAL('d', s.str[s.len-1]);
+	TEST_ASSERT_EQUAL('d', s.str[s.len - 1]);
 
 	TEST_ASSERT_FALSE(string_rtrim(&s, 4));
 	TEST_ASSERT_FALSE(string_rtrim(&s, 5));
@@ -274,6 +317,8 @@ int main(void) {
 	UNITY_BEGIN();
 
 	RUN_TEST(test_string_create);
+	RUN_TEST(test_string_create_fmt);
+	RUN_TEST(test_string_format_args);
 	RUN_TEST(test_string_copy);
 	RUN_TEST(test_string_append);
 	RUN_TEST(test_string_concat);
