@@ -13,6 +13,8 @@ typedef struct string {
 } string;
 
 typedef struct arena_t arena_t;
+typedef struct string_array string_array;
+typedef struct u64_array u64_array;
 
 static size_t const STRING_NPOS = UINT64_MAX;
 
@@ -123,6 +125,21 @@ LIB_EXPORT bool string_compare(string* s1, string* s2);
  * @note Length and contents aren't compared.
  */
 LIB_EXPORT bool string_compare_addr(string* s1, string* s2);
+
+LIB_EXPORT bool string_occurences(arena_t* arena, u64_array* out, string* s,
+					   string* pattern);
+
+/**
+ * @brief Tokenzie a string based on delimiter.
+ *
+ * @param arena Arena to allocate the resulting array from..
+ * @param out Array that will contain all tokens. Invalid if false is returned
+ * @param s String to tokenize.
+ * @param delim Separator between tokens.
+ * @return false on invalid parameters or allocation failure, true otherwise.
+ */
+LIB_EXPORT bool string_tokenize(arena_t* arena, string_array* out, string* s,
+								string* delim);
 
 /**
  * @brief Replace all occurences of a pattern in the string. The replacement can

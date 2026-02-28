@@ -1,4 +1,5 @@
 #include <containers/arena.h>
+#include <containers/array_types.h>
 #include <containers/string.h>
 #include <core/platform.h>
 #include <string.h>
@@ -164,6 +165,259 @@ void test_string_compare(void) {
 	TEST_ASSERT_TRUE(string_compare(&s, &s));
 }
 
+void test_string_occurences(void) {
+	typedef struct test {
+		char const* cstr;
+		char const* cpattern;
+		size_t occurences_count;
+		size_t* occurences;
+	} test;
+
+	size_t t0[2] = {3, 8};
+	size_t t1[6] = {0, 5, 8, 10, 19, 20};
+	size_t t4[3] = {3, 8, 13};
+	test tests[5] = {
+		{
+			.cstr = "abc__def__hij",
+			.cpattern = "__",
+			.occurences_count = 2,
+			.occurences = t0,
+		},
+		{
+			.cstr = " this is a sentence  cool",
+			.cpattern = " ",
+			.occurences_count = 6,
+			.occurences = t1,
+		},
+		{
+			.cstr = "aa",
+			.cpattern = "abc",
+			.occurences_count = 0,
+			.occurences = NULL,
+		},
+		{
+			.cstr = "abc__def__hij",
+			.cpattern = "___",
+			.occurences_count = 0,
+			.occurences = NULL,
+		},
+		{
+			.cstr = "abc_,def_,hij_,",
+			.cpattern = "_,",
+			.occurences_count = 3,
+			.occurences = t4,
+		},
+	};
+
+	for (size_t i = 0; i < 5; ++i) {
+		test t = tests[i];
+		u64_array expect;
+		if (t.occurences_count) {
+			expect = u64_array_create(arena, t.occurences_count);
+			TEST_ASSERT_NOT_NULL(expect.raw);
+		}
+
+		for (size_t j = 0; j < t.occurences_count; j++) {
+			size_t val = t.occurences[j];
+			TEST_ASSERT_TRUE(u64_array_set(expect, j, &val));
+		}
+
+		string str;
+		TEST_ASSERT_TRUE(string_create(arena, &str, t.cstr));
+		string pattern;
+		TEST_ASSERT_TRUE(string_create(arena, &pattern, t.cpattern));
+
+		u64_array ret;
+		if (t.occurences_count) {
+			TEST_ASSERT_TRUE(string_occurences(arena, &ret, &str, &pattern));
+			TEST_ASSERT_EQUAL(t.occurences_count, u64_array_size(ret));
+		} else {
+			TEST_ASSERT_FALSE(string_occurences(arena, &ret, &str, &pattern));
+		}
+
+		for (size_t j = 0; j < t.occurences_count; j++) {
+			size_t got, expected;
+			TEST_ASSERT_TRUE(u64_array_get(expect, &expected, j));
+			TEST_ASSERT_TRUE(u64_array_get(ret, &got, j));
+			TEST_ASSERT_EQUAL(expected, got);
+		}
+		arena_reset(arena);
+	}
+}
+
+void test_string_tokenize_regular_trail(void) {
+#define TEST_COUNT 2
+	char const* cstrs[TEST_COUNT] = {
+		"abc__def__hij",   // regular
+		"abc__def__hij__", // trailing
+	};
+
+	for (size_t i = 0; i < TEST_COUNT; i++) {
+		string_array expect = string_array_create(arena, 3);
+		TEST_ASSERT_NOT_NULL(expect.raw);
+
+		string full;
+		TEST_ASSERT_TRUE(string_create(arena, &full, cstrs[i]));
+		string pattern;
+		TEST_ASSERT_TRUE(string_create(arena, &pattern, "__"));
+
+		string* s;
+		TEST_ASSERT_TRUE(string_array_at(expect, &s, 0));
+		s->len = 3;
+		s->str = &full.str[0];
+		TEST_ASSERT_TRUE(string_array_at(expect, &s, 1));
+		s->len = 3;
+		s->str = &full.str[5];
+		TEST_ASSERT_TRUE(string_array_at(expect, &s, 2));
+		s->len = 3;
+		s->str = &full.str[10];
+
+		string_array ret;
+		TEST_ASSERT_TRUE(string_tokenize(arena, &ret, &full, &pattern));
+		TEST_ASSERT_NOT_NULL(ret.raw);
+		TEST_ASSERT_EQUAL(string_array_size(expect), string_array_size(ret));
+
+		string *expect_begin, *ret_begin;
+		TEST_ASSERT_TRUE(string_array_at(expect, &expect_begin, 0));
+		TEST_ASSERT_TRUE(string_array_at(ret, &ret_begin, 0));
+
+		TEST_ASSERT_EQUAL(0,
+						  memcmp(expect_begin, ret_begin, 3 * sizeof(string)));
+		TEST_ASSERT_EQUAL(3, ret_begin[0].len);
+		TEST_ASSERT_EQUAL(3, ret_begin[1].len);
+		TEST_ASSERT_EQUAL(3, ret_begin[2].len);
+		TEST_ASSERT_EQUAL(expect_begin[0].str, ret_begin[0].str);
+		TEST_ASSERT_EQUAL(expect_begin[1].str, ret_begin[1].str);
+		TEST_ASSERT_EQUAL(expect_begin[2].str, ret_begin[2].str);
+
+		arena_reset(arena);
+	}
+#undef TEST_COUNT
+}
+
+void test_string_tokenize_lead(void) {
+	char const* cstrs = "__abc__def__hij";
+
+	string_array expect = string_array_create(arena, 3);
+	TEST_ASSERT_NOT_NULL(expect.raw);
+
+	string full;
+	TEST_ASSERT_TRUE(string_create(arena, &full, cstrs));
+	string pattern;
+	TEST_ASSERT_TRUE(string_create(arena, &pattern, "__"));
+
+	string* s;
+	TEST_ASSERT_TRUE(string_array_at(expect, &s, 0));
+	s->len = 3;
+	s->str = &full.str[2];
+	TEST_ASSERT_TRUE(string_array_at(expect, &s, 1));
+	s->len = 3;
+	s->str = &full.str[7];
+	TEST_ASSERT_TRUE(string_array_at(expect, &s, 2));
+	s->len = 3;
+	s->str = &full.str[12];
+
+	string_array ret;
+	TEST_ASSERT_TRUE(string_tokenize(arena, &ret, &full, &pattern));
+	TEST_ASSERT_NOT_NULL(ret.raw);
+	TEST_ASSERT_EQUAL(string_array_size(expect), string_array_size(ret));
+
+	string *expect_begin, *ret_begin;
+	TEST_ASSERT_TRUE(string_array_at(expect, &expect_begin, 0));
+	TEST_ASSERT_TRUE(string_array_at(ret, &ret_begin, 0));
+
+	TEST_ASSERT_EQUAL(0, memcmp(expect_begin, ret_begin, 3 * sizeof(string)));
+	TEST_ASSERT_EQUAL(3, ret_begin[0].len);
+	TEST_ASSERT_EQUAL(3, ret_begin[1].len);
+	TEST_ASSERT_EQUAL(3, ret_begin[2].len);
+	TEST_ASSERT_EQUAL(expect_begin[0].str, ret_begin[0].str);
+	TEST_ASSERT_EQUAL(expect_begin[1].str, ret_begin[1].str);
+	TEST_ASSERT_EQUAL(expect_begin[2].str, ret_begin[2].str);
+
+	arena_reset(arena);
+}
+
+void test_string_tokenize_variable_length(void) {
+	char const* cstr = "/home/myuser/Code/c/project";
+
+	string_array expect = string_array_create(arena, 5);
+	TEST_ASSERT_NOT_NULL(expect.raw);
+
+	string full;
+	TEST_ASSERT_TRUE(string_create(arena, &full, cstr));
+	string pattern;
+	TEST_ASSERT_TRUE(string_create(arena, &pattern, "/"));
+
+	string* s;
+	// home
+	TEST_ASSERT_TRUE(string_array_at(expect, &s, 0));
+	s->len = 4;
+	s->str = &full.str[1];
+	// myuser
+	TEST_ASSERT_TRUE(string_array_at(expect, &s, 1));
+	s->len = 6;
+	s->str = &full.str[6];
+	// Code
+	TEST_ASSERT_TRUE(string_array_at(expect, &s, 2));
+	s->len = 4;
+	s->str = &full.str[13];
+	// c
+	TEST_ASSERT_TRUE(string_array_at(expect, &s, 3));
+	s->len = 1;
+	s->str = &full.str[18];
+	// project
+	TEST_ASSERT_TRUE(string_array_at(expect, &s, 4));
+	s->len = 7;
+	s->str = &full.str[20];
+
+	// Actual test
+	string_array ret;
+	TEST_ASSERT_TRUE(string_tokenize(arena, &ret, &full, &pattern));
+	TEST_ASSERT_NOT_NULL(ret.raw);
+	TEST_ASSERT_EQUAL(string_array_size(expect), string_array_size(ret));
+
+	string *expect_begin, *ret_begin;
+	TEST_ASSERT_TRUE(string_array_at(expect, &expect_begin, 0));
+	TEST_ASSERT_TRUE(string_array_at(ret, &ret_begin, 0));
+
+	TEST_ASSERT_EQUAL(0, memcmp(expect_begin, ret_begin, 5 * sizeof(string)));
+	TEST_ASSERT_EQUAL(4, ret_begin[0].len);
+	TEST_ASSERT_EQUAL(6, ret_begin[1].len);
+	TEST_ASSERT_EQUAL(4, ret_begin[2].len);
+	TEST_ASSERT_EQUAL(1, ret_begin[3].len);
+	TEST_ASSERT_EQUAL(7, ret_begin[4].len);
+	TEST_ASSERT_EQUAL(expect_begin[0].str, ret_begin[0].str);
+	TEST_ASSERT_EQUAL(expect_begin[1].str, ret_begin[1].str);
+	TEST_ASSERT_EQUAL(expect_begin[2].str, ret_begin[2].str);
+	TEST_ASSERT_EQUAL(expect_begin[3].str, ret_begin[3].str);
+	TEST_ASSERT_EQUAL(expect_begin[4].str, ret_begin[4].str);
+
+}
+
+void test_string_tokenize_nomatch(void) {
+#define TEST_COUNT 3
+	char const* cstrs[TEST_COUNT] = {
+		"abc",
+		"_a_b_c_",
+		"abcd"
+	};
+	char const* cpatterns[TEST_COUNT] = {
+		"abc",
+		"c__",
+		"abcd",
+	};
+
+	for (size_t i = 0; i < TEST_COUNT; i++) {
+		string str, pattern;
+		TEST_ASSERT_TRUE(string_create(arena, &str, cstrs[i]));
+		TEST_ASSERT_TRUE(string_create(arena, &pattern, cpatterns[i]));
+		string_array ret = {.raw = NULL};
+		TEST_ASSERT_FALSE(string_tokenize(arena, &ret, &str, &pattern));
+		TEST_ASSERT_NULL(ret.raw);
+	}
+#undef TEST_COUNT
+}
+
 void test_string_replace(void) {
 	typedef struct test {
 		char const *str, *pattern, *replacement;
@@ -243,6 +497,7 @@ void test_string_replace(void) {
 		TEST_ASSERT_EQUAL(0, strncmp(t.expect, out.str, out.len));
 		arena_restore_checkpoint(arena, cp, true);
 	}
+#undef TEST_COUNT
 }
 
 void test_string_ltrim(void) {
@@ -325,6 +580,11 @@ int main(void) {
 	RUN_TEST(test_string_contains_basic);
 	RUN_TEST(test_string_contains_same_str);
 	RUN_TEST(test_string_compare);
+	RUN_TEST(test_string_occurences);
+	RUN_TEST(test_string_tokenize_regular_trail);
+	RUN_TEST(test_string_tokenize_lead);
+	RUN_TEST(test_string_tokenize_variable_length);
+	RUN_TEST(test_string_tokenize_nomatch);
 	RUN_TEST(test_string_replace);
 	RUN_TEST(test_string_ltrim);
 	RUN_TEST(test_string_rtrim);

@@ -81,7 +81,7 @@ bool queue_dequeue(queue_t* queue, void* ret) {
 
 	queue_impl* impl = (queue_impl*)queue;
 	if (_queue_empty(impl)) {
-		LOG_ERR("queue_push: queue is full");
+		LOG_ERR("queue_push: queue is empty");
 		return false;
 	}
 

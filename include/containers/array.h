@@ -86,7 +86,7 @@ LIB_EXPORT void _array_clear(array_t* array);
 //-- Type-safe wrapper: --//
 #define ARRAY_DEFINE_TYPE(T, Name)                                             \
                                                                                \
-	typedef struct {                                                           \
+	typedef struct Name {                                                      \
 		array_t* raw;                                                          \
 	} Name;                                                                    \
                                                                                \
