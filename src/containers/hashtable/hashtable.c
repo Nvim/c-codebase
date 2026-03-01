@@ -1,8 +1,9 @@
 #include "hashtable_internal.h"
 
-#include <containers/arena.h>
-#include <containers/string.h>
+#include <allocators/arena.h>
 #include <core/log.h>
+#include <strings/string.h>
+
 #include <string.h>
 
 static bool _is_elem_null(void* elem, uint32_t elem_size) {

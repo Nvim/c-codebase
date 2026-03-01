@@ -1,6 +1,6 @@
 #include "queue_internal.h"
 
-#include <containers/arena.h>
+#include <allocators/arena.h>
 #include <containers/queue.h>
 #include <core/log.h>
 #include <core/platform.h>

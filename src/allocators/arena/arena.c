@@ -1,5 +1,5 @@
 #include "arena_internal.h"
-#include <containers/arena.h>
+#include <allocators/arena.h>
 #include <core/log.h>
 #include <core/platform.h>
 

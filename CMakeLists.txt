@@ -55,4 +55,6 @@ endif()
 
 add_subdirectory(tests)
 add_subdirectory(src/core)
+add_subdirectory(src/allocators)
 add_subdirectory(src/containers)
+add_subdirectory(src/strings)

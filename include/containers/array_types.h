@@ -2,7 +2,6 @@
 #define ARRAY_TYPES_H
 
 #include "array.h"
-#include "string.h"
 
 #include <stdint.h>
 
@@ -15,7 +14,5 @@ ARRAY_DEFINE_TYPE(uint64_t, u64_array)
 ARRAY_DEFINE_TYPE(uint32_t, u32_array)
 ARRAY_DEFINE_TYPE(uint16_t, u16_array)
 ARRAY_DEFINE_TYPE(uint8_t, u8_array)
-
-ARRAY_DEFINE_TYPE(string, string_array)
 
 #endif // !ARRAY_TYPES_H

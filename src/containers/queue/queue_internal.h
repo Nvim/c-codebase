@@ -1,7 +1,7 @@
 #ifndef QUEUE_INTERNAL_H
 #define QUEUE_INTERNAL_H
 
-#include <containers/arena.h>
+#include <allocators/arena.h>
 #include <containers/queue.h>
 #include <core/log.h>
 #include <core/platform.h>

@@ -1,8 +1,8 @@
 #include "hashtable_internal.h"
 
-#include <containers/arena.h>
+#include <allocators/arena.h>
 #include <containers/hashtable.h>
-#include <containers/string.h>
+#include <strings/string.h>
 #include <core/platform.h>
 #include <unity.h>
 

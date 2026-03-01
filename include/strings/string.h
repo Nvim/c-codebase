@@ -1,6 +1,7 @@
 #ifndef STRING_H
 #define STRING_H
 
+#include <containers/array_types.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -16,6 +17,9 @@ typedef struct arena_t arena_t;
 typedef struct string_array string_array;
 typedef struct u64_array u64_array;
 
+/**
+ * @brief Invalid position returned by search functions.
+ */
 static size_t const STRING_NPOS = UINT64_MAX;
 
 /**
@@ -27,6 +31,8 @@ static size_t const STRING_NPOS = UINT64_MAX;
  */
 #define STR_FMT "%.*s"
 #define STR_FMT_ARGS(s) (int)s.len, s.str
+
+ARRAY_DEFINE_TYPE(string, string_array)
 
 /**
  * @brief Creates a new string.
@@ -127,7 +133,7 @@ LIB_EXPORT bool string_compare(string* s1, string* s2);
 LIB_EXPORT bool string_compare_addr(string* s1, string* s2);
 
 LIB_EXPORT bool string_occurences(arena_t* arena, u64_array* out, string* s,
-					   string* pattern);
+								  string* pattern);
 
 /**
  * @brief Tokenzie a string based on delimiter.

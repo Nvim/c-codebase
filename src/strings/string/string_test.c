@@ -1,8 +1,8 @@
-#include <containers/arena.h>
+#include <allocators/arena.h>
 #include <containers/array_types.h>
-#include <containers/string.h>
 #include <core/platform.h>
 #include <string.h>
+#include <strings/string.h>
 #include <unity.h>
 
 static arena_t* arena = NULL;
@@ -41,6 +41,13 @@ void test_string_create_fmt(void) {
 	TEST_ASSERT_NOT_NULL(fmt.str);
 
 	TEST_ASSERT_TRUE(string_compare(&s, &fmt));
+}
+
+void test_string_array(void) {
+	size_t count = 8;
+	string_array arr = string_array_create(arena, count);
+	TEST_ASSERT_NOT_NULL(arr.raw);
+	TEST_ASSERT_EQUAL(count, string_array_size(arr));
 }
 
 void test_string_format_args(void) {
@@ -391,16 +398,11 @@ void test_string_tokenize_variable_length(void) {
 	TEST_ASSERT_EQUAL(expect_begin[2].str, ret_begin[2].str);
 	TEST_ASSERT_EQUAL(expect_begin[3].str, ret_begin[3].str);
 	TEST_ASSERT_EQUAL(expect_begin[4].str, ret_begin[4].str);
-
 }
 
 void test_string_tokenize_nomatch(void) {
 #define TEST_COUNT 3
-	char const* cstrs[TEST_COUNT] = {
-		"abc",
-		"_a_b_c_",
-		"abcd"
-	};
+	char const* cstrs[TEST_COUNT] = {"abc", "_a_b_c_", "abcd"};
 	char const* cpatterns[TEST_COUNT] = {
 		"abc",
 		"c__",
@@ -573,6 +575,7 @@ int main(void) {
 
 	RUN_TEST(test_string_create);
 	RUN_TEST(test_string_create_fmt);
+	RUN_TEST(test_string_array);
 	RUN_TEST(test_string_format_args);
 	RUN_TEST(test_string_copy);
 	RUN_TEST(test_string_append);

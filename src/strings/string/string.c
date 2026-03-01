@@ -1,7 +1,7 @@
-#include <containers/string.h>
+#include <strings/string.h>
 
-#include "array/array_internal.h"
-#include <containers/arena.h>
+#include "array_internal.h"
+#include <allocators/arena.h>
 #include <containers/array_types.h>
 #include <containers/queue.h>
 #include <core/log.h>

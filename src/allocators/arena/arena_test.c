@@ -1,6 +1,6 @@
 #include <core/platform.h>
 #include <unity.h>
-#include <containers/arena.h>
+#include <allocators/arena.h>
 #include <string.h>
 
 #include "arena_internal.h"

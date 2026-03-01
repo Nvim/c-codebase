@@ -1,6 +1,6 @@
 #include "array_internal.h"
 
-#include <containers/arena.h>
+#include <allocators/arena.h>
 #include <containers/array.h>
 #include <core/log.h>
 #include <string.h>

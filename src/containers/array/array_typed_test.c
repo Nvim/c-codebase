@@ -1,4 +1,4 @@
-#include <containers/arena.h>
+#include <allocators/arena.h>
 #include <containers/array_types.h>
 
 #include <unity.h>
@@ -30,9 +30,9 @@ void test_array_typed_create(void) {
 		TEST_ASSERT_EQUAL(count, i16_array_size(arr));
 	}
 	{
-		string_array arr = string_array_create(arena, count);
+		u64_array arr = u64_array_create(arena, count);
 		TEST_ASSERT_NOT_NULL(arr.raw);
-		TEST_ASSERT_EQUAL(count, string_array_size(arr));
+		TEST_ASSERT_EQUAL(count, u64_array_size(arr));
 	}
 }
 

@@ -1,3 +1,6 @@
+#ifndef HASHTABLE_INTERNAL_H
+#define HASHTABLE_INTERNAL_H
+
 #include <containers/hashtable.h>
 #include <core/platform.h>
 
@@ -16,3 +19,5 @@ static inline size_t ht_allocation_size(uint32_t count,
 	size_t max_size = (1.f / HT_RATIO) * (float)count;
 	return align_up(max_size * elem_size, 8);
 }
+
+#endif // !HASHTABLE_INTERNAL_H

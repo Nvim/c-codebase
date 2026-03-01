@@ -1,7 +1,7 @@
 #ifndef ARENA_INTERNAL_H
 #define ARENA_INTERNAL_H
 
-#include <containers/arena.h>
+#include <allocators/arena.h>
 #include <core/platform.h>
 
 #include <stddef.h>
