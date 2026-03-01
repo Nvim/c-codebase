@@ -26,6 +26,11 @@ typedef struct arena_create_info {
 	arena_flags flags;
 } arena_create_info;
 
+typedef struct scratch_arena {
+	arena_t* arena;
+	arena_checkpoint* checkpoint;
+} scratch_arena;
+
 /**
  * @brief Creates a new fixed size arena with a default alignment of
  * sizeof(uintptr_t).
@@ -134,5 +139,11 @@ LIB_EXPORT arena_checkpoint* arena_get_checkpoint(arena_t* arena);
 LIB_EXPORT void arena_restore_checkpoint(arena_t* arena,
 										 arena_checkpoint* checkpoint,
 										 bool zero);
+
+LIB_EXPORT bool arena_pool_init(void);
+
+LIB_EXPORT bool arena_get_scratch(scratch_arena* out);
+
+LIB_EXPORT bool arena_clear_scratch(scratch_arena scratch);
 
 #endif // !ARENA_H

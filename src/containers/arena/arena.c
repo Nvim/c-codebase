@@ -365,6 +365,59 @@ void arena_restore_checkpoint(arena_t* arena, arena_checkpoint* checkpoint,
 	if (zero || impl->flags & ARENA_ZERO_ALWAYS) { memset(p, 0, offset); }
 }
 
+bool arena_pool_init(void) {
+	if (g_arena_pool.init) {
+		LOG_ERR("arena_pool_init: arena pool is already initialized");
+		return true; // Not fatal, don't crash on this
+	}
+
+	// [TODO]: Hardcoded settings should be configurable
+	arena_create_info ci = {
+		.initial_size = platform_memory_page_size() - ARENA_HEADER_SIZE,
+		.max_size = 4 * MEMORY_GIB,
+		.alignment = ALIGNMENT,
+		.flags = ARENA_GROWING,
+	};
+#ifdef _DEBUG
+	ci.flags |= ARENA_LOG;
+#endif
+	for (size_t i = 0; i < ARENA_POOL_SIZE; ++i) {
+		g_arena_pool.arenas[i] = arena_create_from_config(ci);
+		if (!g_arena_pool.arenas[i]) {
+			LOG_ERR("arena_pool_init: couldn't create arena #", i);
+			return false;
+		}
+	}
+	return true;
+}
+
+bool arena_get_scratch(scratch_arena* out) {
+	if (!g_arena_pool.init) {
+		LOG_ERR("arena_get_scratch: pool isn't initialized");
+		return false;
+	}
+	// [NOTE]: This assumes one persistent, "result" arena per function scope
+	static uint32_t last_used = 0;
+	uint32_t idx = (++last_used) % ARENA_POOL_SIZE;
+
+	out->arena = g_arena_pool.arenas[idx];
+	out->checkpoint = arena_get_checkpoint(out->arena);
+
+	assert(out->arena);
+	assert(out->checkpoint);
+	return true;
+}
+
+bool arena_clear_scratch(scratch_arena scratch) {
+	if (!g_arena_pool.init) {
+		LOG_ERR("arena_clear_scratch: pool isn't initialized");
+		return false;
+	}
+
+	arena_restore_checkpoint(scratch.arena, scratch.checkpoint, true);
+	return true;
+}
+
 static void extend_to_page_end(arena_impl* impl) {
 	size_t commit_boundary = (size_t)platform_memory_next_page(impl->current);
 	size_t extended_size = commit_boundary - (size_t)impl->begin;

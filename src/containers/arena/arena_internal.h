@@ -18,6 +18,17 @@ typedef struct arena_impl {
 	size_t _pad[2]; // Force power of 2 at compile-time
 } arena_impl;
 
+#define ARENA_POOL_SIZE 2
+typedef struct arena_pool {
+	bool init;
+	arena_t* arenas[ARENA_POOL_SIZE];
+} arena_pool;
+
+static arena_pool g_arena_pool = {
+	.init = false,
+	.arenas = { 0 },
+};
+
 static size_t const ARENA_HEADER_SIZE = sizeof(arena_impl);
 STATIC_ASSERT(sizeof(arena_impl) == 64ul, "Bad arena_impl size");
 
