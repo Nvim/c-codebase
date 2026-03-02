@@ -359,6 +359,7 @@ bool string_tokenize(arena_t* arena, string_array* out, string* s,
 				.len = s->len - pos,
 				.str = &s->str[pos],
 			};
+			if (ret.len == 0) { ret.str = NULL; }
 			string_array_set(arr, elem_count++, &ret);
 			break;
 		}
@@ -367,6 +368,7 @@ bool string_tokenize(arena_t* arena, string_array* out, string* s,
 			.len = next_occ,
 			.str = &s->str[pos],
 		};
+		if (ret.len == 0) { ret.str = NULL; }
 		string_array_set(arr, elem_count++, &ret);
 
 		if (next_occ + delim->len + pos >= s->len) {

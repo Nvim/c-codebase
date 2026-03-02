@@ -420,6 +420,156 @@ void test_string_tokenize_nomatch(void) {
 #undef TEST_COUNT
 }
 
+// Multiple stacked patterns returns empty strings with NULL contents.
+void test_string_tokenize_close_patterns(void) {
+	char const* cstr = "a,,b,c,d";
+	char const* cpattern = ",";
+	// expect: ['a' - '' - 'b' - 'c' - 'd']
+
+	string str, pattern;
+	TEST_ASSERT_TRUE(string_create(arena, &str, cstr));
+	TEST_ASSERT_TRUE(string_create(arena, &pattern, cpattern));
+	string_array expect = string_array_create(arena, 5);
+	TEST_ASSERT_NOT_NULL(expect.raw);
+
+	string* s;
+	// a
+	TEST_ASSERT_TRUE(string_array_at(expect, &s, 0));
+	s->len = 1;
+	s->str = &str.str[0];
+	// (empty)
+	TEST_ASSERT_TRUE(string_array_at(expect, &s, 1));
+	s->len = 0;
+	s->str = NULL;
+	// b
+	TEST_ASSERT_TRUE(string_array_at(expect, &s, 2));
+	s->len = 1;
+	s->str = &str.str[3];
+	// c
+	TEST_ASSERT_TRUE(string_array_at(expect, &s, 3));
+	s->len = 1;
+	s->str = &str.str[5];
+	// d
+	TEST_ASSERT_TRUE(string_array_at(expect, &s, 4));
+	s->len = 1;
+	s->str = &str.str[7];
+
+	// Actual test
+	string_array ret;
+	TEST_ASSERT_TRUE(string_tokenize(arena, &ret, &str, &pattern));
+	TEST_ASSERT_NOT_NULL(ret.raw);
+	TEST_ASSERT_EQUAL(string_array_size(expect), string_array_size(ret));
+
+	string *expect_begin, *ret_begin;
+	TEST_ASSERT_TRUE(string_array_at(expect, &expect_begin, 0));
+	TEST_ASSERT_TRUE(string_array_at(ret, &ret_begin, 0));
+
+	TEST_ASSERT_EQUAL(0, memcmp(expect_begin, ret_begin, 5 * sizeof(string)));
+	TEST_ASSERT_EQUAL(expect_begin[0].len, ret_begin[0].len);
+	TEST_ASSERT_EQUAL(0, ret_begin[1].len);
+	TEST_ASSERT_EQUAL(expect_begin[2].len, ret_begin[2].len);
+	TEST_ASSERT_EQUAL(expect_begin[3].len, ret_begin[3].len);
+	TEST_ASSERT_EQUAL(expect_begin[4].len, ret_begin[4].len);
+
+	TEST_ASSERT_EQUAL(expect_begin[0].str, ret_begin[0].str);
+	TEST_ASSERT_NULL(ret_begin[1].str);
+	TEST_ASSERT_EQUAL(expect_begin[2].str, ret_begin[2].str);
+	TEST_ASSERT_EQUAL(expect_begin[3].str, ret_begin[3].str);
+	TEST_ASSERT_EQUAL(expect_begin[4].str, ret_begin[4].str);
+}
+
+void test_string_tokenize_close_patterns_many(void) {
+	char const* cstr = "a,,,,b,,,c,,d";
+	char const* cpattern = ",,";
+	// expect: ['a' - '' - 'b' - ',c' - 'd']
+
+	string str, pattern;
+	TEST_ASSERT_TRUE(string_create(arena, &str, cstr));
+	TEST_ASSERT_TRUE(string_create(arena, &pattern, cpattern));
+	string_array expect = string_array_create(arena, 5);
+	TEST_ASSERT_NOT_NULL(expect.raw);
+
+	string* s;
+	// a
+	TEST_ASSERT_TRUE(string_array_at(expect, &s, 0));
+	s->len = 1;
+	s->str = &str.str[0];
+	// (empty)
+	TEST_ASSERT_TRUE(string_array_at(expect, &s, 1));
+	s->len = 0;
+	s->str = NULL;
+	// b
+	TEST_ASSERT_TRUE(string_array_at(expect, &s, 2));
+	s->len = 1;
+	s->str = &str.str[5];
+	// ,c
+	TEST_ASSERT_TRUE(string_array_at(expect, &s, 3));
+	s->len = 2;
+	s->str = &str.str[8];
+	// d
+	TEST_ASSERT_TRUE(string_array_at(expect, &s, 4));
+	s->len = 1;
+	s->str = &str.str[12];
+
+	// Actual test
+	string_array ret;
+	TEST_ASSERT_TRUE(string_tokenize(arena, &ret, &str, &pattern));
+	TEST_ASSERT_NOT_NULL(ret.raw);
+	TEST_ASSERT_EQUAL(string_array_size(expect), string_array_size(ret));
+
+	string *expect_begin, *ret_begin;
+	TEST_ASSERT_TRUE(string_array_at(expect, &expect_begin, 0));
+	TEST_ASSERT_TRUE(string_array_at(ret, &ret_begin, 0));
+
+	TEST_ASSERT_EQUAL(0, memcmp(expect_begin, ret_begin, 5 * sizeof(string)));
+	TEST_ASSERT_EQUAL(expect_begin[0].len, ret_begin[0].len);
+	TEST_ASSERT_EQUAL(0, ret_begin[1].len);
+	TEST_ASSERT_EQUAL(expect_begin[2].len, ret_begin[2].len);
+	TEST_ASSERT_EQUAL(expect_begin[3].len, ret_begin[3].len);
+	TEST_ASSERT_EQUAL(expect_begin[4].len, ret_begin[4].len);
+
+	TEST_ASSERT_EQUAL(expect_begin[0].str, ret_begin[0].str);
+	TEST_ASSERT_NULL(ret_begin[1].str);
+	TEST_ASSERT_EQUAL(expect_begin[2].str, ret_begin[2].str);
+	TEST_ASSERT_EQUAL(expect_begin[3].str, ret_begin[3].str);
+	TEST_ASSERT_EQUAL(expect_begin[4].str, ret_begin[4].str);
+}
+
+void test_string_tokenize_only_pattern(void) {
+	char const* cstr = "----";
+	char const* cpattern = "-";
+	// expect: 3 empty strings.
+
+	string str, pattern;
+	TEST_ASSERT_TRUE(string_create(arena, &str, cstr));
+	TEST_ASSERT_TRUE(string_create(arena, &pattern, cpattern));
+	string_array expect = string_array_create(arena, 3);
+	TEST_ASSERT_NOT_NULL(expect.raw);
+
+	string* s;
+	for (size_t i = 0; i < 3; ++i) {
+		TEST_ASSERT_TRUE(string_array_at(expect, &s, i));
+		s->len = 0;
+		s->str = NULL;
+	}
+
+	// Actual test
+	string_array ret;
+	TEST_ASSERT_TRUE(string_tokenize(arena, &ret, &str, &pattern));
+	TEST_ASSERT_NOT_NULL(ret.raw);
+	TEST_ASSERT_EQUAL(string_array_size(expect), string_array_size(ret));
+
+	string *expect_begin, *ret_begin;
+	TEST_ASSERT_TRUE(string_array_at(expect, &expect_begin, 0));
+	TEST_ASSERT_TRUE(string_array_at(ret, &ret_begin, 0));
+	TEST_ASSERT_EQUAL(0, memcmp(expect_begin, ret_begin, 3 * sizeof(string)));
+
+	for (size_t i = 0; i < 3; ++i) {
+		TEST_ASSERT_EQUAL(expect_begin[i].len, ret_begin[i].len);
+		TEST_ASSERT_EQUAL(expect_begin[i].str, ret_begin[i].str);
+	}
+}
+
 void test_string_replace(void) {
 	typedef struct test {
 		char const *str, *pattern, *replacement;
@@ -588,6 +738,9 @@ int main(void) {
 	RUN_TEST(test_string_tokenize_lead);
 	RUN_TEST(test_string_tokenize_variable_length);
 	RUN_TEST(test_string_tokenize_nomatch);
+	RUN_TEST(test_string_tokenize_close_patterns);
+	RUN_TEST(test_string_tokenize_close_patterns_many);
+	RUN_TEST(test_string_tokenize_only_pattern);
 	RUN_TEST(test_string_replace);
 	RUN_TEST(test_string_ltrim);
 	RUN_TEST(test_string_rtrim);

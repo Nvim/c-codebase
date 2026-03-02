@@ -388,6 +388,7 @@ bool arena_pool_init(void) {
 			return false;
 		}
 	}
+	g_arena_pool.init = true;
 	return true;
 }
 

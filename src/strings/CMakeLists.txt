@@ -7,4 +7,4 @@ target_include_directories(strings PRIVATE ${PROJECT_SOURCE_DIR}/src/containers/
 target_link_libraries(strings PUBLIC compile_flags core allocators containers)
 
 add_subdirectory(string)
-# add_subdirectory(path)
+add_subdirectory(path)
