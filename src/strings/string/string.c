@@ -76,7 +76,7 @@ bool string_create_fmt(arena_t* arena, string* out, char const* cstr, ...) {
 		return false;
 	}
 
-	assert((size_t)n == len);
+	ASSERT((size_t)n == len);
 
 	out->len = len;
 	out->str = buf;
@@ -254,7 +254,7 @@ bool string_occurences(arena_t* arena, u64_array* out, string* s,
 	size_t p_len = pattern->len;
 	arena_t* scratch;
 	size_t max_occurences = s->len / p_len;
-	assert(max_occurences != 0);
+	ASSERT(max_occurences != 0);
 	scratch = arena_create(64 + (max_occurences * sizeof(string)));
 	if (!scratch) {
 		LOG_ERR("string_occurences: couldn't create scratch arena");
@@ -306,7 +306,7 @@ bool string_occurences(arena_t* arena, u64_array* out, string* s,
 		// Fill result:
 		for (size_t idx = 0; idx < count; ++idx) {
 			size_t elem;
-			assert(queue_dequeue(queue, &elem));
+			ASSERT(queue_dequeue(queue, &elem));
 			// LOG_INFO("queue: %zu", elem);
 			if (!u64_array_set(*out, idx, &elem)) {
 				LOG_ERR("string_occurences: error filling result array");
@@ -316,7 +316,7 @@ bool string_occurences(arena_t* arena, u64_array* out, string* s,
 			// size_t idk;
 			// LOG_INFO("arr: %zu", u64_array_get(*out, &idk, i));
 		}
-		assert(queue_empty(queue));
+		ASSERT(queue_empty(queue));
 	}
 
 	arena_destroy(scratch);
@@ -412,7 +412,7 @@ bool string_replace(arena_t* arena, string* out, string* s, string* pattern,
 	// Build array of occurences indices:
 	size_t p_len = pattern->len;
 	size_t max_occurences = s->len / p_len;
-	assert(max_occurences != 0);
+	ASSERT(max_occurences != 0);
 	arena_t* scratch = arena_create(max_occurences * sizeof(size_t));
 	if (!scratch) {
 		LOG_ERR("string_replace: couldn't create scratch arena");
@@ -467,7 +467,7 @@ bool string_replace(arena_t* arena, string* out, string* s, string* pattern,
 	i = 0;
 	size_t s_idx = 0;
 	while (i < buf_len) {
-		assert(current_occ <= occurences);
+		ASSERT(current_occ <= occurences);
 		if (s_idx == indices[current_occ]) {
 			memcpy(&buf[i], replacement->str, r_len);
 			current_occ++;

@@ -1,7 +1,9 @@
 #ifndef PLATFORM_H
 #define PLATFORM_H
 
-#include "visibility.h"
+#include <core/log.h>
+#include <visibility.h>
+
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -11,6 +13,21 @@
 #endif
 
 #define STATIC_ASSERT _Static_assert
+
+#ifdef _DEBUG
+// #define breakpoint()  asm ("int3; nop")
+#define breakpoint() __builtin_trap()
+#define ASSERT(c)                                                              \
+	do {                                                                       \
+		if (!(c)) {                                                            \
+			LOG_FATAL("[ASSERTION FAILED]: '%s' at %s:%d", #c, __FILE__,       \
+					  __LINE__);                                               \
+			breakpoint();                                                      \
+		}                                                                      \
+	} while (0)
+#else
+#define ASSERT(c)
+#endif
 
 /* ********************************[ MEMORY ]******************************** */
 

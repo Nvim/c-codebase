@@ -279,7 +279,7 @@ void arena_destroy(arena_t* arena) {
 	size_t const header_size_align =
 		align_up(ARENA_HEADER_SIZE, impl->alignment);
 	if (impl->flags & ARENA_GROWING) {
-		assert(arena == platform_memory_page_begin(arena));
+		ASSERT(arena == platform_memory_page_begin(arena));
 
 		// size_t const to_decommit =
 		// 	align_up(impl->allocation_size + header_size_align,
@@ -293,7 +293,7 @@ void arena_destroy(arena_t* arena) {
 			LOG_ERR("arena_destroy: couldn't dereserve arena memory");
 		}
 	} else {
-		assert(arena == platform_memory_page_begin(arena));
+		ASSERT(arena == platform_memory_page_begin(arena));
 		size_t const to_dereserve = impl->allocation_size + header_size_align;
 		if (!platform_memory_dereserve(arena, to_dereserve)) {
 			LOG_ERR("arena_destroy: couldn't dereserve arena memory");
@@ -404,8 +404,8 @@ bool arena_get_scratch(scratch_arena* out) {
 	out->arena = g_arena_pool.arenas[idx];
 	out->checkpoint = arena_get_checkpoint(out->arena);
 
-	assert(out->arena);
-	assert(out->checkpoint);
+	ASSERT(out->arena);
+	ASSERT(out->checkpoint);
 	return true;
 }
 
