@@ -74,11 +74,16 @@ bool path_create(arena_t* arena, string str, path* out) {
 
 	size_t out_len = absolute ? 1 : 0;
 
+	size_t dot_count = 0;
 	for (size_t i = 0; i < string_array_size(slashes); ++i) {
 		string* s;
 		string_array_at(slashes, &s, i);
 
-		if ((s->len == 0) || (s->len == 1 && s->str[0] == '.')) { continue; }
+		if (s->len == 0) { continue; }
+		if (s->len == 1 && s->str[0] == '.') {
+			dot_count++;
+			continue;
+		}
 		out_len += s->len + 1;
 		queue_enqueue(valid_components, &i);
 	}
@@ -86,6 +91,12 @@ bool path_create(arena_t* arena, string str, path* out) {
 
 	out->str = arena_alloc(arena, out_len);
 	out->len = out_len;
+
+	if (dot_count == string_array_size(slashes)) {
+		out->len = 1;
+		out->str[0] = '.';
+	}
+
 	size_t pos = 0;
 	if (absolute) { out->str[pos++] = '/'; }
 

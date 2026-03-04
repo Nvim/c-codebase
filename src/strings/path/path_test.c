@@ -23,7 +23,7 @@ void tearDown(void) {
 }
 
 void test_path_create_valid(void) {
-#define TEST_COUNT 5
+#define TEST_COUNT 6
 
 	// All these shouldn't be modified
 	char const* cstrs[TEST_COUNT] = {
@@ -32,6 +32,7 @@ void test_path_create_valid(void) {
 		"/home/I contain spaces/file.txt",	  // spaces
 		"/",								  // root
 		"/  ",								  // root + spaces
+		"."									  // dot
 	};
 
 	for (size_t i = 0; i < TEST_COUNT; ++i) {
@@ -65,11 +66,52 @@ void test_path_create_invalid(void) {
 #undef TEST_COUNT
 }
 
+void test_path_create_should_change(void) {
+#define TEST_COUNT 8
+	// All these are valid, but should be modified
+	char const* cstrs[TEST_COUNT] = {
+		"build/src/././strings/path/path_test.c",	// dots
+		"./././././././././././.",					// lots of dots
+		// "/.",										// absolute dot
+		"/./././././././././././.",					// absolute dots
+		"Documents/",								// trailing slash
+		"Documents/somefile.txt/",					// trailing slash
+		"/home/User/Documents/",					// absolute + trail
+		"/home////too much//file.txt",				// many slashes
+		"build//./src///strings/path/path_test.c/", // a lot
+	};
+	char const* expect[TEST_COUNT] = {
+		"build/src/strings/path/path_test.c",
+		".",
+		// ".",
+		"/",
+		"Documents",
+		"Documents/somefile.txt",
+		"/home/User/Documents",
+		"/home/too much/file.txt",
+		"build/src/strings/path/path_test.c",
+	};
+
+	for (size_t i = 0; i < TEST_COUNT; ++i) {
+		string s;
+		TEST_ASSERT_TRUE(string_create(arena, &s, cstrs[i]));
+
+		path pth;
+		char const* want = expect[i];
+		size_t want_len = strlen(want);
+		TEST_ASSERT_TRUE(path_create(arena, s, &pth));
+		TEST_ASSERT_EQUAL(want_len, pth.len);
+		TEST_ASSERT_EQUAL(0, memcmp(want, pth.str, want_len));
+	}
+#undef TEST_COUNT
+}
+
 int main(void) {
 	UNITY_BEGIN();
 
 	RUN_TEST(test_path_create_valid);
 	RUN_TEST(test_path_create_invalid);
+	RUN_TEST(test_path_create_should_change);
 
 	return UNITY_END();
 }
