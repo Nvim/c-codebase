@@ -179,12 +179,16 @@ size_t string_contains(string* s, string* pattern) {
 		return STRING_NPOS;
 	}
 
-	if (!s->len || !pattern->len) { return STRING_NPOS; }
+	size_t s_len = s->len;
+	size_t p_len = pattern->len;
+	if (!s_len || !p_len) { return STRING_NPOS; }
+	if (s_len < p_len) { return STRING_NPOS; }
+	if (s_len == p_len) { return string_compare(s, pattern) ? 0 : STRING_NPOS; }
 
-	for (size_t i = 0; i < s->len; i++) {
+	for (size_t i = 0; i <= s_len - p_len; i++) {
 		bool good = true;
-		for (size_t j = 0; j < pattern->len; j++) {
-			if (s->str[i + j] != pattern->str[j]) {
+		for (size_t j = 0; j < p_len; j++) {
+			if ((i + j >= s_len) || s->str[i + j] != pattern->str[j]) {
 				good = false;
 				break;
 			}
@@ -200,13 +204,70 @@ size_t string_contains_cstr(string* s, char const* pattern) {
 		return STRING_NPOS;
 	}
 
+	size_t s_len = s->len;
 	size_t p_len = strlen(pattern);
-	if (!s->len || !p_len) { return STRING_NPOS; }
+	if (!s_len || !p_len) { return STRING_NPOS; }
+	if (s_len < p_len) { return STRING_NPOS; }
+	if (s_len == p_len) {
+		return (strncmp(s->str, pattern, p_len) == 0) ? 0 : STRING_NPOS;
+	}
 
-	for (size_t i = 0; i < s->len; i++) {
+	for (size_t i = 0; i <= s_len - p_len; i++) {
 		bool good = true;
 		for (size_t j = 0; j < p_len; j++) {
-			if (s->str[i + j] != pattern[j]) {
+			if ((i + j >= s_len) || s->str[i + j] != pattern[j]) {
+				good = false;
+				break;
+			}
+		}
+		if (good) { return i; }
+	}
+	return STRING_NPOS;
+}
+
+size_t string_contains_last(string* s, string* pattern) {
+	if (!s || !pattern) {
+		LOG_ERR("string_contains: invalid parameters");
+		return STRING_NPOS;
+	}
+
+	size_t s_len = s->len;
+	size_t p_len = pattern->len;
+	if (!s_len || !p_len) { return STRING_NPOS; }
+	if (s_len < p_len) { return STRING_NPOS; }
+	if (s_len == p_len) { return string_compare(s, pattern) ? 0 : STRING_NPOS; }
+
+	for (size_t i = s_len - p_len + 1; i != 0; i--) {
+		bool good = true;
+		for (size_t j = 0; j < p_len; j++) {
+			if ((i + j >= s_len) || s->str[i + j] != pattern->str[j]) {
+				good = false;
+				break;
+			}
+		}
+		if (good) { return i; }
+	}
+	return STRING_NPOS;
+}
+
+size_t string_contains_last_cstr(string* s, char const* pattern) {
+	if (!s || !pattern) {
+		LOG_ERR("string_contains: invalid parameters");
+		return STRING_NPOS;
+	}
+
+	size_t s_len = s->len;
+	size_t p_len = strlen(pattern);
+	if (!s_len || !p_len) { return STRING_NPOS; }
+	if (s_len < p_len) { return STRING_NPOS; }
+	if (s_len == p_len) {
+		return (strncmp(s->str, pattern, p_len) == 0) ? 0 : STRING_NPOS;
+	}
+
+	for (size_t i = s_len - p_len+1; i != 0; i--) {
+		bool good = true;
+		for (size_t j = 0; j < p_len; j++) {
+			if ((i + j >= s_len) || s->str[i + j] != pattern[j]) {
 				good = false;
 				break;
 			}

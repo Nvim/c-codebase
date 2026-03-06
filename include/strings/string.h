@@ -122,6 +122,24 @@ LIB_EXPORT size_t string_contains(string* s, string* pattern);
 LIB_EXPORT size_t string_contains_cstr(string* s, char const* pattern);
 
 /**
+ * @brief Find a substring from the end.
+ *
+ * @param s The string to search into.
+ * @param pattern The substring to look for.
+ * @return Index of last occurence, or `STRING_NPOS` on failure.
+ */
+LIB_EXPORT size_t string_contains_last(string* s, string* pattern);
+
+/**
+ * @brief Find a substring from the end.
+ *
+ * @param s The string to search into.
+ * @param pattern The substring to look for.
+ * @return Index of last occurence, or `STRING_NPOS` on failure.
+ */
+LIB_EXPORT size_t string_contains_last_cstr(string* s, char const* pattern);
+
+/**
  * @brief Compare the contents of two strings.
  */
 LIB_EXPORT bool string_compare(string* s1, string* s2);

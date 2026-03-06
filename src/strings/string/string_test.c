@@ -155,6 +155,40 @@ void test_string_contains_same_str(void) {
 	TEST_ASSERT_EQUAL(0, string_contains_cstr(&s, "hello world"));
 }
 
+void test_string_contains_last_basic(void) {
+	string s, s2, no;
+	TEST_ASSERT_TRUE(string_create(arena, &s, "hello world"));
+	TEST_ASSERT_TRUE(string_create(arena, &s2, " world"));
+	TEST_ASSERT_TRUE(string_create(arena, &no, " worlld"));
+
+	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains_last(&s, NULL));
+	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains_last(NULL, &s2));
+	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains_last_cstr(&s, ""));
+	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains_last(&s, &no));
+
+	TEST_ASSERT_EQUAL(5, string_contains_last(&s, &s2));
+	TEST_ASSERT_EQUAL(2, string_contains_last_cstr(&s, "llo w"));
+}
+
+void test_string_contains_last(void) {
+	{
+		string s, s2;
+		TEST_ASSERT_TRUE(string_create(arena, &s, "hello world hello world"));
+		TEST_ASSERT_TRUE(string_create(arena, &s2, " world"));
+
+		TEST_ASSERT_EQUAL(17, string_contains_last(&s, &s2));
+		TEST_ASSERT_EQUAL(14, string_contains_last_cstr(&s, "llo w"));
+	}
+	{
+		string s, s2;
+		TEST_ASSERT_TRUE(string_create(arena, &s, "ababababa"));
+		TEST_ASSERT_TRUE(string_create(arena, &s2, "ab"));
+
+		TEST_ASSERT_EQUAL(6, string_contains_last(&s, &s2));
+		TEST_ASSERT_EQUAL(6, string_contains_last_cstr(&s, "ab"));
+	}
+}
+
 void test_string_compare(void) {
 	string s, s2, s3, s4;
 
@@ -732,6 +766,8 @@ int main(void) {
 	RUN_TEST(test_string_concat);
 	RUN_TEST(test_string_contains_basic);
 	RUN_TEST(test_string_contains_same_str);
+	RUN_TEST(test_string_contains_last_basic);
+	RUN_TEST(test_string_contains_last);
 	RUN_TEST(test_string_compare);
 	RUN_TEST(test_string_occurences);
 	RUN_TEST(test_string_tokenize_regular_trail);

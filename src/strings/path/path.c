@@ -116,3 +116,44 @@ bool path_create(arena_t* arena, string str, path* out) {
 
 	return true;
 }
+
+bool path_is_absolute(path p) {
+	if (!p.len) { return false; }
+
+	// Absolute paths have no leading whitespace
+	return p.str[0] == '/';
+}
+
+bool path_get_filename(path p, path* out) {
+	if (!p.len) { return false; }
+
+	if (path_is_absolute(p) && p.len == 1) { return false; }
+
+	size_t last_slash = string_contains_last_cstr(&p, "/");
+
+	if (last_slash == STRING_NPOS) {
+		out->len = p.len;
+		out->str = p.str;
+		return true;
+	}
+
+	if (last_slash >= p.len - 1) {
+		// Shouldn't happen, trailing slash is always removed
+		LOG_WARN("path_get_filename: path isn't normalized: unexpected "
+				 "trailing slash");
+		return false;
+	}
+
+	out->len = p.len - last_slash - 1;
+	out->str = p.str + last_slash + 1;
+
+	return true;
+}
+
+bool path_get_extension(path p, string* out);
+
+bool path_get_stem(path p, string* out);
+
+bool path_join(arena_t* arena, path p1, path p2, path* out);
+
+bool path_normalize(path* p, path* out);
