@@ -187,6 +187,15 @@ void test_string_contains_last(void) {
 		TEST_ASSERT_EQUAL(6, string_contains_last(&s, &s2));
 		TEST_ASSERT_EQUAL(6, string_contains_last_cstr(&s, "ab"));
 	}
+	{
+		// Only occurence is at position 0
+		string s, s2;
+		TEST_ASSERT_TRUE(string_create(arena, &s, "abfoobarbaz"));
+		TEST_ASSERT_TRUE(string_create(arena, &s2, "ab"));
+
+		TEST_ASSERT_EQUAL(0, string_contains_last(&s, &s2));
+		TEST_ASSERT_EQUAL(0, string_contains_last_cstr(&s, "ab"));
+	}
 }
 
 void test_string_compare(void) {

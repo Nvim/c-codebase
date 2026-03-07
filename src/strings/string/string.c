@@ -237,7 +237,7 @@ size_t string_contains_last(string* s, string* pattern) {
 	if (s_len < p_len) { return STRING_NPOS; }
 	if (s_len == p_len) { return string_compare(s, pattern) ? 0 : STRING_NPOS; }
 
-	for (size_t i = s_len - p_len + 1; i != 0; i--) {
+	for (size_t i = s_len - p_len + 1; i-- > 0;) {
 		bool good = true;
 		for (size_t j = 0; j < p_len; j++) {
 			if ((i + j >= s_len) || s->str[i + j] != pattern->str[j]) {
@@ -264,7 +264,7 @@ size_t string_contains_last_cstr(string* s, char const* pattern) {
 		return (strncmp(s->str, pattern, p_len) == 0) ? 0 : STRING_NPOS;
 	}
 
-	for (size_t i = s_len - p_len+1; i != 0; i--) {
+	for (size_t i = s_len - p_len + 1; i-- > 0;) {
 		bool good = true;
 		for (size_t j = 0; j < p_len; j++) {
 			if ((i + j >= s_len) || s->str[i + j] != pattern[j]) {

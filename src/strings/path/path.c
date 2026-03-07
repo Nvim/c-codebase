@@ -150,10 +150,86 @@ bool path_get_filename(path p, path* out) {
 	return true;
 }
 
-bool path_get_extension(path p, string* out);
+bool path_get_extension(path p, string* out) {
+	if (!p.len || !out) { return false; }
 
-bool path_get_stem(path p, string* out);
+	path filename;
+	if (!path_get_filename(p, &filename)) { return false; }
 
-bool path_join(arena_t* arena, path p1, path p2, path* out);
+	size_t last_dot = string_contains_last_cstr(&filename, ".");
+
+	if (last_dot == STRING_NPOS) { return false; }
+
+	// Leading dot -> hidden file
+	if (last_dot == 0) { return false; }
+
+	// Trailing dot:
+	if (last_dot >= filename.len - 1) { return false; }
+
+	out->len = filename.len - last_dot - 1;
+	out->str = filename.str + last_dot + 1;
+
+	return true;
+}
+
+bool path_get_stem(path p, string* out) {
+	if (!p.len || !out) { return false; }
+
+	path filename;
+	if (!path_get_filename(p, &filename)) { return false; }
+
+	size_t last_dot = string_contains_last_cstr(&filename, ".");
+
+	if (last_dot == STRING_NPOS || last_dot == 0) {
+		out->len = filename.len;
+		out->str = filename.str;
+
+		return true;
+	}
+
+	size_t ext_len = filename.len - last_dot;
+	out->len = filename.len - ext_len;
+	out->str = filename.str;
+
+	return true;
+}
+
+bool path_join(arena_t* arena, path p1, path p2, path* out) {
+	if (!arena || !p1.len || !p2.len || !out) {
+		LOG_ERR("path_join: invalid parameters");
+		return false;
+	}
+
+	// Can't join with an absolute path
+	if (path_is_absolute(p2)) { return false; }
+
+	if (path_is_absolute(p1) && p1.len == 1) {
+		// Single slash, concat p1 and p2 directly:
+		return string_concat(arena, (string*)out, &p1, &p2);
+	}
+
+	// Assuming p1 is valid, it doesn't end with trailing / or .
+	// First create tmp = p1 + '/', and return tmp + p2
+	scratch_arena scratch;
+	if (!arena_get_scratch(&scratch)) {
+		LOG_ERR("path_join: couldn't get scratch arena");
+		return false;
+	}
+
+	string tmp;
+	if (!string_concat_cstr(scratch.arena, &tmp, &p1, "/")) {
+		LOG_ERR("path_join: couldn't concat strings");
+		arena_clear_scratch(scratch);
+		return false;
+	}
+	if (!string_concat(arena, (string*)out, &tmp, &p2)) {
+		LOG_ERR("path_join: couldn't concat strings");
+		arena_clear_scratch(scratch);
+		return false;
+	}
+
+	arena_clear_scratch(scratch);
+	return true;
+}
 
 bool path_normalize(path* p, path* out);
