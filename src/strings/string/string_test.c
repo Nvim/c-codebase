@@ -19,6 +19,8 @@ void tearDown(void) {
 	}
 }
 
+static string empty = {.len = 0, .str = NULL};
+
 void test_string_create(void) {
 	char const* cstr = "Hello World";
 
@@ -40,7 +42,7 @@ void test_string_create_fmt(void) {
 	TEST_ASSERT_EQUAL(s.len, fmt.len);
 	TEST_ASSERT_NOT_NULL(fmt.str);
 
-	TEST_ASSERT_TRUE(string_compare(&s, &fmt));
+	TEST_ASSERT_TRUE(string_compare(s, fmt));
 }
 
 void test_string_array(void) {
@@ -91,7 +93,7 @@ void test_string_copy(void) {
 	TEST_ASSERT_TRUE(string_create(arena, &s, "four"));
 
 	string s2;
-	TEST_ASSERT_TRUE(string_copy(arena, &s2, &s));
+	TEST_ASSERT_TRUE(string_copy(arena, &s2, s));
 	TEST_ASSERT_NOT_EQUAL(s2.str, s.str);
 	TEST_ASSERT_EQUAL(s2.len, s.len);
 }
@@ -101,16 +103,11 @@ void test_string_append(void) {
 	TEST_ASSERT_TRUE(string_create(arena, &s, "hello"));
 
 	string res;
-	TEST_ASSERT_FALSE(string_append(arena, &res, NULL, 'z'));
-	TEST_ASSERT_FALSE(string_append(arena, NULL, &s, 'z'));
-	TEST_ASSERT_TRUE(string_append(arena, &res, &s, 'z'));
+	TEST_ASSERT_FALSE(string_append(arena, &res, empty, 'z'));
+	TEST_ASSERT_FALSE(string_append(arena, NULL, s, 'z'));
+	TEST_ASSERT_TRUE(string_append(arena, &res, s, 'z'));
 	TEST_ASSERT_EQUAL(6, res.len);
-	TEST_ASSERT_EQUAL('h', res.str[0]);
-	TEST_ASSERT_EQUAL('e', res.str[1]);
-	TEST_ASSERT_EQUAL('l', res.str[2]);
-	TEST_ASSERT_EQUAL('l', res.str[3]);
-	TEST_ASSERT_EQUAL('o', res.str[4]);
-	TEST_ASSERT_EQUAL('z', res.str[5]);
+	TEST_ASSERT_EQUAL(0, strcmp(res.str, "helloz"));
 }
 
 void test_string_concat(void) {
@@ -120,13 +117,22 @@ void test_string_concat(void) {
 	string s2;
 	TEST_ASSERT_TRUE(string_create(arena, &s2, " world"));
 
-	string res;
-	TEST_ASSERT_FALSE(string_concat(arena, &res, NULL, &s2));
-	TEST_ASSERT_FALSE(string_concat(arena, NULL, &s, &s2));
-	TEST_ASSERT_TRUE(string_concat(arena, &res, &s, &s2));
-	TEST_ASSERT_EQUAL(11, res.len);
-	TEST_ASSERT_EQUAL('w', res.str[6]);
-	TEST_ASSERT_EQUAL(0, strcmp(res.str, "hello world"));
+	{
+		string res;
+		TEST_ASSERT_TRUE(string_concat(arena, &res, s, s2));
+		TEST_ASSERT_EQUAL(11, res.len);
+		TEST_ASSERT_EQUAL('w', res.str[6]);
+		TEST_ASSERT_EQUAL(0, strcmp(res.str, "hello world"));
+	}
+
+	{
+		string res;
+		TEST_ASSERT_TRUE(
+			string_concat(arena, &res, str("hello"), str(" world")));
+		TEST_ASSERT_EQUAL(11, res.len);
+		TEST_ASSERT_EQUAL('w', res.str[6]);
+		TEST_ASSERT_EQUAL(0, strcmp(res.str, "hello world"));
+	}
 }
 
 void test_string_contains_basic(void) {
@@ -135,13 +141,13 @@ void test_string_contains_basic(void) {
 	TEST_ASSERT_TRUE(string_create(arena, &s2, " world"));
 	TEST_ASSERT_TRUE(string_create(arena, &no, " worlld"));
 
-	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains(&s, NULL));
-	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains(NULL, &s2));
-	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains_cstr(&s, ""));
-	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains(&s, &no));
+	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains(s, empty));
+	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains(empty, s2));
+	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains_cstr(s, ""));
+	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains(s, no));
 
-	TEST_ASSERT_EQUAL(5, string_contains(&s, &s2));
-	TEST_ASSERT_EQUAL(2, string_contains_cstr(&s, "llo w"));
+	TEST_ASSERT_EQUAL(5, string_contains(s, s2));
+	TEST_ASSERT_EQUAL(2, string_contains_cstr(s, "llo w"));
 }
 
 void test_string_contains_same_str(void) {
@@ -151,8 +157,10 @@ void test_string_contains_same_str(void) {
 	string s2;
 	TEST_ASSERT_TRUE(string_create(arena, &s2, "hello world"));
 
-	TEST_ASSERT_EQUAL(0, string_contains(&s, &s2));
-	TEST_ASSERT_EQUAL(0, string_contains_cstr(&s, "hello world"));
+	TEST_ASSERT_EQUAL(0, string_contains(s, s2));
+	TEST_ASSERT_EQUAL(0, string_contains_cstr(s, "hello world"));
+	TEST_ASSERT_EQUAL(0,
+					  string_contains_cstr(str("hello world"), "hello world"));
 }
 
 void test_string_contains_last_basic(void) {
@@ -161,13 +169,15 @@ void test_string_contains_last_basic(void) {
 	TEST_ASSERT_TRUE(string_create(arena, &s2, " world"));
 	TEST_ASSERT_TRUE(string_create(arena, &no, " worlld"));
 
-	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains_last(&s, NULL));
-	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains_last(NULL, &s2));
-	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains_last_cstr(&s, ""));
-	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains_last(&s, &no));
+	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains_last(s, empty));
+	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains_last(empty, s2));
+	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains_last_cstr(s, ""));
+	TEST_ASSERT_EQUAL(STRING_NPOS, string_contains_last(s, no));
 
-	TEST_ASSERT_EQUAL(5, string_contains_last(&s, &s2));
-	TEST_ASSERT_EQUAL(2, string_contains_last_cstr(&s, "llo w"));
+	TEST_ASSERT_EQUAL(5, string_contains_last(s, s2));
+	TEST_ASSERT_EQUAL(5,
+					  string_contains_last(str("hello world"), str(" world")));
+	TEST_ASSERT_EQUAL(2, string_contains_last_cstr(s, "llo w"));
 }
 
 void test_string_contains_last(void) {
@@ -176,16 +186,16 @@ void test_string_contains_last(void) {
 		TEST_ASSERT_TRUE(string_create(arena, &s, "hello world hello world"));
 		TEST_ASSERT_TRUE(string_create(arena, &s2, " world"));
 
-		TEST_ASSERT_EQUAL(17, string_contains_last(&s, &s2));
-		TEST_ASSERT_EQUAL(14, string_contains_last_cstr(&s, "llo w"));
+		TEST_ASSERT_EQUAL(17, string_contains_last(s, s2));
+		TEST_ASSERT_EQUAL(14, string_contains_last_cstr(s, "llo w"));
 	}
 	{
 		string s, s2;
 		TEST_ASSERT_TRUE(string_create(arena, &s, "ababababa"));
 		TEST_ASSERT_TRUE(string_create(arena, &s2, "ab"));
 
-		TEST_ASSERT_EQUAL(6, string_contains_last(&s, &s2));
-		TEST_ASSERT_EQUAL(6, string_contains_last_cstr(&s, "ab"));
+		TEST_ASSERT_EQUAL(6, string_contains_last(s, s2));
+		TEST_ASSERT_EQUAL(6, string_contains_last_cstr(s, "ab"));
 	}
 	{
 		// Only occurence is at position 0
@@ -193,8 +203,8 @@ void test_string_contains_last(void) {
 		TEST_ASSERT_TRUE(string_create(arena, &s, "abfoobarbaz"));
 		TEST_ASSERT_TRUE(string_create(arena, &s2, "ab"));
 
-		TEST_ASSERT_EQUAL(0, string_contains_last(&s, &s2));
-		TEST_ASSERT_EQUAL(0, string_contains_last_cstr(&s, "ab"));
+		TEST_ASSERT_EQUAL(0, string_contains_last(s, s2));
+		TEST_ASSERT_EQUAL(0, string_contains_last_cstr(s, "ab"));
 	}
 }
 
@@ -206,13 +216,13 @@ void test_string_compare(void) {
 	TEST_ASSERT_TRUE(string_create(arena, &s3, "ello world "));
 	TEST_ASSERT_TRUE(string_create(arena, &s4, "hello world"));
 
-	TEST_ASSERT_FALSE(string_compare(&s, &s2));
-	TEST_ASSERT_FALSE(string_compare(&s, &s3));
-	TEST_ASSERT_FALSE(string_compare(NULL, &s));
-	TEST_ASSERT_FALSE(string_compare(&s, NULL));
+	TEST_ASSERT_FALSE(string_compare(s, s2));
+	TEST_ASSERT_FALSE(string_compare(s, s3));
+	TEST_ASSERT_FALSE(string_compare(empty, s));
+	TEST_ASSERT_FALSE(string_compare(s, empty));
 
-	TEST_ASSERT_TRUE(string_compare(&s, &s4));
-	TEST_ASSERT_TRUE(string_compare(&s, &s));
+	TEST_ASSERT_TRUE(string_compare(s, s4));
+	TEST_ASSERT_TRUE(string_compare(s, s));
 }
 
 void test_string_occurences(void) {
@@ -279,10 +289,10 @@ void test_string_occurences(void) {
 
 		u64_array ret;
 		if (t.occurences_count) {
-			TEST_ASSERT_TRUE(string_occurences(arena, &ret, &str, &pattern));
+			TEST_ASSERT_TRUE(string_occurences(arena, &ret, str, pattern));
 			TEST_ASSERT_EQUAL(t.occurences_count, u64_array_size(ret));
 		} else {
-			TEST_ASSERT_FALSE(string_occurences(arena, &ret, &str, &pattern));
+			TEST_ASSERT_FALSE(string_occurences(arena, &ret, str, pattern));
 		}
 
 		for (size_t j = 0; j < t.occurences_count; j++) {
@@ -323,7 +333,7 @@ void test_string_tokenize_regular_trail(void) {
 		s->str = &full.str[10];
 
 		string_array ret;
-		TEST_ASSERT_TRUE(string_tokenize(arena, &ret, &full, &pattern));
+		TEST_ASSERT_TRUE(string_tokenize(arena, &ret, full, pattern));
 		TEST_ASSERT_NOT_NULL(ret.raw);
 		TEST_ASSERT_EQUAL(string_array_size(expect), string_array_size(ret));
 
@@ -368,7 +378,7 @@ void test_string_tokenize_lead(void) {
 	s->str = &full.str[12];
 
 	string_array ret;
-	TEST_ASSERT_TRUE(string_tokenize(arena, &ret, &full, &pattern));
+	TEST_ASSERT_TRUE(string_tokenize(arena, &ret, full, pattern));
 	TEST_ASSERT_NOT_NULL(ret.raw);
 	TEST_ASSERT_EQUAL(string_array_size(expect), string_array_size(ret));
 
@@ -422,7 +432,7 @@ void test_string_tokenize_variable_length(void) {
 
 	// Actual test
 	string_array ret;
-	TEST_ASSERT_TRUE(string_tokenize(arena, &ret, &full, &pattern));
+	TEST_ASSERT_TRUE(string_tokenize(arena, &ret, full, pattern));
 	TEST_ASSERT_NOT_NULL(ret.raw);
 	TEST_ASSERT_EQUAL(string_array_size(expect), string_array_size(ret));
 
@@ -457,7 +467,7 @@ void test_string_tokenize_nomatch(void) {
 		TEST_ASSERT_TRUE(string_create(arena, &str, cstrs[i]));
 		TEST_ASSERT_TRUE(string_create(arena, &pattern, cpatterns[i]));
 		string_array ret = {.raw = NULL};
-		TEST_ASSERT_FALSE(string_tokenize(arena, &ret, &str, &pattern));
+		TEST_ASSERT_FALSE(string_tokenize(arena, &ret, str, pattern));
 		TEST_ASSERT_NULL(ret.raw);
 	}
 #undef TEST_COUNT
@@ -499,7 +509,7 @@ void test_string_tokenize_close_patterns(void) {
 
 	// Actual test
 	string_array ret;
-	TEST_ASSERT_TRUE(string_tokenize(arena, &ret, &str, &pattern));
+	TEST_ASSERT_TRUE(string_tokenize(arena, &ret, str, pattern));
 	TEST_ASSERT_NOT_NULL(ret.raw);
 	TEST_ASSERT_EQUAL(string_array_size(expect), string_array_size(ret));
 
@@ -556,7 +566,7 @@ void test_string_tokenize_close_patterns_many(void) {
 
 	// Actual test
 	string_array ret;
-	TEST_ASSERT_TRUE(string_tokenize(arena, &ret, &str, &pattern));
+	TEST_ASSERT_TRUE(string_tokenize(arena, &ret, str, pattern));
 	TEST_ASSERT_NOT_NULL(ret.raw);
 	TEST_ASSERT_EQUAL(string_array_size(expect), string_array_size(ret));
 
@@ -598,7 +608,7 @@ void test_string_tokenize_only_pattern(void) {
 
 	// Actual test
 	string_array ret;
-	TEST_ASSERT_TRUE(string_tokenize(arena, &ret, &str, &pattern));
+	TEST_ASSERT_TRUE(string_tokenize(arena, &ret, str, pattern));
 	TEST_ASSERT_NOT_NULL(ret.raw);
 	TEST_ASSERT_EQUAL(string_array_size(expect), string_array_size(ret));
 
@@ -685,7 +695,7 @@ void test_string_replace(void) {
 		TEST_ASSERT_TRUE(string_create(arena, &expect, t.expect));
 
 		TEST_ASSERT_EQUAL(
-			t.ret, string_replace(arena, &out, &str, &pattern, &replacement));
+			t.ret, string_replace(arena, &out, str, pattern, replacement));
 		char msg[256];
 		snprintf(msg, 256, "bad strlen for string %s", out.str);
 		TEST_ASSERT_EQUAL_MESSAGE(strlen(t.expect), out.len, msg);

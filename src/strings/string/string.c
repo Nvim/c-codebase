@@ -84,103 +84,93 @@ bool string_create_fmt(arena_t* arena, string* out, char const* cstr, ...) {
 	return true;
 }
 
-bool string_copy(arena_t* arena, string* out, string* s) {
-	if (!arena || !out || !s) {
+bool string_copy(arena_t* arena, string* out, string s) {
+	if (!arena || !out || !s.len) {
 		LOG_ERR("string_copy: invalid parameters");
 		return false;
 	}
 
-	if (!s->len) {
-		LOG_ERR("string_copy: can't copy empty string");
-		return false;
-	}
-
-	size_t len = s->len;
+	size_t len = s.len;
 	char* buf = arena_alloc_array(arena, 1, len);
 	if (!buf) {
 		LOG_ERR("string_copy: couldn't allocate new string buffer");
 		return false;
 	}
 
-	memcpy(buf, s->str, s->len);
+	memcpy(buf, s.str, s.len);
 	out->len = len;
 	out->str = buf;
 
 	return out;
 }
 
-bool string_append(arena_t* arena, string* out, string* s, char c) {
-	if (!arena || !out || !s) {
+bool string_append(arena_t* arena, string* out, string s, char c) {
+	if (!arena || !out || !s.len) {
 		LOG_ERR("string_append: invalid parameters");
 		return false;
 	}
 
-	size_t len = s->len + 1;
+	size_t len = s.len + 1;
 	char* buf = arena_alloc_array(arena, 1, len);
 	if (!buf) {
 		LOG_ERR("string_append: couldn't allocate new string buffer");
 		return false;
 	}
 
-	memcpy(buf, s->str, s->len);
-	buf[s->len] = c;
+	memcpy(buf, s.str, s.len);
+	buf[s.len] = c;
 	out->len = len;
 	out->str = buf;
 
 	return out;
 }
 
-bool string_concat(arena_t* arena, string* out, string* s1, string* s2) {
-	if (!arena || !out || !s1 || !s2) {
+bool string_concat(arena_t* arena, string* out, string s1, string s2) {
+	if (!arena || !out || !s1.len || !s2.len) {
 		LOG_ERR("string_concat: invalid parameters");
 		return false;
 	}
-	size_t len = s1->len + s2->len;
+	size_t len = s1.len + s2.len;
 	char* buf = arena_alloc_array(arena, 1, len);
 	if (!buf) {
 		LOG_ERR("string_concat: couldn't allocate new string buffer");
 		return false;
 	}
 
-	memcpy(buf, s1->str, s1->len);
-	memcpy(buf + s1->len, s2->str, s2->len);
+	memcpy(buf, s1.str, s1.len);
+	memcpy(buf + s1.len, s2.str, s2.len);
 	out->len = len;
 	out->str = buf;
 
-	return out;
+	return true;
 }
 
-bool string_concat_cstr(arena_t* arena, string* out, string* s1,
+bool string_concat_cstr(arena_t* arena, string* out, string s1,
 						char const* cstr) {
-	if (!arena || !out || !s1 || !cstr) {
+	if (!arena || !out || !s1.len || !cstr) {
 		LOG_ERR("string_concat_cstr: invalid parameters");
 		return false;
 	}
 
 	size_t cstr_len = strlen(cstr);
-	size_t len = s1->len + cstr_len;
+	size_t len = s1.len + cstr_len;
 	char* buf = arena_alloc_array(arena, 1, len);
 	if (!buf) {
 		LOG_ERR("string_concat_cstr: couldn't allocate new string buffer");
 		return false;
 	}
 
-	memcpy(buf, s1->str, s1->len);
-	memcpy(buf + s1->len, cstr, cstr_len);
+	memcpy(buf, s1.str, s1.len);
+	memcpy(buf + s1.len, cstr, cstr_len);
 	out->len = len;
 	out->str = buf;
 
 	return out;
 }
 
-size_t string_contains(string* s, string* pattern) {
-	if (!s || !pattern) {
-		LOG_ERR("string_contains: invalid parameters");
-		return STRING_NPOS;
-	}
-
-	size_t s_len = s->len;
-	size_t p_len = pattern->len;
+size_t string_contains(string s, string pattern) {
+	size_t s_len = s.len;
+	size_t p_len = pattern.len;
 	if (!s_len || !p_len) { return STRING_NPOS; }
 	if (s_len < p_len) { return STRING_NPOS; }
 	if (s_len == p_len) { return string_compare(s, pattern) ? 0 : STRING_NPOS; }
@@ -188,7 +178,7 @@ size_t string_contains(string* s, string* pattern) {
 	for (size_t i = 0; i <= s_len - p_len; i++) {
 		bool good = true;
 		for (size_t j = 0; j < p_len; j++) {
-			if ((i + j >= s_len) || s->str[i + j] != pattern->str[j]) {
+			if ((i + j >= s_len) || s.str[i + j] != pattern.str[j]) {
 				good = false;
 				break;
 			}
@@ -198,24 +188,19 @@ size_t string_contains(string* s, string* pattern) {
 	return STRING_NPOS;
 }
 
-size_t string_contains_cstr(string* s, char const* pattern) {
-	if (!s || !pattern) {
-		LOG_ERR("string_contains: invalid parameters");
-		return STRING_NPOS;
-	}
-
-	size_t s_len = s->len;
+size_t string_contains_cstr(string s, char const* pattern) {
+	size_t s_len = s.len;
 	size_t p_len = strlen(pattern);
 	if (!s_len || !p_len) { return STRING_NPOS; }
 	if (s_len < p_len) { return STRING_NPOS; }
 	if (s_len == p_len) {
-		return (strncmp(s->str, pattern, p_len) == 0) ? 0 : STRING_NPOS;
+		return (strncmp(s.str, pattern, p_len) == 0) ? 0 : STRING_NPOS;
 	}
 
 	for (size_t i = 0; i <= s_len - p_len; i++) {
 		bool good = true;
 		for (size_t j = 0; j < p_len; j++) {
-			if ((i + j >= s_len) || s->str[i + j] != pattern[j]) {
+			if ((i + j >= s_len) || s.str[i + j] != pattern[j]) {
 				good = false;
 				break;
 			}
@@ -225,14 +210,9 @@ size_t string_contains_cstr(string* s, char const* pattern) {
 	return STRING_NPOS;
 }
 
-size_t string_contains_last(string* s, string* pattern) {
-	if (!s || !pattern) {
-		LOG_ERR("string_contains: invalid parameters");
-		return STRING_NPOS;
-	}
-
-	size_t s_len = s->len;
-	size_t p_len = pattern->len;
+size_t string_contains_last(string s, string pattern) {
+	size_t s_len = s.len;
+	size_t p_len = pattern.len;
 	if (!s_len || !p_len) { return STRING_NPOS; }
 	if (s_len < p_len) { return STRING_NPOS; }
 	if (s_len == p_len) { return string_compare(s, pattern) ? 0 : STRING_NPOS; }
@@ -240,7 +220,7 @@ size_t string_contains_last(string* s, string* pattern) {
 	for (size_t i = s_len - p_len + 1; i-- > 0;) {
 		bool good = true;
 		for (size_t j = 0; j < p_len; j++) {
-			if ((i + j >= s_len) || s->str[i + j] != pattern->str[j]) {
+			if ((i + j >= s_len) || s.str[i + j] != pattern.str[j]) {
 				good = false;
 				break;
 			}
@@ -250,24 +230,19 @@ size_t string_contains_last(string* s, string* pattern) {
 	return STRING_NPOS;
 }
 
-size_t string_contains_last_cstr(string* s, char const* pattern) {
-	if (!s || !pattern) {
-		LOG_ERR("string_contains: invalid parameters");
-		return STRING_NPOS;
-	}
-
-	size_t s_len = s->len;
+size_t string_contains_last_cstr(string s, char const* pattern) {
+	size_t s_len = s.len;
 	size_t p_len = strlen(pattern);
 	if (!s_len || !p_len) { return STRING_NPOS; }
 	if (s_len < p_len) { return STRING_NPOS; }
 	if (s_len == p_len) {
-		return (strncmp(s->str, pattern, p_len) == 0) ? 0 : STRING_NPOS;
+		return (strncmp(s.str, pattern, p_len) == 0) ? 0 : STRING_NPOS;
 	}
 
 	for (size_t i = s_len - p_len + 1; i-- > 0;) {
 		bool good = true;
 		for (size_t j = 0; j < p_len; j++) {
-			if ((i + j >= s_len) || s->str[i + j] != pattern[j]) {
+			if ((i + j >= s_len) || s.str[i + j] != pattern[j]) {
 				good = false;
 				break;
 			}
@@ -277,44 +252,32 @@ size_t string_contains_last_cstr(string* s, char const* pattern) {
 	return STRING_NPOS;
 }
 
-bool string_compare(string* s1, string* s2) {
-	if (!s1 || !s2) {
-		LOG_ERR("string_compare: invalid parameters");
-		return false;
-	}
-	if (s1->len != s2->len) { return false; }
+bool string_compare(string s1, string s2) {
+	if (s1.len != s2.len) { return false; }
 
-	if (s1->str == s2->str) { return true; }
+	if (s1.str == s2.str) { return true; }
 
-	for (size_t i = 0; i < s1->len; i++) {
-		if (s1->str[i] != s2->str[i]) { return false; }
+	for (size_t i = 0; i < s1.len; i++) {
+		if (s1.str[i] != s2.str[i]) { return false; }
 	}
 	return true;
 }
 
-bool string_compare_addr(string* s1, string* s2) {
-	if (!s1 || !s2) {
-		LOG_ERR("string_compare_addr: invalid parameters");
-		return false;
-	}
-	if (s1->str == s2->str) { return true; }
+bool string_compare_addr(string s1, string s2) { return (s1.str == s2.str); }
 
-	return false;
-}
-
-bool string_occurences(arena_t* arena, u64_array* out, string* s,
-					   string* pattern) {
-	if (!arena || !out || !s || !pattern) {
+bool string_occurences(arena_t* arena, u64_array* out, string s,
+					   string pattern) {
+	if (!arena || !out || !s.len || !pattern.len) {
 		LOG_ERR("string_occurences: invalid parameters");
 		return false;
 	}
 
-	if (pattern->len >= s->len) { return false; }
+	if (pattern.len >= s.len) { return false; }
 
 	// Create scratch arena for queue:
-	size_t p_len = pattern->len;
+	size_t p_len = pattern.len;
 	arena_t* scratch;
-	size_t max_occurences = s->len / p_len;
+	size_t max_occurences = s.len / p_len;
 	ASSERT(max_occurences != 0);
 	scratch = arena_create(64 + (max_occurences * sizeof(string)));
 	if (!scratch) {
@@ -330,13 +293,13 @@ bool string_occurences(arena_t* arena, u64_array* out, string* s,
 	}
 
 	size_t i = 0;
-	while (i < s->len && s->len - i >= p_len) {
+	while (i < s.len && s.len - i >= p_len) {
 		string tmp = {
-			.str = &s->str[i],
-			.len = s->len - i,
+			.str = &s.str[i],
+			.len = s.len - i,
 		};
 
-		size_t match_idx = string_contains(&tmp, pattern);
+		size_t match_idx = string_contains(tmp, pattern);
 		if (match_idx != STRING_NPOS) {
 			size_t m = match_idx + i;
 			queue_enqueue(queue, &m);
@@ -384,14 +347,14 @@ bool string_occurences(arena_t* arena, u64_array* out, string* s,
 	return true;
 }
 
-bool string_tokenize(arena_t* arena, string_array* out, string* s,
-					 string* delim) {
-	if (!arena || !out || !s || !delim) {
+bool string_tokenize(arena_t* arena, string_array* out, string s,
+					 string delim) {
+	if (!arena || !out || !s.len || !delim.len) {
 		LOG_ERR("string_tokenize: invalid parameters");
 		return false;
 	}
 
-	if (delim->len >= s->len) { return false; }
+	if (delim.len >= s.len) { return false; }
 
 	size_t first_occ = string_contains(s, delim);
 	if (first_occ == STRING_NPOS) { return false; }
@@ -400,25 +363,25 @@ bool string_tokenize(arena_t* arena, string_array* out, string* s,
 
 	if (first_occ == 0) {
 		// string starts with pattern
-		pos = delim->len;
+		pos = delim.len;
 	}
 
-	size_t max_count = s->len / delim->len + 1;
+	size_t max_count = s.len / delim.len + 1;
 	string_array arr = string_array_create(arena, max_count);
 	if (string_array_size(arr) == 0) { return false; }
 
 	size_t elem_count = 0;
-	while (pos < s->len) {
+	while (pos < s.len) {
 		string ss = {
-			.len = s->len - pos,
-			.str = &s->str[pos],
+			.len = s.len - pos,
+			.str = &s.str[pos],
 		};
-		size_t next_occ = string_contains(&ss, delim);
+		size_t next_occ = string_contains(ss, delim);
 		if (next_occ == STRING_NPOS) {
 			// no more occurences, append last chars:
 			string ret = {
-				.len = s->len - pos,
-				.str = &s->str[pos],
+				.len = s.len - pos,
+				.str = &s.str[pos],
 			};
 			if (ret.len == 0) { ret.str = NULL; }
 			string_array_set(arr, elem_count++, &ret);
@@ -427,17 +390,17 @@ bool string_tokenize(arena_t* arena, string_array* out, string* s,
 
 		string ret = {
 			.len = next_occ,
-			.str = &s->str[pos],
+			.str = &s.str[pos],
 		};
 		if (ret.len == 0) { ret.str = NULL; }
 		string_array_set(arr, elem_count++, &ret);
 
-		if (next_occ + delim->len + pos >= s->len) {
+		if (next_occ + delim.len + pos >= s.len) {
 			// occurence was last & trailing
 			break;
 		}
 
-		pos += (next_occ + delim->len);
+		pos += (next_occ + delim.len);
 	}
 
 	array_impl* arr_head = (array_impl*)arr.raw;
@@ -448,16 +411,10 @@ bool string_tokenize(arena_t* arena, string_array* out, string* s,
 	return true;
 }
 
-bool string_replace(arena_t* arena, string* out, string* s, string* pattern,
-					string* replacement) {
-	if (!arena || !out || !s || !pattern) {
+bool string_replace(arena_t* arena, string* out, string s, string pattern,
+					string replacement) {
+	if (!arena || !out || !s.len) {
 		LOG_ERR("string_replace: invalid parameters");
-		return false;
-	}
-
-	// Empty source str is a failure. Rest are handeled
-	if (!s->len) {
-		LOG_ERR("string_replace: can't replace on empty string");
 		return false;
 	}
 
@@ -466,13 +423,13 @@ bool string_replace(arena_t* arena, string* out, string* s, string* pattern,
 	}
 
 	// Bad pattern -> return s untouched
-	if (!pattern->len || pattern->len > s->len || !pattern->len) {
+	if (!pattern.len || pattern.len > s.len || !pattern.len) {
 		return string_copy(arena, out, s);
 	}
 
 	// Build array of occurences indices:
-	size_t p_len = pattern->len;
-	size_t max_occurences = s->len / p_len;
+	size_t p_len = pattern.len;
+	size_t max_occurences = s.len / p_len;
 	ASSERT(max_occurences != 0);
 	arena_t* scratch = arena_create(max_occurences * sizeof(size_t));
 	if (!scratch) {
@@ -492,13 +449,13 @@ bool string_replace(arena_t* arena, string* out, string* s, string* pattern,
 
 	size_t occurences = 0;
 	size_t i = 0;
-	while (i < s->len && s->len - i >= p_len) {
+	while (i < s.len && s.len - i >= p_len) {
 		string tmp = {
-			.str = &s->str[i],
-			.len = s->len - i,
+			.str = &s.str[i],
+			.len = s.len - i,
 		};
 
-		size_t match_idx = string_contains(&tmp, pattern);
+		size_t match_idx = string_contains(tmp, pattern);
 		if (match_idx != STRING_NPOS) {
 			indices[occurences++] = match_idx + i;
 			i = match_idx + i + 1;
@@ -514,8 +471,8 @@ bool string_replace(arena_t* arena, string* out, string* s, string* pattern,
 	}
 
 	// Now that we know occurences, we can build result:
-	size_t r_len = replacement ? replacement->len : 0;
-	size_t buf_len = s->len - (p_len * occurences) + (r_len * occurences);
+	size_t r_len = replacement.len ? replacement.len : 0;
+	size_t buf_len = s.len - (p_len * occurences) + (r_len * occurences);
 
 	char* buf = arena_alloc_array(arena, 1, buf_len);
 	if (!buf) {
@@ -530,12 +487,12 @@ bool string_replace(arena_t* arena, string* out, string* s, string* pattern,
 	while (i < buf_len) {
 		ASSERT(current_occ <= occurences);
 		if (s_idx == indices[current_occ]) {
-			memcpy(&buf[i], replacement->str, r_len);
+			memcpy(&buf[i], replacement.str, r_len);
 			current_occ++;
 			i += r_len;
 			s_idx += p_len;
 		} else {
-			buf[i++] = s->str[s_idx++];
+			buf[i++] = s.str[s_idx++];
 		}
 	}
 

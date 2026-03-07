@@ -18,6 +18,16 @@ typedef struct string_array string_array;
 typedef struct u64_array u64_array;
 
 /**
+ * @brief Returns the number of elements in an array
+ */
+#define countof(arr) (sizeof(arr) / sizeof(*(arr)))
+
+/**
+ * @brief Turns a temporary string literal into a length-based string
+ */
+#define str(literal) (string){(char*)literal, countof(literal) - 1}
+
+/**
  * @brief Invalid position returned by search functions.
  */
 static size_t const STRING_NPOS = UINT64_MAX;
@@ -63,7 +73,7 @@ LIB_EXPORT bool string_create_fmt(arena_t* arena, string* out, char const* cstr,
  * @param s The string to copy.
  * @return false if empty parameters or allocation failure
  */
-LIB_EXPORT bool string_copy(arena_t* arena, string* out, string* s);
+LIB_EXPORT bool string_copy(arena_t* arena, string* out, string s);
 
 /**
  * @brief Append a character to a string. The original string is unchanged and a
@@ -75,7 +85,7 @@ LIB_EXPORT bool string_copy(arena_t* arena, string* out, string* s);
  * @param c The character to append.
  * @return false if empty parameters or allocation failure.
  */
-LIB_EXPORT bool string_append(arena_t* arena, string* out, string* s, char c);
+LIB_EXPORT bool string_append(arena_t* arena, string* out, string s, char c);
 
 /**
  * @brief Concatenate two strings. The original strings are unchanged and a new
@@ -87,8 +97,8 @@ LIB_EXPORT bool string_append(arena_t* arena, string* out, string* s, char c);
  * @param s2 Suffix.
  * @return false if empty parameters or allocation failure.
  */
-LIB_EXPORT bool string_concat(arena_t* arena, string* out, string* s1,
-							  string* s2);
+LIB_EXPORT bool string_concat(arena_t* arena, string* out, string s1,
+							  string s2);
 
 /**
  * @brief Concatenate two strings. The original strings are unchanged and a new
@@ -100,7 +110,7 @@ LIB_EXPORT bool string_concat(arena_t* arena, string* out, string* s1,
  * @param s2 Suffix.
  * @return false if empty parameters or allocation failure.
  */
-LIB_EXPORT bool string_concat_cstr(arena_t* arena, string* out, string* s1,
+LIB_EXPORT bool string_concat_cstr(arena_t* arena, string* out, string s1,
 								   char const* cstr);
 
 /**
@@ -110,7 +120,7 @@ LIB_EXPORT bool string_concat_cstr(arena_t* arena, string* out, string* s1,
  * @param pattern The substring to look for.
  * @return Index of first occurence, or `STRING_NPOS` on failure.
  */
-LIB_EXPORT size_t string_contains(string* s, string* pattern);
+LIB_EXPORT size_t string_contains(string s, string pattern);
 
 /**
  * @brief Find a substring.
@@ -119,7 +129,7 @@ LIB_EXPORT size_t string_contains(string* s, string* pattern);
  * @param pattern The substring to look for.
  * @return Index of first occurence, or `STRING_NPOS` on failure.
  */
-LIB_EXPORT size_t string_contains_cstr(string* s, char const* pattern);
+LIB_EXPORT size_t string_contains_cstr(string s, char const* pattern);
 
 /**
  * @brief Find a substring from the end.
@@ -128,7 +138,7 @@ LIB_EXPORT size_t string_contains_cstr(string* s, char const* pattern);
  * @param pattern The substring to look for.
  * @return Index of last occurence, or `STRING_NPOS` on failure.
  */
-LIB_EXPORT size_t string_contains_last(string* s, string* pattern);
+LIB_EXPORT size_t string_contains_last(string s, string pattern);
 
 /**
  * @brief Find a substring from the end.
@@ -137,21 +147,21 @@ LIB_EXPORT size_t string_contains_last(string* s, string* pattern);
  * @param pattern The substring to look for.
  * @return Index of last occurence, or `STRING_NPOS` on failure.
  */
-LIB_EXPORT size_t string_contains_last_cstr(string* s, char const* pattern);
+LIB_EXPORT size_t string_contains_last_cstr(string s, char const* pattern);
 
 /**
  * @brief Compare the contents of two strings.
  */
-LIB_EXPORT bool string_compare(string* s1, string* s2);
+LIB_EXPORT bool string_compare(string s1, string s2);
 
 /**
  * @brief Compare the addresses of the underlying char buffers.
  * @note Length and contents aren't compared.
  */
-LIB_EXPORT bool string_compare_addr(string* s1, string* s2);
+LIB_EXPORT bool string_compare_addr(string s1, string s2);
 
-LIB_EXPORT bool string_occurences(arena_t* arena, u64_array* out, string* s,
-								  string* pattern);
+LIB_EXPORT bool string_occurences(arena_t* arena, u64_array* out, string s,
+								  string pattern);
 
 /**
  * @brief Tokenzie a string based on delimiter.
@@ -162,8 +172,8 @@ LIB_EXPORT bool string_occurences(arena_t* arena, u64_array* out, string* s,
  * @param delim Separator between tokens.
  * @return false on invalid parameters or allocation failure, true otherwise.
  */
-LIB_EXPORT bool string_tokenize(arena_t* arena, string_array* out, string* s,
-								string* delim);
+LIB_EXPORT bool string_tokenize(arena_t* arena, string_array* out, string s,
+								string delim);
 
 /**
  * @brief Replace all occurences of a pattern in the string. The replacement can
@@ -177,8 +187,8 @@ LIB_EXPORT bool string_tokenize(arena_t* arena, string_array* out, string* s,
  * @return false on allocation failure or empty parameters. An empty replacement
  * is valid, and empty pattern will noop silently.
  */
-LIB_EXPORT bool string_replace(arena_t* arena, string* out, string* s,
-							   string* pattern, string* replacement);
+LIB_EXPORT bool string_replace(arena_t* arena, string* out, string s,
+							   string pattern, string replacement);
 
 /**
  * @brief Trims the first characters of a string.

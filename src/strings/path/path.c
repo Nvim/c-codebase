@@ -37,7 +37,7 @@ bool path_create(arena_t* arena, string str, path* out) {
 	if (str.str[end] == '/' && end != begin) { str.len--; }
 
 	if (str.len == 1) {
-		if (!string_copy(arena, out, &str)) {
+		if (!string_copy(arena, out, str)) {
 			LOG_ERR("path_create: path copy allocation failed");
 			return false;
 		}
@@ -54,9 +54,9 @@ bool path_create(arena_t* arena, string str, path* out) {
 	string s;
 	string_create(scratch.arena, &s, "/");
 	string_array slashes;
-	if (!string_tokenize(scratch.arena, &slashes, &str, &s)) {
+	if (!string_tokenize(scratch.arena, &slashes, str, s)) {
 		LOG_DEBUG("path_create: no slashes in path");
-		if (!string_copy(arena, out, &str)) {
+		if (!string_copy(arena, out, str)) {
 			LOG_ERR("path_create: path copy allocation failed");
 			return false;
 		}
@@ -129,7 +129,7 @@ bool path_get_filename(path p, path* out) {
 
 	if (path_is_absolute(p) && p.len == 1) { return false; }
 
-	size_t last_slash = string_contains_last_cstr(&p, "/");
+	size_t last_slash = string_contains_last_cstr(p, "/");
 
 	if (last_slash == STRING_NPOS) {
 		out->len = p.len;
@@ -156,7 +156,7 @@ bool path_get_extension(path p, string* out) {
 	path filename;
 	if (!path_get_filename(p, &filename)) { return false; }
 
-	size_t last_dot = string_contains_last_cstr(&filename, ".");
+	size_t last_dot = string_contains_last_cstr(filename, ".");
 
 	if (last_dot == STRING_NPOS) { return false; }
 
@@ -178,7 +178,7 @@ bool path_get_stem(path p, string* out) {
 	path filename;
 	if (!path_get_filename(p, &filename)) { return false; }
 
-	size_t last_dot = string_contains_last_cstr(&filename, ".");
+	size_t last_dot = string_contains_last_cstr(filename, ".");
 
 	if (last_dot == STRING_NPOS || last_dot == 0) {
 		out->len = filename.len;
@@ -205,7 +205,7 @@ bool path_join(arena_t* arena, path p1, path p2, path* out) {
 
 	if (path_is_absolute(p1) && p1.len == 1) {
 		// Single slash, concat p1 and p2 directly:
-		return string_concat(arena, (string*)out, &p1, &p2);
+		return string_concat(arena, (string*)out, p1, p2);
 	}
 
 	// Assuming p1 is valid, it doesn't end with trailing / or .
@@ -217,12 +217,12 @@ bool path_join(arena_t* arena, path p1, path p2, path* out) {
 	}
 
 	string tmp;
-	if (!string_concat_cstr(scratch.arena, &tmp, &p1, "/")) {
+	if (!string_concat_cstr(scratch.arena, &tmp, p1, "/")) {
 		LOG_ERR("path_join: couldn't concat strings");
 		arena_clear_scratch(scratch);
 		return false;
 	}
-	if (!string_concat(arena, (string*)out, &tmp, &p2)) {
+	if (!string_concat(arena, (string*)out, tmp, p2)) {
 		LOG_ERR("path_join: couldn't concat strings");
 		arena_clear_scratch(scratch);
 		return false;
