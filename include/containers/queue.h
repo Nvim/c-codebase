@@ -64,4 +64,91 @@ LIB_EXPORT size_t queue_get_remaining(queue_t* queue);
  */
 LIB_EXPORT void queue_clear(queue_t* queue);
 
+// Type safe wrapper. Use for copied types:
+#define QUEUE_DEFINE_TYPE(T, Name)                                             \
+                                                                               \
+	typedef struct Name {                                                      \
+		queue_t* raw;                                                          \
+	} Name;                                                                    \
+                                                                               \
+	__attribute__((unused)) static inline Name Name##_create(                  \
+		arena_t* arena, size_t max_size) {                                     \
+		Name q = {queue_create(arena, max_size, sizeof(T))};                   \
+		return q;                                                              \
+	}                                                                          \
+                                                                               \
+	__attribute__((unused)) static inline bool Name##_enqueue(Name q,          \
+															  T* val) {        \
+		return queue_enqueue(q.raw, val);                                      \
+	}                                                                          \
+                                                                               \
+	__attribute__((unused)) static inline bool Name##_dequeue(Name q,          \
+															  T* out) {        \
+		return queue_dequeue(q.raw, out);                                      \
+	}                                                                          \
+                                                                               \
+	__attribute__((unused)) static inline bool Name##_full(Name q) {           \
+		return queue_full(q.raw);                                              \
+	}                                                                          \
+                                                                               \
+	__attribute__((unused)) static inline bool Name##_empty(Name q) {          \
+		return queue_empty(q.raw);                                             \
+	}                                                                          \
+                                                                               \
+	__attribute__((unused)) static inline size_t Name##_size(Name q) {         \
+		return queue_get_usage(q.raw);                                         \
+	}                                                                          \
+                                                                               \
+	__attribute__((unused)) static inline size_t Name##_remaining(Name q) {    \
+		return queue_get_remaining(q.raw);                                     \
+	}                                                                          \
+                                                                               \
+	__attribute__((unused)) static inline void Name##_clear(Name q) {          \
+		queue_clear(q.raw);                                                    \
+	}
+
+// Pointer version, use for storing pointers to objects:
+#define QUEUE_DEFINE_PTR_TYPE(T, Name)                                         \
+                                                                               \
+	typedef struct Name {                                                      \
+		queue_t* raw;                                                          \
+	} Name;                                                                    \
+                                                                               \
+	__attribute__((unused)) static inline Name Name##_create(                  \
+		arena_t* arena, size_t max_size) {                                     \
+		Name q = {queue_create(arena, max_size, sizeof(void*))};               \
+		return q;                                                              \
+	}                                                                          \
+                                                                               \
+	__attribute__((unused)) static inline bool Name##_enqueue(Name q,          \
+															  T* val) {        \
+		void* ptr = (void*)val;                                                \
+		return queue_enqueue(q.raw, &ptr);                                     \
+	}                                                                          \
+                                                                               \
+	__attribute__((unused)) static inline T* Name##_dequeue(Name q) {          \
+		void* ptr = NULL;                                                      \
+		if (!queue_dequeue(q.raw, &ptr)) return NULL;                          \
+		return (T*)ptr;                                                        \
+	}                                                                          \
+                                                                               \
+	__attribute__((unused)) static inline bool Name##_full(Name q) {           \
+		return queue_full(q.raw);                                              \
+	}                                                                          \
+                                                                               \
+	__attribute__((unused)) static inline bool Name##_empty(Name q) {          \
+		return queue_empty(q.raw);                                             \
+	}                                                                          \
+                                                                               \
+	__attribute__((unused)) static inline size_t Name##_size(Name q) {         \
+		return queue_get_usage(q.raw);                                         \
+	}                                                                          \
+                                                                               \
+	__attribute__((unused)) static inline size_t Name##_remaining(Name q) {    \
+		return queue_get_remaining(q.raw);                                     \
+	}                                                                          \
+                                                                               \
+	__attribute__((unused)) static inline void Name##_clear(Name q) {          \
+		queue_clear(q.raw);                                                    \
+	}
 #endif // !QUEUE_H

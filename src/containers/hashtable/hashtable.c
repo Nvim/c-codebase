@@ -49,8 +49,8 @@ hashtable_t* hashtable_create(arena_t* arena, uint32_t count,
 	return (hashtable_t*)ret;
 }
 
-bool hashtable_insert(hashtable_t* ht, string* key, void* elem) {
-	if (!ht || !key || !elem) {
+bool hashtable_insert(hashtable_t* ht, string key, void* elem) {
+	if (!ht || !key.len || !elem) {
 		LOG_ERR("hashtable_insert: invalid parameters");
 		return false;
 	}
@@ -61,7 +61,7 @@ bool hashtable_insert(hashtable_t* ht, string* key, void* elem) {
 		return false;
 	}
 
-	size_t index = h->func(key, h->max_allocs);
+	size_t index = h->func(&key, h->max_allocs);
 	void* addr = (char*)h->memory + (index * h->elem_size);
 	if (!_is_elem_null(addr, h->elem_size)) {
 		LOG_ERR("hashtable_insert: collision");
@@ -74,8 +74,8 @@ bool hashtable_insert(hashtable_t* ht, string* key, void* elem) {
 	return true;
 }
 
-LIB_EXPORT bool hashtable_get(hashtable_t* ht, void* out, string* key) {
-	if (!ht || !key || !out) {
+LIB_EXPORT bool hashtable_get(hashtable_t* ht, void* out, string key) {
+	if (!ht || !key.len || !out) {
 		LOG_ERR("hashtable_get: invalid parameters");
 		return false;
 	}
@@ -86,7 +86,7 @@ LIB_EXPORT bool hashtable_get(hashtable_t* ht, void* out, string* key) {
 		return false;
 	}
 
-	size_t index = h->func(key, h->max_allocs);
+	size_t index = h->func(&key, h->max_allocs);
 	void* addr = (char*)h->memory + (index * h->elem_size);
 
 	if (_is_elem_null(addr, h->elem_size)) {

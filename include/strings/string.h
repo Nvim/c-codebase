@@ -2,6 +2,7 @@
 #define STRING_H
 
 #include <containers/array_types.h>
+#include <containers/queue_types.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -43,6 +44,7 @@ static size_t const STRING_NPOS = UINT64_MAX;
 #define STR_FMT_ARGS(s) (int)s.len, s.str
 
 ARRAY_DEFINE_TYPE(string, string_array)
+QUEUE_DEFINE_TYPE(string, string_queue)
 
 /**
  * @brief Creates a new string.
