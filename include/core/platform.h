@@ -26,7 +26,8 @@
 		}                                                                      \
 	} while (0)
 #else
-#define ASSERT(c)
+#define ASSERT(c)                                                              \
+	do { (void)(c) } while (0) //
 #endif
 
 /* ********************************[ MEMORY ]******************************** */

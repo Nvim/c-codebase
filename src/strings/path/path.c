@@ -1,4 +1,5 @@
 #include "containers/queue.h"
+#include "core/platform.h"
 #include <assert.h>
 #include <string.h>
 #include <strings/path.h>
@@ -7,8 +8,8 @@
 #include <core/log.h>
 #include <ctype.h>
 
-bool path_create(arena_t* arena, string str, path* out) {
-	if (!arena || !out || !str.str || !str.len) {
+bool path_create(arena_t* arena, arena_t* scratch, string str, path* out) {
+	if (!arena || !scratch || !out || !str.str || !str.len) {
 		LOG_ERR("path_create: invalid parameters");
 		return false;
 	}
@@ -45,30 +46,20 @@ bool path_create(arena_t* arena, string str, path* out) {
 	}
 
 	// We have at least one char, and no tailing /
-	scratch_arena scratch;
-	if (!arena_get_scratch(&scratch)) {
-		LOG_ERR("path_create: couldn't get scratch arena");
-		return false;
-	}
-
-	string s;
-	string_create(scratch.arena, &s, "/");
 	string_array slashes;
-	if (!string_tokenize(scratch.arena, &slashes, str, s)) {
+	if (!string_tokenize(scratch, &slashes, str, str("/"))) {
 		LOG_DEBUG("path_create: no slashes in path");
 		if (!string_copy(arena, out, str)) {
 			LOG_ERR("path_create: path copy allocation failed");
 			return false;
 		}
-		arena_clear_scratch(scratch);
 		return true;
 	}
 
 	queue_t* valid_components = queue_create(
-		scratch.arena, string_array_size(slashes) + 1, sizeof(size_t));
+		scratch, string_array_size(slashes) + 1, sizeof(size_t));
 	if (!valid_components) {
 		LOG_ERR("path_create: couldn't create temp queue");
-		arena_clear_scratch(scratch);
 		return false;
 	}
 
@@ -91,6 +82,7 @@ bool path_create(arena_t* arena, string str, path* out) {
 
 	out->str = arena_alloc(arena, out_len);
 	out->len = out_len;
+	ASSERT(out->str);
 
 	if (dot_count == string_array_size(slashes)) {
 		out->len = 1;
@@ -111,8 +103,6 @@ bool path_create(arena_t* arena, string str, path* out) {
 		pos += s->len;
 		out->str[pos++] = '/';
 	}
-
-	arena_clear_scratch(scratch);
 
 	return true;
 }
@@ -194,7 +184,7 @@ bool path_get_stem(path p, string* out) {
 	return true;
 }
 
-bool path_join(arena_t* arena, path p1, path p2, path* out) {
+bool path_join(arena_t* arena, arena_t* scratch, path p1, path p2, path* out) {
 	if (!arena || !p1.len || !p2.len || !out) {
 		LOG_ERR("path_join: invalid parameters");
 		return false;
@@ -210,25 +200,16 @@ bool path_join(arena_t* arena, path p1, path p2, path* out) {
 
 	// Assuming p1 is valid, it doesn't end with trailing / or .
 	// First create tmp = p1 + '/', and return tmp + p2
-	scratch_arena scratch;
-	if (!arena_get_scratch(&scratch)) {
-		LOG_ERR("path_join: couldn't get scratch arena");
-		return false;
-	}
-
 	string tmp;
-	if (!string_concat_cstr(scratch.arena, &tmp, p1, "/")) {
+	if (!string_concat_cstr(scratch, &tmp, p1, "/")) {
 		LOG_ERR("path_join: couldn't concat strings");
-		arena_clear_scratch(scratch);
 		return false;
 	}
 	if (!string_concat(arena, (string*)out, tmp, p2)) {
 		LOG_ERR("path_join: couldn't concat strings");
-		arena_clear_scratch(scratch);
 		return false;
 	}
 
-	arena_clear_scratch(scratch);
 	return true;
 }
 

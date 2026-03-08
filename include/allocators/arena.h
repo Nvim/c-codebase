@@ -95,7 +95,8 @@ LIB_EXPORT void* arena_alloc_array(arena_t* arena, size_t elem_size,
  * Convinient macros for pushing data
  */
 #define arena_push(arena, type) (type*)arena_alloc(arena, sizeof(type))
-#define arena_push_array(arena, type, count) (type*)arena_alloc_array(arena, sizeof(type), count)
+#define arena_push_array(arena, type, count)                                   \
+	(type*)arena_alloc_array(arena, sizeof(type), count)
 
 /**
  * @brief Restore the arena to it's original state. No memory is freed
@@ -134,6 +135,14 @@ LIB_EXPORT void* arena_get_base(arena_t* arena);
  */
 LIB_EXPORT size_t arena_get_remaining(arena_t* arena);
 
+/**
+ * @brief: If arena is growable, total amount available including next growth
+ * operations.
+ * For non-growable arenas, result is the same as arena_get_remaining.
+ *
+ */
+LIB_EXPORT size_t arena_get_growth_remaining(arena_t* arena);
+
 LIB_EXPORT arena_checkpoint* arena_get_checkpoint(arena_t* arena);
 
 LIB_EXPORT void arena_restore_checkpoint(arena_t* arena,
@@ -142,8 +151,18 @@ LIB_EXPORT void arena_restore_checkpoint(arena_t* arena,
 
 LIB_EXPORT bool arena_pool_init(void);
 
-LIB_EXPORT bool arena_get_scratch(scratch_arena* out);
+/**
+ * @brief Gets a scratch arena from the arena pool.
+ * @note This assumes one single scratch arena per function scope
+ *
+ * @param conflict The "parent" arena that shouldn't be returned
+ * @param out Resulting scratch arena out param
+ */
+LIB_EXPORT bool arena_get_scratch(arena_t* conflict, scratch_arena* out);
 
+/**
+ * @brief Restores a scratch arena to it's previous state.
+ */
 LIB_EXPORT bool arena_clear_scratch(scratch_arena scratch);
 
 #endif // !ARENA_H

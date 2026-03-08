@@ -177,6 +177,7 @@ size_t arena_header_size(void) { return ARENA_HEADER_SIZE; }
 void* arena_alloc(arena_t* arena, size_t size) {
 	if (!arena) {
 		LOG_ERR("arena_alloc: invalid arena handle: %p", arena);
+		ASSERT(false);
 		return NULL;
 	}
 	arena_impl* impl = (arena_impl*)arena;
@@ -189,11 +190,13 @@ void* arena_alloc(arena_t* arena, size_t size) {
 		if (!(impl->flags & ARENA_GROWING)) {
 			LOG_ERR("arena_alloc: not enough space for %zu. (%zu left)", size,
 					arena_impl_remaining(impl));
+			ASSERT(false);
 			return NULL;
 		}
 
 		if (arena_get_usage(arena) + size > impl->max_size) {
 			LOG_ERR("not enough space in growable arena for %zu.", size);
+			ASSERT(false);
 			return NULL;
 		}
 
@@ -208,6 +211,7 @@ void* arena_alloc(arena_t* arena, size_t size) {
 			// Commit more pages:
 			if (!commit_more(impl, size, is_page_full)) {
 				LOG_ERR("arena_grow: couldn't commit more pages");
+				breakpoint();
 				return NULL;
 			}
 		}
@@ -315,7 +319,7 @@ size_t arena_get_usage(arena_t* arena) {
 
 void* arena_get_base(arena_t* arena) {
 	if (!arena) {
-		LOG_ERR("arena_get_usage: invalid arena handle: %p", arena);
+		LOG_ERR("arena_get_base: invalid arena handle: %p", arena);
 		return 0;
 	}
 	arena_impl* impl = (arena_impl*)arena;
@@ -331,6 +335,23 @@ size_t arena_get_remaining(arena_t* arena) {
 
 	size_t remaining = arena_impl_remaining(impl);
 	return remaining;
+}
+
+size_t arena_get_growth_remaining(arena_t* arena) {
+	if (!arena) {
+		LOG_ERR("arena_get_remaining: invalid arena handle: %p", arena);
+		return 0;
+	}
+	arena_impl* impl = (arena_impl*)arena;
+	if (!impl->flags && ARENA_GROWING) { return arena_impl_remaining(impl); }
+
+	char* max = (char*)impl->begin + impl->max_size;
+	char* current = impl->current;
+	if (max <= current) {
+		ASSERT(false);
+		return 0;
+	}
+	return max - current;
 }
 
 arena_checkpoint* arena_get_checkpoint(arena_t* arena) {
@@ -392,21 +413,22 @@ bool arena_pool_init(void) {
 	return true;
 }
 
-bool arena_get_scratch(scratch_arena* out) {
+bool arena_get_scratch(arena_t* conflict, scratch_arena* out) {
 	if (!g_arena_pool.init) {
 		LOG_ERR("arena_get_scratch: pool isn't initialized");
 		return false;
 	}
-	// [NOTE]: This assumes one persistent, "result" arena per function scope
-	static uint32_t last_used = 0;
-	uint32_t idx = (++last_used) % ARENA_POOL_SIZE;
+	for (size_t i = 0; i < ARENA_POOL_SIZE; ++i) {
+		if (g_arena_pool.arenas[i] != conflict) {
+			out->arena = g_arena_pool.arenas[i];
+			out->checkpoint = arena_get_checkpoint(out->arena);
+			return true;
+		}
+	}
 
-	out->arena = g_arena_pool.arenas[idx];
-	out->checkpoint = arena_get_checkpoint(out->arena);
-
-	ASSERT(out->arena);
-	ASSERT(out->checkpoint);
-	return true;
+	LOG_ERR("arena_get_scratch: couldn't get non-conflicting scratch arena");
+	ASSERT(false);
+	return false;
 }
 
 bool arena_clear_scratch(scratch_arena scratch) {
@@ -426,7 +448,7 @@ static void extend_to_page_end(arena_impl* impl) {
 		impl->allocation_size = commit_boundary - (size_t)impl->begin;
 		DEBUG(impl,
 			  "arena_alloc: extended allocation to page end (new size: "
-			  "%zu)",
+			  "%zumsg, ...)",
 			  impl->allocation_size);
 	} else {
 		impl->allocation_size = impl->max_size;

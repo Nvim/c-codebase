@@ -35,15 +35,18 @@ void test_path_create_valid(void) {
 		"."									  // dot
 	};
 
+	scratch_arena scratch;
+	TEST_ASSERT_TRUE(arena_get_scratch(NULL, &scratch));
 	for (size_t i = 0; i < TEST_COUNT; ++i) {
 		string s;
 		TEST_ASSERT_TRUE(string_create(arena, &s, cstrs[i]));
 
 		path pth;
-		TEST_ASSERT_TRUE(path_create(arena, s, &pth));
+		TEST_ASSERT_TRUE(path_create(arena, scratch.arena, s, &pth));
 		TEST_ASSERT_EQUAL(s.len, pth.len);
 		TEST_ASSERT_EQUAL(0, memcmp(s.str, pth.str, s.len));
 	}
+	arena_clear_scratch(scratch);
 #undef TEST_COUNT
 }
 
@@ -54,15 +57,18 @@ void test_path_create_invalid(void) {
 		" ",
 	};
 
+	scratch_arena scratch;
+	TEST_ASSERT_TRUE(arena_get_scratch(NULL, &scratch));
 	for (size_t i = 0; i < TEST_COUNT; ++i) {
 		string s;
 		TEST_ASSERT_TRUE(string_create(arena, &s, cstrs[i]));
 
 		path pth;
-		TEST_ASSERT_FALSE(path_create(arena, s, &pth));
+		TEST_ASSERT_FALSE(path_create(arena, scratch.arena, s, &pth));
 		TEST_ASSERT_EQUAL(0, pth.len);
 		TEST_ASSERT_NULL(pth.str);
 	}
+	arena_clear_scratch(scratch);
 #undef TEST_COUNT
 }
 
@@ -99,6 +105,8 @@ void test_path_create_should_change(void) {
 		"Documents", // trailing slash+dot chain
 	};
 
+	scratch_arena scratch;
+	TEST_ASSERT_TRUE(arena_get_scratch(NULL, &scratch));
 	for (size_t i = 0; i < TEST_COUNT; ++i) {
 		string s;
 		TEST_ASSERT_TRUE(string_create(arena, &s, cstrs[i]));
@@ -106,10 +114,11 @@ void test_path_create_should_change(void) {
 		path pth;
 		char const* want = expect[i];
 		size_t want_len = strlen(want);
-		TEST_ASSERT_TRUE(path_create(arena, s, &pth));
+		TEST_ASSERT_TRUE(path_create(arena, scratch.arena, s, &pth));
 		TEST_ASSERT_EQUAL(want_len, pth.len);
 		TEST_ASSERT_EQUAL(0, memcmp(want, pth.str, want_len));
 	}
+	arena_clear_scratch(scratch);
 #undef TEST_COUNT
 }
 
@@ -137,6 +146,8 @@ void test_path_get_filename(void) {
 		"a",			//
 	};
 
+	scratch_arena scratch;
+	TEST_ASSERT_TRUE(arena_get_scratch(NULL, &scratch));
 	for (size_t i = 0; i < TEST_COUNT; ++i) {
 		string s;
 		TEST_ASSERT_TRUE(string_create(arena, &s, cstrs[i]));
@@ -144,13 +155,14 @@ void test_path_get_filename(void) {
 		path pth;
 		char const* want = expect[i];
 		size_t want_len = strlen(want);
-		TEST_ASSERT_TRUE(path_create(arena, s, &pth));
+		TEST_ASSERT_TRUE(path_create(arena, scratch.arena, s, &pth));
 
 		path res;
 		TEST_ASSERT_TRUE_MESSAGE(path_get_filename(pth, &res), want);
 		TEST_ASSERT_EQUAL_MESSAGE(want_len, res.len, want);
 		TEST_ASSERT_EQUAL(0, strncmp(want, res.str, want_len));
 	}
+	arena_clear_scratch(scratch);
 #undef TEST_COUNT
 }
 
@@ -163,16 +175,19 @@ void test_path_get_filename_fail(void) {
 		"/./././././././././././.",
 	};
 	// clang-format on
+	scratch_arena scratch;
+	TEST_ASSERT_TRUE(arena_get_scratch(NULL, &scratch));
 	for (size_t i = 0; i < TEST_COUNT; ++i) {
 		string s;
 		TEST_ASSERT_TRUE(string_create(arena, &s, cstrs[i]));
 
 		path pth;
-		TEST_ASSERT_TRUE(path_create(arena, s, &pth));
+		TEST_ASSERT_TRUE(path_create(arena, scratch.arena, s, &pth));
 
 		path ret;
 		TEST_ASSERT_FALSE_MESSAGE(path_get_filename(pth, &ret), cstrs[i]);
 	}
+	arena_clear_scratch(scratch);
 #undef TEST_COUNT
 }
 
@@ -194,6 +209,8 @@ void test_path_get_extension(void) {
 		"hidden", //
 	};
 
+	scratch_arena scratch;
+	TEST_ASSERT_TRUE(arena_get_scratch(NULL, &scratch));
 	for (size_t i = 0; i < TEST_COUNT; ++i) {
 		string s;
 		TEST_ASSERT_TRUE(string_create(arena, &s, cstrs[i]));
@@ -201,13 +218,14 @@ void test_path_get_extension(void) {
 		path pth;
 		char const* want = expect[i];
 		size_t want_len = strlen(want);
-		TEST_ASSERT_TRUE(path_create(arena, s, &pth));
+		TEST_ASSERT_TRUE(path_create(arena, scratch.arena, s, &pth));
 
 		path res;
 		TEST_ASSERT_TRUE_MESSAGE(path_get_extension(pth, &res), want);
 		TEST_ASSERT_EQUAL_MESSAGE(want_len, res.len, want);
 		TEST_ASSERT_EQUAL(0, strncmp(want, res.str, want_len));
 	}
+	arena_clear_scratch(scratch);
 #undef TEST_COUNT
 }
 
@@ -224,16 +242,19 @@ void test_path_get_extension_fail(void) {
 		"/home/User/no_ext"
 	};
 	// clang-format on
+	scratch_arena scratch;
+	TEST_ASSERT_TRUE(arena_get_scratch(NULL, &scratch));
 	for (size_t i = 0; i < TEST_COUNT; ++i) {
 		string s;
 		TEST_ASSERT_TRUE(string_create(arena, &s, cstrs[i]));
 
 		path pth;
-		TEST_ASSERT_TRUE(path_create(arena, s, &pth));
+		TEST_ASSERT_TRUE(path_create(arena, scratch.arena, s, &pth));
 
 		path ret;
 		TEST_ASSERT_FALSE_MESSAGE(path_get_extension(pth, &ret), cstrs[i]);
 	}
+	arena_clear_scratch(scratch);
 #undef TEST_COUNT
 }
 
@@ -265,6 +286,8 @@ void test_path_get_stem(void) {
 	};
 	// clang-format on
 
+	scratch_arena scratch;
+	TEST_ASSERT_TRUE(arena_get_scratch(NULL, &scratch));
 	for (size_t i = 0; i < TEST_COUNT; ++i) {
 		string s;
 		TEST_ASSERT_TRUE(string_create(arena, &s, cstrs[i]));
@@ -272,13 +295,14 @@ void test_path_get_stem(void) {
 		path pth;
 		char const* want = expect[i];
 		size_t want_len = strlen(want);
-		TEST_ASSERT_TRUE(path_create(arena, s, &pth));
+		TEST_ASSERT_TRUE(path_create(arena, scratch.arena, s, &pth));
 
 		path res;
 		TEST_ASSERT_TRUE_MESSAGE(path_get_stem(pth, &res), want);
 		TEST_ASSERT_EQUAL_MESSAGE(want_len, res.len, want);
 		TEST_ASSERT_EQUAL(0, strncmp(want, res.str, want_len));
 	}
+	arena_clear_scratch(scratch);
 #undef TEST_COUNT
 }
 
@@ -294,16 +318,19 @@ void test_path_get_stem_fail(void) {
 		"/./././././././././././.",
 	};
 	// clang-format on
+	scratch_arena scratch;
+	TEST_ASSERT_TRUE(arena_get_scratch(NULL, &scratch));
 	for (size_t i = 0; i < TEST_COUNT; ++i) {
 		string s;
 		TEST_ASSERT_TRUE(string_create(arena, &s, cstrs[i]));
 
 		path pth;
-		TEST_ASSERT_TRUE(path_create(arena, s, &pth));
+		TEST_ASSERT_TRUE(path_create(arena, scratch.arena, s, &pth));
 
 		path ret;
 		TEST_ASSERT_FALSE_MESSAGE(path_get_stem(pth, &ret), cstrs[i]);
 	}
+	arena_clear_scratch(scratch);
 #undef TEST_COUNT
 }
 
@@ -332,23 +359,26 @@ void test_path_join(void) {
 		"/home",
 	};
 	// clang-format on
+	scratch_arena scratch;
+	TEST_ASSERT_TRUE(arena_get_scratch(NULL, &scratch));
 	for (size_t i = 0; i < TEST_COUNT; ++i) {
 		string l, r;
 		TEST_ASSERT_TRUE(string_create(arena, &l, left[i]));
 		TEST_ASSERT_TRUE(string_create(arena, &r, right[i]));
 
 		path l_pth, r_pth;
-		TEST_ASSERT_TRUE(path_create(arena, l, &l_pth));
-		TEST_ASSERT_TRUE(path_create(arena, r, &r_pth));
+		TEST_ASSERT_TRUE(path_create(arena, scratch.arena, l, &l_pth));
+		TEST_ASSERT_TRUE(path_create(arena, scratch.arena, r, &r_pth));
 
 		char const* want = expect[i];
 		size_t want_len = strlen(want);
 
 		path res;
-		TEST_ASSERT_TRUE_MESSAGE(path_join(arena, l_pth, r_pth, &res), want);
+		TEST_ASSERT_TRUE_MESSAGE(path_join(arena, scratch.arena, l_pth, r_pth, &res), want);
 		TEST_ASSERT_EQUAL_MESSAGE(want_len, res.len, want);
 		TEST_ASSERT_EQUAL(0, strncmp(want, res.str, want_len));
 	}
+	arena_clear_scratch(scratch);
 #undef TEST_COUNT
 }
 

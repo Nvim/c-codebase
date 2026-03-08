@@ -265,7 +265,7 @@ bool string_compare(string s1, string s2) {
 
 bool string_compare_addr(string s1, string s2) { return (s1.str == s2.str); }
 
-bool string_occurences(arena_t* arena, u64_array* out, string s,
+bool string_occurences(arena_t* arena, arena_t* scratch, u64_array* out, string s,
 					   string pattern) {
 	if (!arena || !out || !s.len || !pattern.len) {
 		LOG_ERR("string_occurences: invalid parameters");
@@ -276,18 +276,11 @@ bool string_occurences(arena_t* arena, u64_array* out, string s,
 
 	// Create scratch arena for queue:
 	size_t p_len = pattern.len;
-	arena_t* scratch;
 	size_t max_occurences = s.len / p_len;
 	ASSERT(max_occurences != 0);
-	scratch = arena_create(64 + (max_occurences * sizeof(string)));
-	if (!scratch) {
-		LOG_ERR("string_occurences: couldn't create scratch arena");
-		return false;
-	}
 
 	queue_t* queue = queue_create(scratch, max_occurences, sizeof(size_t));
 	if (!queue) {
-		arena_destroy(scratch);
 		LOG_ERR("string_occurences: couldn't create temp queue");
 		return false;
 	}
@@ -314,7 +307,6 @@ bool string_occurences(arena_t* arena, u64_array* out, string s,
 	size_t count = queue_get_usage(queue);
 	if (!count) {
 		// Nothing to return
-		arena_destroy(scratch);
 		return false;
 	}
 
@@ -323,7 +315,6 @@ bool string_occurences(arena_t* arena, u64_array* out, string s,
 		*out = u64_array_create(arena, count);
 		if (!out) {
 			LOG_ERR("string_occurences: couldn't allocate result array");
-			arena_destroy(scratch);
 			return false;
 		}
 
@@ -334,7 +325,6 @@ bool string_occurences(arena_t* arena, u64_array* out, string s,
 			// LOG_INFO("queue: %zu", elem);
 			if (!u64_array_set(*out, idx, &elem)) {
 				LOG_ERR("string_occurences: error filling result array");
-				arena_destroy(scratch);
 				return false;
 			}
 			// size_t idk;
@@ -343,7 +333,6 @@ bool string_occurences(arena_t* arena, u64_array* out, string s,
 		ASSERT(queue_empty(queue));
 	}
 
-	arena_destroy(scratch);
 	return true;
 }
 
@@ -411,7 +400,7 @@ bool string_tokenize(arena_t* arena, string_array* out, string s,
 	return true;
 }
 
-bool string_replace(arena_t* arena, string* out, string s, string pattern,
+bool string_replace(arena_t* arena, arena_t* scratch, string* out, string s, string pattern,
 					string replacement) {
 	if (!arena || !out || !s.len) {
 		LOG_ERR("string_replace: invalid parameters");
@@ -431,11 +420,6 @@ bool string_replace(arena_t* arena, string* out, string s, string pattern,
 	size_t p_len = pattern.len;
 	size_t max_occurences = s.len / p_len;
 	ASSERT(max_occurences != 0);
-	arena_t* scratch = arena_create(max_occurences * sizeof(size_t));
-	if (!scratch) {
-		LOG_ERR("string_replace: couldn't create scratch arena");
-		return false;
-	}
 
 	size_t* indices =
 		arena_alloc_array(scratch, sizeof(size_t), max_occurences);
@@ -443,7 +427,6 @@ bool string_replace(arena_t* arena, string* out, string s, string pattern,
 		LOG_ERR("string_replace: couldn't allocate temp array for %zu "
 				"max_occurences",
 				max_occurences);
-		arena_destroy(scratch);
 		return false;
 	}
 
@@ -466,7 +449,6 @@ bool string_replace(arena_t* arena, string* out, string s, string pattern,
 
 	if (!occurences) {
 		LOG_INFO("string_replace: no occurences of pattern");
-		arena_destroy(scratch);
 		return string_copy(arena, out, s); // No match isn't a failure
 	}
 
@@ -476,7 +458,6 @@ bool string_replace(arena_t* arena, string* out, string s, string pattern,
 
 	char* buf = arena_alloc_array(arena, 1, buf_len);
 	if (!buf) {
-		arena_destroy(scratch);
 		LOG_ERR("string_replace: couldn't allocate string buffer");
 		return false;
 	}
@@ -495,8 +476,6 @@ bool string_replace(arena_t* arena, string* out, string s, string pattern,
 			buf[i++] = s.str[s_idx++];
 		}
 	}
-
-	arena_destroy(scratch);
 
 	out->len = buf_len;
 	out->str = buf;

@@ -13,8 +13,7 @@ array_t* _array_create(arena_t* arena, size_t size, size_t elem_size) {
 
 	size_t alloc_size = (elem_size * size) + sizeof(array_impl);
 
-	// [TODO]: remaining for growing arena
-	if (alloc_size > arena_get_remaining(arena)) {
+	if (alloc_size > arena_get_growth_remaining(arena)) {
 		LOG_ERR("array_create: not enough space in arena");
 		return NULL;
 	}

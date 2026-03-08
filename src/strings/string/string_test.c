@@ -9,6 +9,7 @@ static arena_t* arena = NULL;
 
 void setUp(void) {
 	arena = arena_create(1024);
+	TEST_ASSERT_TRUE(arena_pool_init());
 	TEST_ASSERT_NOT_NULL(arena);
 }
 
@@ -270,6 +271,8 @@ void test_string_occurences(void) {
 	};
 
 	for (size_t i = 0; i < 5; ++i) {
+		scratch_arena scratch;
+		TEST_ASSERT_TRUE(arena_get_scratch(NULL, &scratch));
 		test t = tests[i];
 		u64_array expect;
 		if (t.occurences_count) {
@@ -289,10 +292,12 @@ void test_string_occurences(void) {
 
 		u64_array ret;
 		if (t.occurences_count) {
-			TEST_ASSERT_TRUE(string_occurences(arena, &ret, str, pattern));
+			TEST_ASSERT_TRUE(
+				string_occurences(arena, scratch.arena, &ret, str, pattern));
 			TEST_ASSERT_EQUAL(t.occurences_count, u64_array_size(ret));
 		} else {
-			TEST_ASSERT_FALSE(string_occurences(arena, &ret, str, pattern));
+			TEST_ASSERT_FALSE(
+				string_occurences(arena, scratch.arena, &ret, str, pattern));
 		}
 
 		for (size_t j = 0; j < t.occurences_count; j++) {
@@ -301,6 +306,7 @@ void test_string_occurences(void) {
 			TEST_ASSERT_TRUE(u64_array_get(ret, &got, j));
 			TEST_ASSERT_EQUAL(expected, got);
 		}
+		arena_clear_scratch(scratch);
 		arena_reset(arena);
 	}
 }
@@ -684,6 +690,8 @@ void test_string_replace(void) {
 		 .ret = true},
 	};
 
+	scratch_arena scratch;
+	TEST_ASSERT_TRUE(arena_get_scratch(NULL, &scratch));
 	for (size_t i = 0; i < TEST_COUNT; i++) {
 		arena_checkpoint* cp = arena_get_checkpoint(arena);
 		string str, pattern, replacement, expect, out;
@@ -694,14 +702,15 @@ void test_string_replace(void) {
 		TEST_ASSERT_TRUE(string_create(arena, &replacement, t.replacement));
 		TEST_ASSERT_TRUE(string_create(arena, &expect, t.expect));
 
-		TEST_ASSERT_EQUAL(
-			t.ret, string_replace(arena, &out, str, pattern, replacement));
+		TEST_ASSERT_EQUAL(t.ret, string_replace(arena, scratch.arena, &out, str,
+												pattern, replacement));
 		char msg[256];
 		snprintf(msg, 256, "bad strlen for string %s", out.str);
 		TEST_ASSERT_EQUAL_MESSAGE(strlen(t.expect), out.len, msg);
 		TEST_ASSERT_EQUAL(0, strncmp(t.expect, out.str, out.len));
 		arena_restore_checkpoint(arena, cp, true);
 	}
+	arena_clear_scratch(scratch);
 #undef TEST_COUNT
 }
 

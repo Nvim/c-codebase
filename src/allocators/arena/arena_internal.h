@@ -26,7 +26,7 @@ typedef struct arena_pool {
 
 static arena_pool g_arena_pool = {
 	.init = false,
-	.arenas = { 0 },
+	.arenas = {0},
 };
 
 static size_t const ARENA_HEADER_SIZE = sizeof(arena_impl);

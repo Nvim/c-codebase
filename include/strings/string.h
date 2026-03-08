@@ -160,8 +160,8 @@ LIB_EXPORT bool string_compare(string s1, string s2);
  */
 LIB_EXPORT bool string_compare_addr(string s1, string s2);
 
-LIB_EXPORT bool string_occurences(arena_t* arena, u64_array* out, string s,
-								  string pattern);
+LIB_EXPORT bool string_occurences(arena_t* arena, arena_t* scratch,
+								  u64_array* out, string s, string pattern);
 
 /**
  * @brief Tokenzie a string based on delimiter.
@@ -187,8 +187,8 @@ LIB_EXPORT bool string_tokenize(arena_t* arena, string_array* out, string s,
  * @return false on allocation failure or empty parameters. An empty replacement
  * is valid, and empty pattern will noop silently.
  */
-LIB_EXPORT bool string_replace(arena_t* arena, string* out, string s,
-							   string pattern, string replacement);
+LIB_EXPORT bool string_replace(arena_t* arena, arena_t* scratch, string* out,
+							   string s, string pattern, string replacement);
 
 /**
  * @brief Trims the first characters of a string.

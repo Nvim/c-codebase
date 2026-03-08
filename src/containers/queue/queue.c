@@ -24,7 +24,7 @@ queue_t* queue_create(arena_t* arena, size_t max_size, size_t elem_size) {
 	}
 
 	size_t buffer_size = elem_size * max_size;
-	if (arena_get_remaining(arena) < sizeof(queue_impl) + buffer_size) {
+	if (arena_get_growth_remaining(arena) < sizeof(queue_impl) + buffer_size) {
 		LOG_ERR("queue_create: not enough space left in arena");
 		return NULL;
 	}
