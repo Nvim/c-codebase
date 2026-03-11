@@ -105,6 +105,12 @@ LIB_EXPORT void _array_clear(array_t* array);
 		return _array_at(arr.raw, (void**)out, index);                         \
 	}                                                                          \
                                                                                \
+	__attribute__((unused)) static inline T* Name##_begin(Name arr) {          \
+		T* ret;                                                                \
+		ASSERT(_array_at(arr.raw, (void**)&ret, 0));                           \
+		return ret;                                                            \
+	}                                                                          \
+                                                                               \
 	__attribute__((unused)) static inline bool Name##_at_const(                \
 		Name arr, T const** out, size_t index) {                               \
 		return _array_at_const(arr.raw, (void const**)out, index);             \

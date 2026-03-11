@@ -9,6 +9,9 @@
 typedef struct arena_t arena_t;
 typedef string path;
 
+// TODO: enforce this cap
+#define PATH_MAX_LEN 1024
+
 /**
  * @brief Create a new path from the given string. Output path is a newly
  * allocated string and doesn't reference original.

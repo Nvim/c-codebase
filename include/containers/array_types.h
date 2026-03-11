@@ -3,6 +3,8 @@
 
 #include "array.h"
 
+#include <core/platform.h>
+
 #include <stdint.h>
 
 ARRAY_DEFINE_TYPE(int64_t, i64_array)
