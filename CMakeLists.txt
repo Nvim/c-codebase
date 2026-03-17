@@ -5,6 +5,9 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+include(FetchContent)
+set(FETCHCONTENT_BASE_DIR "${CMAKE_SOURCE_DIR}/thirdparty")
+
 if(NOT CMAKE_BUILD_TYPE)
 	set(CMAKE_BUILD_TYPE Debug CACHE STRING "Set build mode to debug" FORCE)
 endif()
@@ -64,6 +67,18 @@ if(NOT MSVC)
     )
 endif()
 
+FetchContent_Declare(
+    glfw
+    GIT_REPOSITORY https://github.com/glfw/glfw.git
+    GIT_TAG 3.4
+)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+
+# Make GLFW available (downloads and integrates it)
+FetchContent_MakeAvailable(glfw)
+
 add_subdirectory(tests)
 add_subdirectory(src/platform)
 add_subdirectory(src/core)
@@ -71,3 +86,5 @@ add_subdirectory(src/allocators)
 add_subdirectory(src/containers)
 add_subdirectory(src/strings)
 add_subdirectory(src/filesystem)
+
+add_subdirectory(runtime)

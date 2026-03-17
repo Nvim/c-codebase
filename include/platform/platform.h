@@ -106,4 +106,39 @@ LIB_EXPORT bool platform_write_all_file(char const* path, uint8_t* data,
 
 LIB_EXPORT bool platform_append_file(char const* path, uint8_t* data,
 									 size_t data_size);
+
+/* ********************************[ WINDOW ]******************************** */
+
+/**
+ * [NOTE]:
+ * Window API is intended to be used with Vulkan. Thus, it doesn't provide
+ * a traditionnal "swap_buffers" function. Instead, the expected usage is to
+ * get a Vulkan surface from the window, and use the Vulkan swapchain and
+ * presenting mechanisms.
+ *
+ */
+
+typedef struct window_t {
+	void* internal;
+} window_t;
+
+typedef struct window_size {
+	int width;
+	int height;
+} window_size;
+
+LIB_EXPORT window_t* platform_create_window(window_size size, char const* name);
+
+LIB_EXPORT window_size platform_get_window_size(window_t* window);
+
+LIB_EXPORT bool platform_set_window_name(window_t* window, char const* name);
+
+LIB_EXPORT const char* platform_get_window_name(window_t* window);
+
+LIB_EXPORT void platform_destroy_window(window_t* window);
+
+/* ********************************[ INPUT ]********************************* */
+
+
+
 #endif
