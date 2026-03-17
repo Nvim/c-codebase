@@ -1,7 +1,7 @@
 add_library(platform SHARED)
 
 target_include_directories(platform PUBLIC ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(platform PUBLIC compile_flags)
+target_link_libraries(platform PUBLIC compile_flags core)
 
 if(PLATFORM STREQUAL "LINUX_WAYLAND" OR PLATFORM STREQUAL "LINUX_X11")
 	add_subdirectory(linux)

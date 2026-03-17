@@ -10,6 +10,7 @@
 #endif
 
 #define STATIC_ASSERT _Static_assert
+#define breakpoint() __builtin_trap()
 
 #ifdef _DEBUG
 #define ASSERT(c)                                                              \
@@ -17,7 +18,7 @@
 		if (!(c)) {                                                            \
 			LOG_FATAL("[ASSERTION FAILED]: '%s' at %s:%d", #c, __FILE__,       \
 					  __LINE__);                                               \
-			platform_breakpoint();                                             \
+			breakpoint();                                                      \
 		}                                                                      \
 	} while (0)
 #else

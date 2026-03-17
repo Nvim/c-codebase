@@ -3,13 +3,14 @@
 
 #include <stdint.h>
 #include <visibility.h>
+#include <keycodes.h>
 
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 
-// #define breakpoint()  asm ("int3; nop")
-#define platform_breakpoint() __builtin_trap()
+LIB_EXPORT bool platform_init(void);
+LIB_EXPORT void platform_destroy(void);
 
 /* ********************************[ MEMORY ]******************************** */
 
@@ -118,9 +119,7 @@ LIB_EXPORT bool platform_append_file(char const* path, uint8_t* data,
  *
  */
 
-typedef struct window_t {
-	void* internal;
-} window_t;
+typedef struct window_t window_t;
 
 typedef struct window_size {
 	int width;
@@ -135,9 +134,13 @@ LIB_EXPORT bool platform_set_window_name(window_t* window, char const* name);
 
 LIB_EXPORT const char* platform_get_window_name(window_t* window);
 
+LIB_EXPORT bool platform_window_should_close(window_t* window);
+
 LIB_EXPORT void platform_destroy_window(window_t* window);
 
 /* ********************************[ INPUT ]********************************* */
+
+LIB_EXPORT void platform_poll(void);
 
 
 

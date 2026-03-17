@@ -1,6 +1,7 @@
 #include <platform/platform.h>
 
 #include <common.h>
+#include <core/log.h>
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -16,8 +17,6 @@ __attribute__((constructor)) static void init_page_size(void) {
 	_page_size = sysconf(_SC_PAGESIZE);
 	_page_mask = _page_size - 1;
 }
-
-static void ERROR(char const* msg) { fprintf(stderr, "%s", msg); }
 
 size_t platform_memory_page_size(void) { return _page_size; }
 
@@ -42,7 +41,7 @@ void* platform_memory_reserve(size_t size) {
 					  MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
 
 	if (addr == MAP_FAILED) {
-		ERROR("platform_memory_reserve: mmap call failed");
+		LOG_ERR("platform_memory_reserve: mmap call failed");
 		return false;
 	}
 	return addr;
@@ -51,7 +50,7 @@ void* platform_memory_reserve(size_t size) {
 bool platform_memory_dereserve(void* memory, size_t size) {
 	int res = munmap(memory, size);
 	if (res != 0) {
-		ERROR("platform_memory_dereserve: munmap call failed");
+		LOG_ERR("platform_memory_dereserve: munmap call failed");
 		return false;
 	}
 	return true;
@@ -59,21 +58,18 @@ bool platform_memory_dereserve(void* memory, size_t size) {
 
 bool platform_memory_commit(void* memory, size_t size) {
 	if (!memory || !size) {
-		ERROR("platform_memory_commit: invalid parameters");
+		LOG_ERR("platform_memory_commit: invalid parameters");
 		return false;
 	}
 	if (platform_memory_page_begin(memory) != memory) {
-		ERROR("platform_memory_commit: invalid beginning address");
+		LOG_ERR("platform_memory_commit: invalid beginning address");
 		return false;
 	}
 
 	int ret =
 		mprotect(memory, align_up(size, _page_size), PROT_READ | PROT_WRITE);
 	if (ret != 0) {
-		char msg[256];
-		snprintf(msg, 255, "platform_memory_commit: mprotect call failed: %d",
-				 ret);
-		ERROR(msg);
+		LOG_ERR("platform_memory_commit: mprotect call failed: %d", ret);
 		return false;
 	}
 	return true;
@@ -81,11 +77,11 @@ bool platform_memory_commit(void* memory, size_t size) {
 
 bool platform_memory_decommit(void* memory, size_t size) {
 	if (!memory || !size) {
-		ERROR("platform_memory_decommit: invalid parameters");
+		LOG_ERR("platform_memory_decommit: invalid parameters");
 		return false;
 	}
 	if (platform_memory_page_begin(memory) != memory) {
-		ERROR("platform_memory_decommit: invalid beginning address");
+		LOG_ERR("platform_memory_decommit: invalid beginning address");
 		return false;
 	}
 
@@ -94,7 +90,7 @@ bool platform_memory_decommit(void* memory, size_t size) {
 			 MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_NORESERVE, -1, 0);
 
 	if (ret == MAP_FAILED) {
-		ERROR("platform_memory_decommit: mmap call failed");
+		LOG_ERR("platform_memory_decommit: mmap call failed");
 		return false;
 	}
 	return true;

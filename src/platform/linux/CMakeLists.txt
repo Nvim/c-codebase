@@ -1,7 +1,7 @@
 target_sources(platform PRIVATE
 	memory.c
 	filesystem.c
-	window.c
+	glfw.c
 )
 target_link_libraries(platform PRIVATE compile_flags glfw)
 

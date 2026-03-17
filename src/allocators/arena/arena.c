@@ -214,7 +214,7 @@ void* arena_alloc(arena_t* arena, size_t size) {
 			// Commit more pages:
 			if (!commit_more(impl, size, is_page_full)) {
 				LOG_ERR("arena_grow: couldn't commit more pages");
-				platform_breakpoint();
+				breakpoint();
 				return NULL;
 			}
 		}
