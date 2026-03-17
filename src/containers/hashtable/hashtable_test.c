@@ -3,7 +3,7 @@
 #include <allocators/arena.h>
 #include <containers/hashtable.h>
 #include <containers/hashtable_types.h>
-#include <core/platform.h>
+#include <platform/platform.h>
 #include <strings/string.h>
 
 #include <string.h>

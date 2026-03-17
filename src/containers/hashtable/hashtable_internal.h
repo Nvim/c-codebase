@@ -2,7 +2,8 @@
 #define HASHTABLE_INTERNAL_H
 
 #include <containers/hashtable.h>
-#include <core/platform.h>
+#include <platform/platform.h>
+#include <common.h>
 
 typedef struct ht_impl {
 	uint32_t max_allocs;  // Size requested by user

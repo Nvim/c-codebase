@@ -6,10 +6,6 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#if !defined(__clang__)
-#error "Unsupported compiler"
-#endif
-
 #define LOG_MAX_LEN 1024
 
 enum log_color {

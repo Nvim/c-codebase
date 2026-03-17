@@ -1,4 +1,5 @@
-#include <core/platform.h>
+#include <platform/platform.h>
+#include <common.h>
 
 #include "unity.h"
 

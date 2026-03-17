@@ -1,6 +1,6 @@
 #include "containers/queue.h"
-#include "core/platform.h"
 #include <assert.h>
+#include <common.h>
 #include <string.h>
 #include <strings/path.h>
 

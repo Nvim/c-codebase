@@ -1,9 +1,13 @@
-#include <core/platform.h>
+#include "arena_internal.h"
+
+#include <platform/platform.h>
+#include <allocators/arena.h>
+#include <common.h>
+
 #include <unity.h>
 #include <allocators/arena.h>
 #include <string.h>
 
-#include "arena_internal.h"
 
 void setUp(void) {
 	// set stuff up here

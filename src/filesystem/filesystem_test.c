@@ -1,7 +1,6 @@
-#include <core/filesystem.h>
+#include <filesystem/filesystem.h>
 
-#include <core/log.h>
-#include <core/platform.h>
+#include <common.h>
 
 #include <string.h>
 #include <unity.h>
@@ -28,7 +27,7 @@ void test_file_read_all(void) {
 	TEST_ASSERT_TRUE(
 		path_create(arena, scratch.arena, str("src/filesystem/test.txt"), &p));
 
-	platform_file_read_result ret = platform_read_all_file(arena, p);
+	fs_file_read_result ret = fs_read_all_file(arena, p);
 	TEST_ASSERT_TRUE(ret.ok);
 	TEST_ASSERT_EQUAL(27, u8_array_size(ret.bytes));
 	char expect[28] = "line 1\nline 2\nline 3\ncool!\n";
@@ -47,7 +46,7 @@ void test_file_read_some(void) {
 	TEST_ASSERT_TRUE(
 		path_create(arena, scratch.arena, str("src/filesystem/test.txt"), &p));
 
-	platform_file_read_result ret = platform_read_file(arena, p, 7);
+	fs_file_read_result ret = fs_read_file(arena, p, 7);
 	TEST_ASSERT_TRUE(ret.ok);
 	TEST_ASSERT_EQUAL(7, u8_array_size(ret.bytes));
 	char expect[8] = "line 1\n";

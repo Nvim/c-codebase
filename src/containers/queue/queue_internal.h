@@ -4,7 +4,8 @@
 #include <allocators/arena.h>
 #include <containers/queue.h>
 #include <core/log.h>
-#include <core/platform.h>
+#include <platform/platform.h>
+#include <core/core.h>
 
 typedef struct queue_impl {
 	void* data;

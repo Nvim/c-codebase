@@ -19,11 +19,6 @@ typedef struct string_array string_array;
 typedef struct u64_array u64_array;
 
 /**
- * @brief Returns the number of elements in an array
- */
-#define countof(arr) (sizeof(arr) / sizeof(*(arr)))
-
-/**
  * @brief Turns a temporary string literal into a length-based string
  */
 #define str(literal) (string){(char*)literal, countof(literal) - 1}

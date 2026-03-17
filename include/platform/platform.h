@@ -1,47 +1,21 @@
 #ifndef PLATFORM_H
 #define PLATFORM_H
 
-#include <core/log.h>
+#include <stdint.h>
 #include <visibility.h>
 
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 
-#if !defined(__linux__)
-#error "Unsupported platform"
-#endif
-
-#define STATIC_ASSERT _Static_assert
-
-#ifdef _DEBUG
 // #define breakpoint()  asm ("int3; nop")
-#define breakpoint() __builtin_trap()
-#define ASSERT(c)                                                              \
-	do {                                                                       \
-		if (!(c)) {                                                            \
-			LOG_FATAL("[ASSERTION FAILED]: '%s' at %s:%d", #c, __FILE__,       \
-					  __LINE__);                                               \
-			breakpoint();                                                      \
-		}                                                                      \
-	} while (0)
-#else
-#define ASSERT(c)                                                              \
-	do { (void)(c) } while (0) //
-#endif
+#define platform_breakpoint() __builtin_trap()
 
 /* ********************************[ MEMORY ]******************************** */
 
 LIB_EXPORT static size_t const MEMORY_GIB = 1024UL * 1024UL * 1024UL;
 LIB_EXPORT static size_t const MEMORY_MIB = 1024UL * 1024UL;
 LIB_EXPORT static size_t const MEMORY_KIB = 1024UL;
-
-/**
- * @brief: rounds value up to next alignment multiple
- * @note alignment must be a non-zero power of two.
- * @return Aligned value, or 0 on overflow
- */
-LIB_EXPORT size_t align_up(size_t value, size_t alignment);
 
 /**
  * @brief Queries the OS memory page size
@@ -111,4 +85,25 @@ LIB_EXPORT bool platform_memory_commit(void* memory, size_t size);
  */
 LIB_EXPORT bool platform_memory_decommit(void* memory, size_t size);
 
+/* *******************************[ FILE I/O ]******************************* */
+
+// In case I ever need more fields
+typedef struct platform_file_read_result {
+	bool ok;
+} platform_file_read_result;
+
+LIB_EXPORT size_t platform_file_size(char const* path);
+
+LIB_EXPORT platform_file_read_result platform_read_all_file(char const* path,
+															uint8_t* buffer);
+
+LIB_EXPORT platform_file_read_result platform_read_file(char const* path,
+														uint8_t* buffer,
+														size_t read_size);
+
+LIB_EXPORT bool platform_write_all_file(char const* path, uint8_t* data,
+										size_t data_size);
+
+LIB_EXPORT bool platform_append_file(char const* path, uint8_t* data,
+									 size_t data_size);
 #endif

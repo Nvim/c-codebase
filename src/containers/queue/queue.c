@@ -3,7 +3,7 @@
 #include <allocators/arena.h>
 #include <containers/queue.h>
 #include <core/log.h>
-#include <core/platform.h>
+#include <platform/platform.h>
 
 #include <string.h>
 

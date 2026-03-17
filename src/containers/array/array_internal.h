@@ -1,7 +1,8 @@
 #ifndef ARRAY_INTERNAL_H
 #define ARRAY_INTERNAL_H
 
-#include <core/platform.h>
+#include <platform/platform.h>
+#include <core/core.h>
 
 #include <stddef.h>
 

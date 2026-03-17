@@ -2,7 +2,8 @@
 #define ARENA_INTERNAL_H
 
 #include <allocators/arena.h>
-#include <core/platform.h>
+#include <core/core.h>
+#include <platform/platform.h>
 
 #include <stddef.h>
 

@@ -3,7 +3,8 @@
 
 #include "array.h"
 
-#include <core/platform.h>
+#include <platform/platform.h>
+#include <core/core.h>
 
 #include <stdint.h>
 

@@ -2,7 +2,7 @@
 
 #include <allocators/arena.h>
 #include <containers/array_types.h>
-#include <core/platform.h>
+#include <platform/platform.h>
 #include <string.h>
 #include <strings/string.h>
 #include <unity.h>

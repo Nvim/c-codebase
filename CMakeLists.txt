@@ -11,6 +11,17 @@ endif()
 
 enable_testing()
 
+set(PLATFORM "LINUX_WAYLAND" CACHE STRING "Target platform (LINUX_WAYLAND or LINUX_X11)")
+if(PLATFORM STREQUAL "LINUX_WAYLAND")
+    add_compile_definitions(PLATFORM_LINUX=1)
+	add_compile_definitions(WAYLAND=1)
+elseif(PLATFORM STREQUAL "LINUX_X11")
+    add_compile_definitions(PLATFORM_LINUX=1)
+	add_compile_definitions(X11=1)
+else()
+	message(FATAL_ERROR "Invalid platform value: '${PLATFORM}'")
+endif()
+
 # Always on flags & defines:
 add_library(compile_flags INTERFACE)
 target_compile_options(compile_flags
@@ -54,6 +65,7 @@ if(NOT MSVC)
 endif()
 
 add_subdirectory(tests)
+add_subdirectory(src/platform)
 add_subdirectory(src/core)
 add_subdirectory(src/allocators)
 add_subdirectory(src/containers)
