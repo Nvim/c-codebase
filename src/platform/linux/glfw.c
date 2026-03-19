@@ -4,11 +4,13 @@
  *
  * @note Platform init and shutdown are also handled here
  */
+#include "input.h"
 
 #include <platform/platform.h>
 #include <core/core.h>
+#include <graphics/vulkan_init_info.h>
 
-#include "input.h"
+#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
 #include <string.h>
@@ -123,6 +125,36 @@ void platform_poll(void) {
 	glfwPollEvents();
 }
 
+static VkSurfaceKHR _create_vk_surface(window_t* window, VkInstance instance);
+
+// bool platform_init_graphics_api(graphics_api_type type, graphics_api* out) {
+bool platform_init_graphics_api(graphics_api_type type, graphics_api_init_info *out) {
+	if(type != GRAPHICS_API_VULKAN) {
+		return false;
+	}
+
+	if(glfwVulkanSupported() != GLFW_TRUE) {
+		return false;
+	}
+
+	vulkan_init_info* ret = (vulkan_init_info*)out;
+	memset(ret, 0, sizeof(vulkan_init_info));
+
+	const char** required_instance_extensions;
+	uint32_t required_instance_extensions_count;
+	required_instance_extensions = glfwGetRequiredInstanceExtensions(&required_instance_extensions_count);
+	if(required_instance_extensions == NULL || required_instance_extensions_count == 0) {
+		return false;
+	}
+
+	ret->required_instance_extensions = required_instance_extensions;
+	ret->required_instance_extensions_count = required_instance_extensions_count;
+
+	ret->create_surface = _create_vk_surface;
+
+	return true;
+}
+
 static void key_callback(GLFWwindow* window, int key, int scancode, int action,
 						 int mods) {
 	(void)window;
@@ -174,4 +206,14 @@ static void framebuffer_size_callback(GLFWwindow* window, int width,
 	(void)window;
 	(void)width;
 	(void)height;
+}
+
+static VkSurfaceKHR _create_vk_surface(window_t* window, VkInstance instance) {
+	VkSurfaceKHR ret = { 0 };
+
+	window_impl* win = (window_impl*)window;
+	VkResult result = glfwCreateWindowSurface(instance, win->internal, NULL, &ret);
+	ASSERT(result == VK_SUCCESS && ret != NULL);
+
+	return ret;
 }

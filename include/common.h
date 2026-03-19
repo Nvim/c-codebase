@@ -42,5 +42,21 @@ inline size_t align_up(size_t value, size_t alignment) {
 			   : 0;
 }
 
+typedef enum graphics_api_type {
+	GRAPHICS_API_VULKAN,
+} graphics_api_type;
+
+/**
+ * @typedef graphics_api_init_info
+ * @brief Platform provided create info for a graphics API.
+ *
+ */
+typedef struct graphics_api_init_info graphics_api_init_info;
+
+typedef struct graphics_api {
+	graphics_api_type type;
+	graphics_api_init_info* platform_info;
+	void* internal_state;
+} graphics_api;
 
 #endif // !COMMON_H

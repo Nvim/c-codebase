@@ -1,16 +1,27 @@
 #ifndef PLATFORM_H
 #define PLATFORM_H
 
-#include <stdint.h>
-#include <visibility.h>
+#include <common.h>
 #include <keycodes.h>
+#include <visibility.h>
 
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 LIB_EXPORT bool platform_init(void);
 LIB_EXPORT void platform_destroy(void);
+
+/**
+ * @brief Get initialization info for a graphics API
+ *
+ * @param type API type to initialize
+ * @param out The info struct to fill. Will be casted to according type
+ * @return False if platform isn't supported or on graphics API error.
+ */
+LIB_EXPORT bool platform_init_graphics_api(graphics_api_type type,
+										   graphics_api_init_info* out);
 
 /* ********************************[ MEMORY ]******************************** */
 
@@ -141,7 +152,5 @@ LIB_EXPORT void platform_destroy_window(window_t* window);
 /* ********************************[ INPUT ]********************************* */
 
 LIB_EXPORT void platform_poll(void);
-
-
 
 #endif
