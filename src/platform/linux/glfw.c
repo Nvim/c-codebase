@@ -6,9 +6,9 @@
  */
 #include "input.h"
 
-#include <platform/platform.h>
 #include <core/core.h>
 #include <graphics/vulkan_init_info.h>
+#include <platform/platform.h>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -28,15 +28,22 @@ void on_error(int code, char const* description) {
 
 static bool _init = false;
 static bool _key_state[INPUT_KEY_COUNT] = {0};
-
 // [TODO]: serialize whole frames someday
 static bool _prev_key_state[INPUT_KEY_COUNT] = {0};
+
+// [TODO]: support held state (use function table)
+typedef struct key_cb_entry {
+	key_callback press_callback;
+	key_callback release_callback;
+} key_cb_entry;
+
+static key_cb_entry _key_callbacks[INPUT_KEY_COUNT] = {0};
 
 // [TODO]: Only needed for glfwSwapBuffers call. Remove when Vulkan is setup
 static GLFWwindow* _window = NULL;
 
-static void key_callback(GLFWwindow* window, int key, int scancode, int action,
-						 int mods);
+static void _key_callback(GLFWwindow* window, int key, int scancode, int action,
+						  int mods);
 static void mouse_button_callback(GLFWwindow* window, int button, int action,
 								  int mods);
 static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
@@ -73,7 +80,7 @@ window_t* platform_create_window(window_size size, char const* name) {
 	GLFWwindow* window =
 		glfwCreateWindow(size.width, size.height, name, NULL, NULL);
 
-	glfwSetKeyCallback(window, key_callback);
+	glfwSetKeyCallback(window, _key_callback);
 	glfwSetMouseButtonCallback(window, mouse_button_callback);
 	glfwSetCursorPosCallback(window, cursor_position_callback);
 	glfwSetScrollCallback(window, scroll_callback);
@@ -125,38 +132,63 @@ void platform_poll(void) {
 	glfwPollEvents();
 }
 
+LIB_EXPORT void platform_register_key_callback(input_key key, key_action action,
+											   key_callback callback) {
+	ASSERT(_init);
+	key_cb_entry* entry = &_key_callbacks[key];
+	ASSERT(entry);
+	if (action == INPUT_KEY_PRESSED) {
+		if (entry->press_callback) {
+			LOG_WARN(
+				"platform_register_key_callback: overriding an existing key "
+				"callback");
+		}
+		entry->press_callback = callback;
+	}
+
+	if (action == INPUT_KEY_RELEASED) {
+		if (entry->release_callback) {
+			LOG_WARN(
+				"platform_register_key_callback: overriding an existing key "
+				"callback");
+		}
+		LOG_INFO("set release callback");
+		entry->release_callback = callback;
+	}
+}
+
 static VkSurfaceKHR _create_vk_surface(window_t* window, VkInstance instance);
 
 // bool platform_init_graphics_api(graphics_api_type type, graphics_api* out) {
-bool platform_init_graphics_api(graphics_api_type type, graphics_api_init_info *out) {
-	if(type != GRAPHICS_API_VULKAN) {
-		return false;
-	}
+bool platform_init_graphics_api(graphics_api_type type,
+								graphics_api_init_info* out) {
+	if (type != GRAPHICS_API_VULKAN) { return false; }
 
-	if(glfwVulkanSupported() != GLFW_TRUE) {
-		return false;
-	}
+	if (glfwVulkanSupported() != GLFW_TRUE) { return false; }
 
 	vulkan_init_info* ret = (vulkan_init_info*)out;
 	memset(ret, 0, sizeof(vulkan_init_info));
 
-	const char** required_instance_extensions;
+	char const** required_instance_extensions;
 	uint32_t required_instance_extensions_count;
-	required_instance_extensions = glfwGetRequiredInstanceExtensions(&required_instance_extensions_count);
-	if(required_instance_extensions == NULL || required_instance_extensions_count == 0) {
+	required_instance_extensions =
+		glfwGetRequiredInstanceExtensions(&required_instance_extensions_count);
+	if (required_instance_extensions == NULL ||
+		required_instance_extensions_count == 0) {
 		return false;
 	}
 
 	ret->required_instance_extensions = required_instance_extensions;
-	ret->required_instance_extensions_count = required_instance_extensions_count;
+	ret->required_instance_extensions_count =
+		required_instance_extensions_count;
 
 	ret->create_surface = _create_vk_surface;
 
 	return true;
 }
 
-static void key_callback(GLFWwindow* window, int key, int scancode, int action,
-						 int mods) {
+static void _key_callback(GLFWwindow* window, int key, int scancode, int action,
+						  int mods) {
 	(void)window;
 	(void)scancode;
 	(void)action;
@@ -165,9 +197,17 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action,
 	if (action == GLFW_REPEAT || action == GLFW_PRESS) {
 		_key_state[translated] = true;
 		LOG_DEBUG("key %d (GLFW %d) was pressed.", translated, key);
+		key_cb_entry* e = &_key_callbacks[translated];
+		if (e && e->press_callback) {
+			e->press_callback(NULL);
+		}
 	} else { // Key was released
 		_key_state[translated] = false;
 		LOG_DEBUG("key %d (GLFW %d) was released.", translated, key);
+		key_cb_entry* e = &_key_callbacks[translated];
+		if (e && e->release_callback) {
+			e->release_callback(NULL);
+		}
 	}
 }
 
@@ -209,10 +249,11 @@ static void framebuffer_size_callback(GLFWwindow* window, int width,
 }
 
 static VkSurfaceKHR _create_vk_surface(window_t* window, VkInstance instance) {
-	VkSurfaceKHR ret = { 0 };
+	VkSurfaceKHR ret = {0};
 
 	window_impl* win = (window_impl*)window;
-	VkResult result = glfwCreateWindowSurface(instance, win->internal, NULL, &ret);
+	VkResult result =
+		glfwCreateWindowSurface(instance, win->internal, NULL, &ret);
 	ASSERT(result == VK_SUCCESS && ret != NULL);
 
 	return ret;

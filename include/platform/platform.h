@@ -10,7 +10,17 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/**
+ * @brief Initialize the platform API. Must be called first before using other
+ * functions.
+ *
+ */
 LIB_EXPORT bool platform_init(void);
+
+/**
+ * @brief Release the platform API resources.
+ *
+ */
 LIB_EXPORT void platform_destroy(void);
 
 /**
@@ -151,6 +161,21 @@ LIB_EXPORT void platform_destroy_window(window_t* window);
 
 /* ********************************[ INPUT ]********************************* */
 
+/**
+ * @brief Poll for platform events. Should be called every frame to get
+ * mouse/keyboard input and OS window state update.
+ *
+ */
 LIB_EXPORT void platform_poll(void);
+
+typedef void(*key_callback)(void*);
+
+// [TODO]: add held down status
+typedef enum key_action {
+	INPUT_KEY_PRESSED,
+	INPUT_KEY_RELEASED,
+} key_action;
+
+LIB_EXPORT void platform_register_key_callback(input_key key, key_action action, key_callback callback);
 
 #endif
