@@ -31,10 +31,8 @@ static bool _key_state[INPUT_KEY_COUNT] = {0};
 // [TODO]: serialize whole frames someday
 static bool _prev_key_state[INPUT_KEY_COUNT] = {0};
 
-// [TODO]: support held state (use function table)
 typedef struct key_cb_entry {
-	key_callback press_callback;
-	key_callback release_callback;
+	key_callback callbacks[INPUT_ACTION_COUNT];
 } key_cb_entry;
 
 static key_cb_entry _key_callbacks[INPUT_KEY_COUNT] = {0};
@@ -138,23 +136,18 @@ LIB_EXPORT void platform_register_key_callback(input_key key, key_action action,
 	ASSERT(_init);
 	key_cb_entry* entry = &_key_callbacks[key];
 	ASSERT(entry);
-	if (action == INPUT_KEY_PRESSED) {
-		if (entry->press_callback) {
-			LOG_WARN(
-				"platform_register_key_callback: overriding an existing key "
-				"callback");
-		}
-		entry->press_callback = callback;
-	}
 
-	if (action == INPUT_KEY_RELEASED) {
-		if (entry->release_callback) {
-			LOG_WARN(
-				"platform_register_key_callback: overriding an existing key "
-				"callback");
+	static key_action const act_types[] = {INPUT_ACTION_PRESSED,
+										   INPUT_ACTION_RELEASED, INPUT_ACTION_HELD};
+	for (int i = 0; i < 3; ++i) {
+		if (action & act_types[i]) {
+			if (entry->callbacks[act_types[i]]) {
+				LOG_WARN("platform_register_key_callback: overriding an "
+						 "existing key "
+						 "callback");
+			}
+			entry->callbacks[act_types[i]] = callback;
 		}
-		LOG_INFO("set release callback");
-		entry->release_callback = callback;
 	}
 }
 
@@ -192,19 +185,34 @@ static void _key_callback(GLFWwindow* window, int key, int scancode, int action,
 						  int mods) {
 	(void)window;
 	(void)scancode;
-	(void)action;
 	(void)mods;
 	input_key translated = input_translate_internal_keycode(key);
-	if (action == GLFW_REPEAT || action == GLFW_PRESS) {
+	key_cb_entry* e = NULL;
+	switch (action) {
+	case GLFW_REPEAT:
+		LOG_DEBUG("key %d (GLFW %d) was repeated.", translated, key);
+		e = &_key_callbacks[translated];
+		if (e && e->callbacks[INPUT_ACTION_HELD]) {
+			e->callbacks[INPUT_ACTION_HELD](NULL);
+		}
+		break;
+	case GLFW_PRESS:
 		_key_state[translated] = true;
 		LOG_DEBUG("key %d (GLFW %d) was pressed.", translated, key);
-		key_cb_entry* e = &_key_callbacks[translated];
-		if (e && e->press_callback) { e->press_callback(NULL); }
-	} else { // Key was released
+		e = &_key_callbacks[translated];
+		if (e && e->callbacks[INPUT_ACTION_PRESSED]) {
+			e->callbacks[INPUT_ACTION_PRESSED](NULL);
+		}
+		break;
+	case GLFW_RELEASE:
 		_key_state[translated] = false;
 		LOG_DEBUG("key %d (GLFW %d) was released.", translated, key);
-		key_cb_entry* e = &_key_callbacks[translated];
-		if (e && e->release_callback) { e->release_callback(NULL); }
+		e = &_key_callbacks[translated];
+		if (e && e->callbacks[INPUT_ACTION_RELEASED]) {
+			e->callbacks[INPUT_ACTION_RELEASED](NULL);
+		}
+		break;
+	default: ASSERT(false); break;
 	}
 }
 

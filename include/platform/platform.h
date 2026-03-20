@@ -180,14 +180,17 @@ LIB_EXPORT void platform_destroy_window(window_t* window);
  */
 LIB_EXPORT void platform_poll(void);
 
+// [TODO]: forward keycode and window as args:
 typedef void (*key_callback)(void*);
 
-// [TODO]: add held down status
 typedef enum key_action {
-	INPUT_KEY_PRESSED,
-	INPUT_KEY_RELEASED,
+	INPUT_ACTION_PRESSED = 1 << 0,
+	INPUT_ACTION_RELEASED = 1 << 1,
+	INPUT_ACTION_HELD = 1 << 2,
+	INPUT_ACTION_COUNT = 1 << 3,
 } key_action;
 
+// [TODO]: take window as arg:
 LIB_EXPORT void platform_register_key_callback(input_key key, key_action action,
 											   key_callback callback);
 
