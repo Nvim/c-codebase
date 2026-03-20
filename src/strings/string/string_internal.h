@@ -1,5 +1,4 @@
 #ifndef STRING_INTERNAL_H
 #define STRING_INTERNAL_H
 
-
 #endif // !STRING_INTERNAL_H

@@ -374,7 +374,8 @@ void test_path_join(void) {
 		size_t want_len = strlen(want);
 
 		path res;
-		TEST_ASSERT_TRUE_MESSAGE(path_join(arena, scratch.arena, l_pth, r_pth, &res), want);
+		TEST_ASSERT_TRUE_MESSAGE(
+			path_join(arena, scratch.arena, l_pth, r_pth, &res), want);
 		TEST_ASSERT_EQUAL_MESSAGE(want_len, res.len, want);
 		TEST_ASSERT_EQUAL(0, strncmp(want, res.str, want_len));
 	}

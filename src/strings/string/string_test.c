@@ -1,7 +1,7 @@
 #include <allocators/arena.h>
+#include <common.h>
 #include <containers/array_types.h>
 #include <core/core.h>
-#include <common.h>
 #include <platform/platform.h>
 
 #include <string.h>

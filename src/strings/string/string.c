@@ -6,13 +6,14 @@
 #include <containers/queue.h>
 #include <core/log.h>
 #include <platform/platform.h>
+
 #include <ctype.h>
 #include <string.h>
 
 STATIC_ASSERT(sizeof(string) == 16, "unexpected string size");
 #define STR_HEADER_SIZE sizeof(string)
 
-bool string_create(arena_t* arena, string* out, const char* cstr) {
+bool string_create(arena_t* arena, string* out, char const* cstr) {
 	if (!arena || !out || !cstr) {
 		LOG_ERR("string_create: invalid parameters");
 		return false;
@@ -265,8 +266,8 @@ bool string_compare(string s1, string s2) {
 
 bool string_compare_addr(string s1, string s2) { return (s1.str == s2.str); }
 
-bool string_occurences(arena_t* arena, arena_t* scratch, u64_array* out, string s,
-					   string pattern) {
+bool string_occurences(arena_t* arena, arena_t* scratch, u64_array* out,
+					   string s, string pattern) {
 	if (!arena || !out || !s.len || !pattern.len) {
 		LOG_ERR("string_occurences: invalid parameters");
 		return false;
@@ -400,8 +401,8 @@ bool string_tokenize(arena_t* arena, string_array* out, string s,
 	return true;
 }
 
-bool string_replace(arena_t* arena, arena_t* scratch, string* out, string s, string pattern,
-					string replacement) {
+bool string_replace(arena_t* arena, arena_t* scratch, string* out, string s,
+					string pattern, string replacement) {
 	if (!arena || !out || !s.len) {
 		LOG_ERR("string_replace: invalid parameters");
 		return false;

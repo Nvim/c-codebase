@@ -199,16 +199,12 @@ static void _key_callback(GLFWwindow* window, int key, int scancode, int action,
 		_key_state[translated] = true;
 		LOG_DEBUG("key %d (GLFW %d) was pressed.", translated, key);
 		key_cb_entry* e = &_key_callbacks[translated];
-		if (e && e->press_callback) {
-			e->press_callback(NULL);
-		}
+		if (e && e->press_callback) { e->press_callback(NULL); }
 	} else { // Key was released
 		_key_state[translated] = false;
 		LOG_DEBUG("key %d (GLFW %d) was released.", translated, key);
 		key_cb_entry* e = &_key_callbacks[translated];
-		if (e && e->release_callback) {
-			e->release_callback(NULL);
-		}
+		if (e && e->release_callback) { e->release_callback(NULL); }
 	}
 }
 

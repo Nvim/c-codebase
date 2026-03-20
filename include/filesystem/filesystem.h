@@ -11,10 +11,9 @@ typedef struct fs_file_read_result {
 	u8_array bytes;
 } fs_file_read_result;
 
-LIB_EXPORT fs_file_read_result fs_read_all_file(arena_t* arena,
-															path pth);
-LIB_EXPORT fs_file_read_result fs_read_file(arena_t* arena,
-														path pth, size_t size);
+LIB_EXPORT fs_file_read_result fs_read_all_file(arena_t* arena, path pth);
+LIB_EXPORT fs_file_read_result fs_read_file(arena_t* arena, path pth,
+											size_t size);
 
 LIB_EXPORT bool fs_write_all_file(path pth, u8_array data);
 LIB_EXPORT bool fs_append_file(path pth, u8_array data);

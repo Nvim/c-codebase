@@ -1,4 +1,5 @@
 #include <platform/platform.h>
+
 #include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
@@ -64,9 +65,10 @@ size_t platform_file_size(char const* path) {
 	return (size_t)st.st_size;
 }
 
-platform_file_read_result platform_read_all_file(char const* path, uint8_t* buffer) {
+platform_file_read_result platform_read_all_file(char const* path,
+												 uint8_t* buffer) {
 	int fd = open(path, O_RDONLY);
-	platform_file_read_result ret = { 0 };
+	platform_file_read_result ret = {0};
 	if (fd < 0) return ret;
 
 	struct stat st;
@@ -89,7 +91,7 @@ platform_file_read_result platform_read_all_file(char const* path, uint8_t* buff
 }
 
 platform_file_read_result platform_read_file(char const* path, uint8_t* buffer,
-							   size_t read_size) {
+											 size_t read_size) {
 	platform_file_read_result ret = {0};
 	int fd = open(path, O_RDONLY);
 	if (fd < 0) return ret;
@@ -100,8 +102,8 @@ platform_file_read_result platform_read_file(char const* path, uint8_t* buffer,
 	return ret;
 }
 
- bool platform_write_all_file(char const* path, uint8_t* data,
-									size_t data_size) {
+bool platform_write_all_file(char const* path, uint8_t* data,
+							 size_t data_size) {
 	int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 	if (fd < 0) return false;
 
@@ -111,8 +113,7 @@ platform_file_read_result platform_read_file(char const* path, uint8_t* buffer,
 	return ret;
 }
 
- bool platform_append_file(char const* path, uint8_t* data,
-								 size_t data_size) {
+bool platform_append_file(char const* path, uint8_t* data, size_t data_size) {
 	int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
 	if (fd < 0) return false;
 

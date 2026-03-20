@@ -1,13 +1,11 @@
 #include "arena_internal.h"
 
-#include <platform/platform.h>
 #include <allocators/arena.h>
 #include <common.h>
+#include <platform/platform.h>
 
-#include <unity.h>
-#include <allocators/arena.h>
 #include <string.h>
-
+#include <unity.h>
 
 void setUp(void) {
 	// set stuff up here
@@ -292,7 +290,7 @@ void test_arena_growing(void) {
 		TEST_ASSERT_EQUAL(0, arena_get_remaining(arena));
 		TEST_ASSERT_EQUAL(2048, arena_get_usage(arena));
 		TEST_ASSERT_EQUAL((size_t)impl->begin + 2040, (size_t)&arr[31].a[7]);
-		TEST_ASSERT_EQUAL(16384-2048, arena_get_growth_remaining(arena));
+		TEST_ASSERT_EQUAL(16384 - 2048, arena_get_growth_remaining(arena));
 	}
 
 	// Alloc some more. Should grow to match committed size:
@@ -308,7 +306,8 @@ void test_arena_growing(void) {
 		*last_addr = 71;
 		TEST_ASSERT_EQUAL(71, *last_addr);
 		TEST_ASSERT_EQUAL((size_t)impl->begin + 4024, (size_t)&arr2[30].a[7]);
-		TEST_ASSERT_EQUAL(16384-2048-1984, arena_get_growth_remaining(arena));
+		TEST_ASSERT_EQUAL(16384 - 2048 - 1984,
+						  arena_get_growth_remaining(arena));
 	}
 
 	// Commit one more page
@@ -330,7 +329,8 @@ void test_arena_growing(void) {
 		last_elem_off += 8 * 7;					   // 7 size_t
 		TEST_ASSERT_EQUAL((size_t)impl->begin + last_elem_off,
 						  (size_t)&arr3[31].a[7]);
-		TEST_ASSERT_EQUAL(16384-2048-1984-2048, arena_get_growth_remaining(arena));
+		TEST_ASSERT_EQUAL(16384 - 2048 - 1984 - 2048,
+						  arena_get_growth_remaining(arena));
 	}
 	arena_destroy(arena);
 }

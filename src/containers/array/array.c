@@ -68,7 +68,7 @@ bool _array_at(array_t* array, void** out, size_t index) {
 	return true;
 }
 
-bool _array_at_const(array_t* array, void const ** out, size_t index) {
+bool _array_at_const(array_t* array, void const** out, size_t index) {
 	if (!array || index >= _array_size(array)) {
 		LOG_ERR("array_at: invalid parameters");
 		return false;

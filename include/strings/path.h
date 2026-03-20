@@ -28,7 +28,8 @@ typedef string path;
  * - `/home/example/` -> `/home/example`
  *
  */
-LIB_EXPORT bool path_create(arena_t* arena, arena_t* scratch, string str, path* out);
+LIB_EXPORT bool path_create(arena_t* arena, arena_t* scratch, string str,
+							path* out);
 
 LIB_EXPORT bool path_is_absolute(path p);
 
@@ -38,7 +39,8 @@ LIB_EXPORT bool path_get_extension(path p, string* out);
 
 LIB_EXPORT bool path_get_stem(path p, string* out);
 
-LIB_EXPORT bool path_join(arena_t* arena, arena_t* scratch, path p1, path p2, path* out);
+LIB_EXPORT bool path_join(arena_t* arena, arena_t* scratch, path p1, path p2,
+						  path* out);
 
 LIB_EXPORT bool path_normalize(path* p, path* out);
 

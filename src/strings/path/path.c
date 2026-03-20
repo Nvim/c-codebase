@@ -56,8 +56,8 @@ bool path_create(arena_t* arena, arena_t* scratch, string str, path* out) {
 		return true;
 	}
 
-	queue_t* valid_components = queue_create(
-		scratch, string_array_size(slashes) + 1, sizeof(size_t));
+	queue_t* valid_components =
+		queue_create(scratch, string_array_size(slashes) + 1, sizeof(size_t));
 	if (!valid_components) {
 		LOG_ERR("path_create: couldn't create temp queue");
 		return false;

@@ -4,7 +4,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-LIB_EXPORT void log_out(FILE* stream, enum log_color color, char const* msg, ...) {
+LIB_EXPORT void log_out(FILE* stream, enum log_color color, char const* msg,
+						...) {
 	char log[LOG_MAX_LEN];
 
 	va_list arg_ptr;
