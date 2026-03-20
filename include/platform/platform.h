@@ -33,6 +33,18 @@ LIB_EXPORT void platform_destroy(void);
 LIB_EXPORT bool platform_init_graphics_api(graphics_api_type type,
 										   graphics_api_init_info* out);
 
+/**
+ * @brief Sleep for the given duration in ms.
+ *
+ */
+LIB_EXPORT void platform_sleep(double time_ms);
+
+/**
+ * @brief Get current time in milliseconds
+ *
+ */
+LIB_EXPORT double platform_get_time(void);
+
 /* ********************************[ MEMORY ]******************************** */
 
 LIB_EXPORT static size_t const MEMORY_GIB = 1024UL * 1024UL * 1024UL;

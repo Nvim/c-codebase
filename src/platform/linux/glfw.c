@@ -121,7 +121,8 @@ bool platform_window_should_close(window_t* window) {
 }
 
 void platform_destroy_window(window_t* window) {
-	glfwDestroyWindow((GLFWwindow*)window);
+	window_impl* w = (window_impl*)window;
+	glfwDestroyWindow(w->internal);
 }
 
 void platform_poll(void) {

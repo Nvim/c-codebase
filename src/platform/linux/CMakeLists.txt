@@ -2,6 +2,7 @@ target_sources(platform PRIVATE
 	memory.c
 	filesystem.c
 	glfw.c
+	time.c
 )
 target_link_libraries(platform PRIVATE compile_flags glfw)
 
