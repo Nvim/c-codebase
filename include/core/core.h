@@ -9,6 +9,7 @@
 #error "Unsupported compiler"
 #endif
 
+#define UNUSED __attribute__((unused))
 #define STATIC_ASSERT _Static_assert
 #define breakpoint() __builtin_trap()
 

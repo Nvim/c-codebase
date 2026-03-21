@@ -26,24 +26,34 @@ void on_error(int code, char const* description) {
 	LOG_ERR("[GLFW] Error %d: %s", code, description);
 }
 
+static key_action const key_act_types[] = {
+	INPUT_ACTION_PRESSED, INPUT_ACTION_RELEASED, INPUT_ACTION_HELD};
+
+static key_action const mouse_act_types[] = {INPUT_ACTION_PRESSED,
+											 INPUT_ACTION_RELEASED};
+
 static bool _init = false;
 static bool _key_state[INPUT_KEY_COUNT] = {0};
-// [TODO]: serialize whole frames someday
-static bool _prev_key_state[INPUT_KEY_COUNT] = {0};
+static bool _mouse_state[INPUT_BUTTON_COUNT] = {0};
 
 typedef struct key_cb_entry {
 	key_callback callbacks[INPUT_ACTION_COUNT];
 } key_cb_entry;
 
+typedef struct mouse_button_cb_entry {
+	mouse_button_callback callbacks[INPUT_ACTION_COUNT];
+} mouse_button_cb_entry;
+
 static key_cb_entry _key_callbacks[INPUT_KEY_COUNT] = {0};
+static mouse_button_cb_entry _mouse_button_callbacks[INPUT_KEY_COUNT] = {0};
 
 // [TODO]: Only needed for glfwSwapBuffers call. Remove when Vulkan is setup
 static GLFWwindow* _window = NULL;
 
 static void _key_callback(GLFWwindow* window, int key, int scancode, int action,
 						  int mods);
-static void mouse_button_callback(GLFWwindow* window, int button, int action,
-								  int mods);
+static void _mouse_button_callback(GLFWwindow* window, int button, int action,
+								   int mods);
 static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 static void cursor_position_callback(GLFWwindow* window, double xpos,
 									 double ypos);
@@ -79,7 +89,7 @@ window_t* platform_create_window(window_size size, char const* name) {
 		glfwCreateWindow(size.width, size.height, name, NULL, NULL);
 
 	glfwSetKeyCallback(window, _key_callback);
-	glfwSetMouseButtonCallback(window, mouse_button_callback);
+	glfwSetMouseButtonCallback(window, _mouse_button_callback);
 	glfwSetCursorPosCallback(window, cursor_position_callback);
 	glfwSetScrollCallback(window, scroll_callback);
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
@@ -124,29 +134,46 @@ void platform_destroy_window(window_t* window) {
 }
 
 void platform_poll(void) {
-	memcpy(_prev_key_state, _key_state, INPUT_KEY_COUNT);
 #if defined(CREATE_OPENGL_CONTEXT)
 	glfwSwapBuffers(_window);
 #endif
 	glfwPollEvents();
 }
 
-LIB_EXPORT void platform_register_key_callback(input_key key, key_action action,
-											   key_callback callback) {
+void platform_register_key_callback(input_key key, key_action action,
+									key_callback callback) {
 	ASSERT(_init);
 	key_cb_entry* entry = &_key_callbacks[key];
 	ASSERT(entry);
 
-	static key_action const act_types[] = {INPUT_ACTION_PRESSED,
-										   INPUT_ACTION_RELEASED, INPUT_ACTION_HELD};
 	for (int i = 0; i < 3; ++i) {
-		if (action & act_types[i]) {
-			if (entry->callbacks[act_types[i]]) {
+		if (action & key_act_types[i]) {
+			if (entry->callbacks[key_act_types[i]]) {
 				LOG_WARN("platform_register_key_callback: overriding an "
 						 "existing key "
 						 "callback");
 			}
-			entry->callbacks[act_types[i]] = callback;
+			entry->callbacks[key_act_types[i]] = callback;
+		}
+	}
+}
+
+void platform_register_mouse_button_callback(input_mouse_button button,
+											 key_action action,
+											 mouse_button_callback callback) {
+	ASSERT(_init);
+	mouse_button_cb_entry* entry = &_mouse_button_callbacks[button];
+	ASSERT(entry);
+
+	// [NOTE]: works because pressed and released are defined as 1 and 2
+	for (int i = 0; i < 2; ++i) {
+		if (action & mouse_act_types[i]) {
+			if (entry->callbacks[mouse_act_types[i]]) {
+				LOG_WARN(
+					"platform_register_mouse_button_callback: overriding an "
+					"existing button callback");
+			}
+			entry->callbacks[mouse_act_types[i]] = callback;
 		}
 	}
 }
@@ -181,52 +208,73 @@ bool platform_init_graphics_api(graphics_api_type type,
 	return true;
 }
 
-static void _key_callback(GLFWwindow* window, int key, int scancode, int action,
-						  int mods) {
-	(void)window;
-	(void)scancode;
-	(void)mods;
+static void _key_callback(GLFWwindow* window, int key, UNUSED int scancode,
+						  int action, UNUSED int mods) {
 	input_key translated = input_translate_internal_keycode(key);
 	key_cb_entry* e = NULL;
+	e = &_key_callbacks[translated];
 	switch (action) {
 	case GLFW_REPEAT:
 		LOG_DEBUG("key %d (GLFW %d) was repeated.", translated, key);
-		e = &_key_callbacks[translated];
 		if (e && e->callbacks[INPUT_ACTION_HELD]) {
-			e->callbacks[INPUT_ACTION_HELD](NULL);
+			e->callbacks[INPUT_ACTION_HELD]((window_t*)window, translated,
+											INPUT_ACTION_HELD);
 		}
 		break;
 	case GLFW_PRESS:
 		_key_state[translated] = true;
 		LOG_DEBUG("key %d (GLFW %d) was pressed.", translated, key);
-		e = &_key_callbacks[translated];
 		if (e && e->callbacks[INPUT_ACTION_PRESSED]) {
-			e->callbacks[INPUT_ACTION_PRESSED](NULL);
+			e->callbacks[INPUT_ACTION_PRESSED]((window_t*)window, translated,
+											   INPUT_ACTION_PRESSED);
 		}
 		break;
 	case GLFW_RELEASE:
 		_key_state[translated] = false;
 		LOG_DEBUG("key %d (GLFW %d) was released.", translated, key);
-		e = &_key_callbacks[translated];
 		if (e && e->callbacks[INPUT_ACTION_RELEASED]) {
-			e->callbacks[INPUT_ACTION_RELEASED](NULL);
+			e->callbacks[INPUT_ACTION_RELEASED]((window_t*)window, translated,
+												INPUT_ACTION_RELEASED);
 		}
 		break;
 	default: ASSERT(false); break;
 	}
 }
 
-static void mouse_button_callback(GLFWwindow* window, int button, int action,
-								  int mods) {
+static void _mouse_button_callback(GLFWwindow* window, int button, int action,
+								   int mods) {
 	(void)window;
 	(void)action;
 	(void)mods;
 	// TODO
-	switch (button) {
-	case GLFW_MOUSE_BUTTON_RIGHT: break;
-	case GLFW_MOUSE_BUTTON_LEFT: break;
-	case GLFW_MOUSE_BUTTON_MIDDLE: break;
-	}
+	input_mouse_button translated = input_translate_internal_button(button);
+	mouse_button_cb_entry* e = &_mouse_button_callbacks[translated];
+	switch (action) {
+	case GLFW_REPEAT:
+		LOG_DEBUG("button %d (GLFW %d) was repeated.", translated, button);
+		if (e && e->callbacks[INPUT_ACTION_HELD]) {
+			e->callbacks[INPUT_ACTION_HELD]((window_t*)window, translated,
+											INPUT_ACTION_HELD);
+		}
+		break;
+	case GLFW_PRESS:
+		_mouse_state[translated] = true;
+		LOG_DEBUG("button %d (GLFW %d) was pressed.", translated, button);
+		if (e && e->callbacks[INPUT_ACTION_PRESSED]) {
+			e->callbacks[INPUT_ACTION_PRESSED]((window_t*)window, translated,
+											   INPUT_ACTION_PRESSED);
+		}
+		break;
+	case GLFW_RELEASE:
+		_mouse_state[translated] = false;
+		LOG_DEBUG("button %d (GLFW %d) was released.", translated, button);
+		if (e && e->callbacks[INPUT_ACTION_RELEASED]) {
+			e->callbacks[INPUT_ACTION_RELEASED]((window_t*)window, translated,
+												INPUT_ACTION_RELEASED);
+		}
+		break;
+	default: ASSERT(false); break;
+	};
 }
 
 static void cursor_position_callback(GLFWwindow* window, double xpos,

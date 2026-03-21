@@ -180,9 +180,9 @@ LIB_EXPORT void platform_destroy_window(window_t* window);
  */
 LIB_EXPORT void platform_poll(void);
 
-// [TODO]: forward keycode and window as args:
-typedef void (*key_callback)(void*);
-
+/**
+ * @note: Only INPUT_ACTION_PRESSED and INPUT_ACTION_RELEASED are supported.
+ */
 typedef enum key_action {
 	INPUT_ACTION_PRESSED = 1 << 0,
 	INPUT_ACTION_RELEASED = 1 << 1,
@@ -190,8 +190,40 @@ typedef enum key_action {
 	INPUT_ACTION_COUNT = 1 << 3,
 } key_action;
 
-// [TODO]: take window as arg:
+typedef void (*key_callback)(window_t* window, input_key key,
+							 key_action action);
+
+typedef void (*mouse_button_callback)(window_t* window,
+									  input_mouse_button button,
+									  key_action action);
+
+// [TODO]: Callbacks should take window as arg
+
+/**
+ * @brief Register a callback to run for the given key/action combinaison.
+ *
+ * @param key The keyboard key to register the callback for.
+ * @param action The key action(s) to register the callback for. It's possible
+ * to stack multiple actions using bitwise ORs
+ * @param callback The callback function to run when key/action are hit.
+ */
 LIB_EXPORT void platform_register_key_callback(input_key key, key_action action,
 											   key_callback callback);
+
+/**
+ * @brief Register a callback to run for the given mouse button/action
+ * combinaison.
+ *
+ * @param button The mouse button to register the callback for.
+ * @param action The key action(s) to register the callback for. It's possible
+ * to stack multiple actions using bitwise ORs.
+ * @param callback The callback function to run when button/action are hit.
+ *
+ * @note: Only INPUT_ACTION_PRESSED and INPUT_ACTION_RELEASED are supported.
+ */
+LIB_EXPORT void
+platform_register_mouse_button_callback(input_mouse_button button,
+										key_action action,
+										mouse_button_callback callback);
 
 #endif

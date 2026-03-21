@@ -6,15 +6,32 @@
 
 static bool _quit = false;
 
-void press_callback(void* _) { LOG_WARN("quitting when you release"); }
-void release_callback(void* _) {
+void press_callback(UNUSED window_t* w, UNUSED input_key key,
+					UNUSED key_action action) {
+	LOG_WARN("quitting when you release");
+}
+void release_callback(UNUSED window_t* w, UNUSED input_key key,
+					  UNUSED key_action action) {
 	LOG_WARN("quitting in 3 seconds");
 	platform_sleep(3000);
 	_quit = true;
 }
 
-void all_action_callback(void* _) {
+void all_action_callback(UNUSED window_t* w, UNUSED input_key key,
+						 UNUSED key_action action) {
 	LOG_INFO("hey look it's the same message");
+}
+
+void mouse_btn_callback(UNUSED window_t* w, UNUSED input_mouse_button btn,
+						UNUSED key_action action) {
+	char const* act = NULL;
+	switch (action) {
+	case INPUT_ACTION_HELD: act = "held"; break;
+	case INPUT_ACTION_PRESSED: act = "pressed"; break;
+	case INPUT_ACTION_RELEASED: act = "released"; break;
+	default: break;
+	}
+	LOG_INFO("[main]: button %d was %s", btn, act);
 }
 
 static double const TARGET_FRAMETIME = (1 / 60.f) * 1000.f;
@@ -34,6 +51,10 @@ int main(void) {
 								   INPUT_ACTION_RELEASED | INPUT_ACTION_HELD |
 									   INPUT_ACTION_PRESSED,
 								   all_action_callback);
+
+	platform_register_mouse_button_callback(
+		INPUT_BUTTON_LEFT_CLICK, INPUT_ACTION_PRESSED | INPUT_ACTION_RELEASED,
+		mouse_btn_callback);
 
 	double t_prev = platform_get_time();
 	double delta = 0.0f;

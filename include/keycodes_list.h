@@ -124,4 +124,9 @@
 	X(RIGHT_SUPER)                                                             \
 	X(MENU)
 
+#define INPUT_BUTTON_LIST                                                      \
+	X(LEFT_CLICK)                                                              \
+	X(RIGHT_CLICK)                                                             \
+	X(MIDDLE_CLICK)
+
 #endif // !KEYCODES_LIST_H
