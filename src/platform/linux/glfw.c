@@ -16,7 +16,7 @@
 #include <string.h>
 
 // Temporary debug flag so I can see a window before getting Vulkan working
-#define CREATE_OPENGL_CONTEXT 1
+// #define CREATE_OPENGL_CONTEXT 1
 
 typedef struct window_impl {
 	GLFWwindow* internal;
@@ -48,7 +48,9 @@ static key_cb_entry _key_callbacks[INPUT_KEY_COUNT] = {0};
 static mouse_button_cb_entry _mouse_button_callbacks[INPUT_KEY_COUNT] = {0};
 
 // [TODO]: Only needed for glfwSwapBuffers call. Remove when Vulkan is setup
+#if defined(CREATE_OPENGL_CONTEXT)
 static GLFWwindow* _window = NULL;
+#endif
 
 static void _key_callback(GLFWwindow* window, int key, int scancode, int action,
 						  int mods);
@@ -180,9 +182,8 @@ void platform_register_mouse_button_callback(input_mouse_button button,
 
 static VkSurfaceKHR _create_vk_surface(window_t* window, VkInstance instance);
 
-// bool platform_init_graphics_api(graphics_api_type type, graphics_api* out) {
-bool platform_init_graphics_api(graphics_api_type type,
-								graphics_api_init_info* out) {
+bool platform_init_graphics_api(gpu_api_type type,
+								gpu_api_platform_init_info* out) {
 	if (type != GRAPHICS_API_VULKAN) { return false; }
 
 	if (glfwVulkanSupported() != GLFW_TRUE) { return false; }

@@ -23,6 +23,7 @@ LIB_EXPORT bool platform_init(void);
  */
 LIB_EXPORT void platform_destroy(void);
 
+typedef struct gpu_api_platform_init_info gpu_api_platform_init_info;
 /**
  * @brief Get initialization info for a graphics API
  *
@@ -30,8 +31,8 @@ LIB_EXPORT void platform_destroy(void);
  * @param out The info struct to fill. Will be casted to according type
  * @return False if platform isn't supported or on graphics API error.
  */
-LIB_EXPORT bool platform_init_graphics_api(graphics_api_type type,
-										   graphics_api_init_info* out);
+LIB_EXPORT bool platform_init_graphics_api(gpu_api_type type,
+										   gpu_api_platform_init_info* out);
 
 /**
  * @brief Sleep for the given duration in ms.

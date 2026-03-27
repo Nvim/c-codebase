@@ -86,5 +86,6 @@ add_subdirectory(src/allocators)
 add_subdirectory(src/containers)
 add_subdirectory(src/strings)
 add_subdirectory(src/filesystem)
+add_subdirectory(src/graphics)
 
 add_subdirectory(runtime)

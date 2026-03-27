@@ -5,3 +5,11 @@ target_link_libraries(main PUBLIC
 	core
 )
 
+add_executable(vk vk.c)
+target_link_libraries(vk PUBLIC
+	compile_flags
+	platform
+	core
+	graphics
+)
+
