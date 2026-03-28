@@ -4,15 +4,15 @@
  *
  * @note Platform init and shutdown are also handled here
  */
+#include <vulkan/vulkan.h>
+
 #include "input.h"
 
 #include <core/core.h>
 #include <graphics/vulkan_init_info.h>
 #include <platform/platform.h>
 
-#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
-
 #include <string.h>
 
 // Temporary debug flag so I can see a window before getting Vulkan working

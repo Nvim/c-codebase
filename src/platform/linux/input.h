@@ -1,7 +1,6 @@
 #include <keycodes.h>
 #include <keycodes_list.h>
 
-#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
 input_key input_translate_internal_keycode(int key) {
