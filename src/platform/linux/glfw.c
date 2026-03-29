@@ -205,6 +205,7 @@ bool platform_init_graphics_api(gpu_api_type type,
 		required_instance_extensions_count;
 
 	ret->create_surface = _create_vk_surface;
+	ret->can_device_queue_present = glfwGetPhysicalDevicePresentationSupport;
 
 	return true;
 }

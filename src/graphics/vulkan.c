@@ -9,8 +9,8 @@
 #include <core/core.h>
 #include <graphics/graphics.h>
 
-#include <GLFW/glfw3.h>
 #include <string.h>
+#include <vma/vk_mem_alloc.h>
 
 ARRAY_DEFINE_TYPE(VkPhysicalDevice, physical_device_array)
 ARRAY_DEFINE_TYPE(VkQueueFamilyProperties2, qf_props_array)
@@ -24,6 +24,7 @@ static inline bool check_result(VkResult result) {
 }
 
 typedef struct vk_api_state {
+	vulkan_init_info pf_init_info;
 	VkInstance instance;
 
 	VkPhysicalDevice physical_device;
@@ -31,6 +32,10 @@ typedef struct vk_api_state {
 	VkPhysicalDeviceProperties2 device_props;
 
 	VkDevice device;
+	VmaAllocator allocator;
+
+	VkSurfaceKHR surface;
+	VkSurfaceCapabilitiesKHR surface_caps;
 
 } vk_api_state;
 
@@ -67,11 +72,10 @@ static bool has_device_exts(VkPhysicalDevice dev, arena_t* scratch) {
 	return false;
 }
 
-static bool can_present(VkInstance instance, VkPhysicalDevice dev,
-						uint32_t queue_family_idx) {
-	return glfwGetPhysicalDevicePresentationSupport(
-			   instance, dev, queue_family_idx) == GLFW_TRUE;
-}
+// static bool can_present(vulkan_init_info* init_info, VkInstance instance,
+// 						VkPhysicalDevice dev, uint32_t queue_family_idx) {
+// 	return init_info->can_device_queue_present(instance, dev, queue_family_idx);
+// }
 
 // Returns index of the first queue family with graphics and compute
 // capabilities
@@ -88,6 +92,11 @@ static uint32_t vk_get_queue_family(VkPhysicalDevice dev, arena_t* scratch) {
 	qf_props_array props_arr = qf_props_array_create(scratch, qf_count);
 	ASSERT(props_arr.raw);
 	VkQueueFamilyProperties2* qf_props = qf_props_array_begin(props_arr);
+
+	// Validation layers complain if sType aren't initialized:
+	for (size_t i = 0; i < qf_count; ++i) {
+		qf_props[i].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2;
+	}
 
 	// Get the props:
 	vkGetPhysicalDeviceQueueFamilyProperties2(dev, &qf_count, qf_props);
@@ -121,7 +130,8 @@ typedef struct vk_find_device_result {
  * fallback to an iGPU. If none if available, fails
  *
  */
-static vk_find_device_result vk_find_device(VkInstance instance,
+static vk_find_device_result vk_find_device(vulkan_init_info* pf_info,
+											VkInstance instance,
 											arena_t* scratch) {
 	vk_find_device_result ret = {0};
 	uint32_t device_count = 0;
@@ -147,7 +157,7 @@ static vk_find_device_result vk_find_device(VkInstance instance,
 		uint32_t qf = vk_get_queue_family(dev[i], scratch);
 		if (qf == UINT32_MAX) { continue; }
 
-		if (!can_present(instance, dev[i], qf) ||
+		if (!pf_info->can_device_queue_present(instance, dev[i], qf) ||
 			!has_device_exts(dev[i], scratch)) {
 			LOG_DEBUG("device `%s` can't present",
 					  device_props.properties.deviceName);
@@ -175,55 +185,8 @@ static vk_find_device_result vk_find_device(VkInstance instance,
 	return ret;
 }
 
-void vulkan_initialize(gpu_api* self, gpu_api_platform_init_info* platform_info,
-					   arena_t* arena, arena_t* scratch) {
-	if (!self || !arena || !scratch || !platform_info) {
-		LOG_ERR("vulkan_initialize: invalid parameters");
-		return;
-	}
-
-	vk_api_state* state = arena_push(arena, vk_api_state);
-	if (!state) {
-		LOG_ERR("vulkan_initialize: couldn't allocate state");
-		ASSERT(false);
-		return;
-	}
-
-	// Instance:
-	VkInstance instance;
-	{
-		VkApplicationInfo app_ci = {0};
-		{
-			app_ci.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-			app_ci.pApplicationName = self->name;
-			app_ci.apiVersion = VK_API_VERSION_1_4;
-		}
-
-		vulkan_init_info* vk_init_info = (vulkan_init_info*)platform_info;
-		ASSERT(vk_init_info->required_instance_extensions_count);
-
-		VkInstanceCreateInfo instance_ci = {0};
-		{
-			instance_ci.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-			instance_ci.pApplicationInfo = &app_ci;
-			instance_ci.enabledExtensionCount =
-				vk_init_info->required_instance_extensions_count;
-			instance_ci.ppEnabledExtensionNames =
-				vk_init_info->required_instance_extensions;
-		}
-
-		check_result(vkCreateInstance(&instance_ci, NULL, &instance));
-		ASSERT(instance);
-	}
-
-	// Physical Device:
-	vk_find_device_result dev_result = vk_find_device(instance, scratch);
-	if (!dev_result.found) {
-		ASSERT(false);
-		return;
-	}
-
-	// Logical Device:
+VkDevice vk_create_device(VkPhysicalDevice physical_device,
+						  uint32_t queue_idx) {
 	VkPhysicalDeviceVulkan12Features vk_12_features = {0};
 	{
 		vk_12_features.sType =
@@ -250,12 +213,11 @@ void vulkan_initialize(gpu_api* self, gpu_api_platform_init_info* platform_info,
 	VkDeviceQueueCreateInfo queue_ci = {0};
 	{
 		queue_ci.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-		queue_ci.queueFamilyIndex = dev_result.queue_index;
+		queue_ci.queueFamilyIndex = queue_idx;
 		queue_ci.queueCount = 1;
 		queue_ci.pQueuePriorities = &qfpriorities;
 	}
 
-	VkDevice device;
 	VkDeviceCreateInfo device_ci = {0};
 	{
 		device_ci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -266,14 +228,117 @@ void vulkan_initialize(gpu_api* self, gpu_api_platform_init_info* platform_info,
 		device_ci.ppEnabledExtensionNames = required_exts;
 		device_ci.pEnabledFeatures = &vk_10_features;
 	}
-	check_result(vkCreateDevice(dev_result.device, &device_ci, NULL, &device));
 
-	{ // Setup state
+	VkDevice device = NULL;
+	check_result(vkCreateDevice(physical_device, &device_ci, NULL, &device));
+	return device;
+}
+
+void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
+					   arena_t* scratch) {
+	if (!self || !arena || !scratch) {
+		LOG_ERR("vulkan_initialize: invalid parameters");
+		return;
+	}
+
+	vk_api_state* state = arena_push(arena, vk_api_state);
+	if (!state) {
+		LOG_ERR("vulkan_initialize: couldn't allocate state");
+		ASSERT(false);
+		return;
+	}
+
+	{
+		vulkan_init_info vk_pf_info = {0};
+		if (!platform_init_graphics_api(
+				GRAPHICS_API_VULKAN,
+				(gpu_api_platform_init_info*)&vk_pf_info)) {
+			LOG_ERR("vulkan_initialize: couldn't init platform for vulkan");
+			ASSERT(false);
+			return;
+		};
+		ASSERT(vk_pf_info.required_instance_extensions_count);
+		state->pf_init_info = vk_pf_info;
+	}
+
+	// Instance:
+	{
+		VkInstance instance;
+		VkApplicationInfo app_ci = {0};
+		{
+			app_ci.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+			app_ci.pApplicationName = self->name;
+			app_ci.apiVersion = VK_API_VERSION_1_4;
+		}
+
+		VkInstanceCreateInfo instance_ci = {0};
+		{
+			instance_ci.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+			instance_ci.pApplicationInfo = &app_ci;
+			instance_ci.enabledExtensionCount =
+				state->pf_init_info.required_instance_extensions_count;
+			instance_ci.ppEnabledExtensionNames =
+				state->pf_init_info.required_instance_extensions;
+		}
+
+		check_result(vkCreateInstance(&instance_ci, NULL, &instance));
+		ASSERT(instance);
 		state->instance = instance;
+	}
+
+	// Physical Device:
+	{
+		vk_find_device_result dev_result =
+			vk_find_device(&state->pf_init_info, state->instance, scratch);
+		if (!dev_result.found) {
+			ASSERT(false);
+			return;
+		}
 		state->physical_device = dev_result.device;
 		state->queue_family_idx = dev_result.queue_index;
 		state->device_props = dev_result.device_props;
+	}
+
+	// Logical Device:
+	{
+		VkDevice device =
+			vk_create_device(state->physical_device, state->queue_family_idx);
+		if (!device) {
+			ASSERT(false);
+			return;
+		}
 		state->device = device;
+	}
+
+	// VMA:
+	{
+		VmaVulkanFunctions vk_funcs = {
+			.vkGetInstanceProcAddr = vkGetInstanceProcAddr,
+			.vkGetDeviceProcAddr = vkGetDeviceProcAddr,
+			.vkCreateImage = vkCreateImage,
+		};
+		VmaAllocatorCreateInfo alloc_ci = {
+			.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+			.physicalDevice = state->physical_device,
+			.device = state->device,
+			.pVulkanFunctions = &vk_funcs,
+			.instance = state->instance,
+		};
+
+		VmaAllocator allocator;
+		check_result(vmaCreateAllocator(&alloc_ci, &allocator));
+		state->allocator = allocator;
+	}
+
+	// Surface:
+	{
+		VkSurfaceKHR surface =
+			state->pf_init_info.create_surface(window, state->instance);
+		ASSERT(surface);
+		state->surface = surface;
+
+		check_result(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+			state->physical_device, surface, &state->surface_caps));
 	}
 
 	{
@@ -286,8 +351,26 @@ void vulkan_initialize(gpu_api* self, gpu_api_platform_init_info* platform_info,
 			  state->queue_family_idx);
 }
 
-bool gpu_create_api(gpu_api_config config, gpu_api* out, arena_t* scratch) {
-	if (!out || !scratch) {
+void vulkan_destroy(struct gpu_api* self) {
+	if (!self) {
+		LOG_ERR("vulkan_destroy: invalid instance");
+		return;
+	}
+	if (!self->is_init || !self->state) { return; }
+
+	vk_api_state* state = self->state;
+
+	{
+		vkDestroySurfaceKHR(state->instance, state->surface, NULL);
+		vmaDestroyAllocator(state->allocator);
+		vkDestroyDevice(state->device, NULL);
+		vkDestroyInstance(state->instance, NULL);
+	}
+	LOG_DEBUG("vulkan_destroy: destroyed vulkan api");
+}
+
+bool gpu_create_api(gpu_api_config config, gpu_api* out) {
+	if (!out) {
 		LOG_ERR("gpu_create_api: invalid parameters");
 		return false;
 	}
@@ -298,6 +381,7 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out, arena_t* scratch) {
 		out->is_init = false;
 		out->name = config.app_name;
 		out->initialize = vulkan_initialize;
+		out->destroy = vulkan_destroy;
 	}
 
 	return true;

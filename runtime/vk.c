@@ -2,7 +2,6 @@
 #include <core/log.h>
 #include <platform/platform.h>
 
-#include "vulkan_init_info.h"
 #include <graphics/graphics.h>
 #include <limits.h>
 
@@ -28,17 +27,13 @@ int main(void) {
 		gpu_ci.type = GRAPHICS_API_VULKAN;
 	}
 
-	ASSERT(gpu_create_api(gpu_ci, &gpu, scratch.arena));
-
-	vulkan_init_info vk_init_info;
-	gpu_api_platform_init_info* info =
-		(gpu_api_platform_init_info*)&vk_init_info;
-	platform_init_graphics_api(GRAPHICS_API_VULKAN, info);
-
-	gpu.initialize(&gpu, info, arena, scratch.arena);
+	ASSERT(gpu_create_api(gpu_ci, &gpu));
+	gpu.initialize(&gpu, win, arena, scratch.arena);
 	ASSERT(gpu.is_init);
 
 	arena_clear_scratch(scratch);
+
+	gpu.destroy(&gpu);
 
 	// platform_destroy();
 	return 0;
