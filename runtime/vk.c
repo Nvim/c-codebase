@@ -23,7 +23,7 @@ int main(void) {
 	{
 		gpu_ci.app_name = "please work";
 		gpu_ci.frames_in_flight = 2;
-		gpu_ci.target_image_format = IMAGE_FORMAT_RGB;
+		gpu_ci.target_image_format = IMAGE_FORMAT_RGBA_SRGB;
 		gpu_ci.type = GRAPHICS_API_VULKAN;
 	}
 

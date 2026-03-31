@@ -8,6 +8,8 @@
 
 #include <stddef.h>
 
+#define CLAMP(x, min, max) ((x) < (min) ? (min) : ((x) > (max) ? (max) : (x)))
+
 inline size_t next_power_of_two(size_t n) {
 	n--;
 	n |= n >> 1;

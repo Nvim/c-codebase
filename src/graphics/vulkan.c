@@ -23,6 +23,8 @@ static inline bool check_result(VkResult result) {
 	return ret;
 }
 
+#define MAX_SWAPCHAIN_IMAGES 8
+
 typedef struct vk_api_state {
 	vulkan_init_info pf_init_info;
 	VkInstance instance;
@@ -37,7 +39,26 @@ typedef struct vk_api_state {
 	VkSurfaceKHR surface;
 	VkSurfaceCapabilitiesKHR surface_caps;
 
+	VkSwapchainKHR swapchain;
+	VkImage swapchain_imgs[MAX_SWAPCHAIN_IMAGES];
+	uint32_t swapchain_img_count;
+	VkFormat rendertarget_format;
+	// VkExtent2D swapchain_extents; // surface_caps.extent ?
+
 } vk_api_state;
+
+static VkFormat to_vk_format(gpu_image_format f) {
+	switch (f) {
+	case IMAGE_FORMAT_RGBA_UNORM: return VK_FORMAT_R8G8B8A8_UNORM;
+	case IMAGE_FORMAT_RGBA_SNORM: return VK_FORMAT_R8G8B8A8_SNORM;
+	case IMAGE_FORMAT_RGBA_SRGB: return VK_FORMAT_R8G8B8A8_SRGB;
+
+	case IMAGE_FORMAT_RGB_UNORM: return VK_FORMAT_R8G8B8_UNORM;
+	case IMAGE_FORMAT_RGB_SNORM: return VK_FORMAT_R8G8B8_SNORM;
+	case IMAGE_FORMAT_RGB_SRGB: return VK_FORMAT_R8G8B8_SRGB;
+	default: ASSERT(false); return VK_FORMAT_R8G8B8_UNORM;
+	}
+}
 
 static bool is_vk_13(VkPhysicalDeviceProperties2 props) {
 	return props.properties.apiVersion >= VK_API_VERSION_1_3;
@@ -70,6 +91,37 @@ static bool has_device_exts(VkPhysicalDevice dev, arena_t* scratch) {
 		}
 	}
 	return false;
+}
+
+// [NOTE]: used for inital creation, and re-creation
+static bool create_swapchain(vk_api_state* state, uint32_t width,
+							 uint32_t height) {
+	// Refresh surface capabilities in case resized
+	check_result(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+		state->physical_device, state->surface, &state->surface_caps));
+
+	VkExtent2D sc_extent = state->surface_caps.currentExtent;
+	if (state->surface_caps.currentExtent.width == 0xFFFFFFFF) {
+		sc_extent = (VkExtent2D){.width = width, .height = height};
+	}
+
+	VkSwapchainCreateInfoKHR sc_ci = {
+		.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+		.surface = state->surface,
+		.minImageCount = state->swapchain_img_count,
+		.imageFormat = state->rendertarget_format,
+		.imageColorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR,
+		.imageExtent = sc_extent,
+		.imageArrayLayers = 1,
+		.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+		.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+		.compositeAlpha =
+			VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,	// TODO: from config
+		.presentMode = VK_PRESENT_MODE_FIFO_KHR // TODO: from config
+	};
+
+	return check_result(
+		vkCreateSwapchainKHR(state->device, &sc_ci, NULL, &state->swapchain));
 }
 
 // static bool can_present(vulkan_init_info* init_info, VkInstance instance,
@@ -248,6 +300,9 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		return;
 	}
 
+	// Auto-zeroing arena can be toggled off, so let's be pedantic
+	memset(state, 0, sizeof(*state));
+
 	{
 		vulkan_init_info vk_pf_info = {0};
 		if (!platform_init_graphics_api(
@@ -339,6 +394,34 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 
 		check_result(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
 			state->physical_device, surface, &state->surface_caps));
+
+		// Buffering setup:
+		uint32_t buffering = self->config.frames_in_flight;
+		uint32_t sc_min = state->surface_caps.minImageCount;
+		uint32_t sc_max = state->surface_caps.maxImageCount;
+
+		if (sc_max < buffering) {
+			LOG_ERR("vulkan_initialize: required frames_in_flight is above "
+					"swapchain buffering limit");
+			return;
+		}
+
+		// [NOTE]: More images than buffering is allowed. We can double-buffer
+		// with 4 swapchain images, no problem.
+
+		state->swapchain_img_count = CLAMP(buffering, sc_min, sc_max);
+	}
+
+	// Swapchain:
+	{
+		window_size win_size = platform_get_window_size(window);
+		state->rendertarget_format =
+			to_vk_format(self->config.target_image_format);
+
+		if (!create_swapchain(state, win_size.width, win_size.height)) {
+			LOG_ERR("vulkan_initialize: couldn't create swapchain");
+			return;
+		}
 	}
 
 	{
@@ -361,9 +444,12 @@ void vulkan_destroy(struct gpu_api* self) {
 	vk_api_state* state = self->state;
 
 	{
-		vkDestroySurfaceKHR(state->instance, state->surface, NULL);
-		vmaDestroyAllocator(state->allocator);
-		vkDestroyDevice(state->device, NULL);
+		if (state->device) {
+			vkDestroySwapchainKHR(state->device, state->swapchain, NULL);
+			vkDestroySurfaceKHR(state->instance, state->surface, NULL);
+			vmaDestroyAllocator(state->allocator);
+			vkDestroyDevice(state->device, NULL);
+		}
 		vkDestroyInstance(state->instance, NULL);
 	}
 	LOG_DEBUG("vulkan_destroy: destroyed vulkan api");

@@ -11,8 +11,13 @@
 typedef struct window_t window_t;
 
 typedef enum gpu_image_format {
-	IMAGE_FORMAT_RGBA,
-	IMAGE_FORMAT_RGB,
+	IMAGE_FORMAT_RGBA_UNORM,
+	IMAGE_FORMAT_RGBA_SNORM,
+	IMAGE_FORMAT_RGBA_SRGB,
+	IMAGE_FORMAT_RGB_UNORM,
+	IMAGE_FORMAT_RGB_SNORM,
+	IMAGE_FORMAT_RGB_SRGB,
+	// TODO: add 16 & 32 bit HDR and depth formats
 } gpu_image_format;
 
 typedef struct gpu_api_config {
@@ -20,6 +25,9 @@ typedef struct gpu_api_config {
 	char const* app_name;
 	uint32_t frames_in_flight;
 	gpu_image_format target_image_format;
+	// TODO: depth format
+	// TODO: alpha blending
+	// TODO: vsync mode
 } gpu_api_config;
 
 /**
@@ -33,8 +41,9 @@ typedef struct gpu_api {
 	gpu_api_type type;
 	bool is_init;
 	char const* name;
-	gpu_api_platform_init_info* pf_info;
-	void* state; // Allocated on arena by `initialize`
+	gpu_api_config config;
+	gpu_api_platform_init_info* pf_info; // Allocated on arena by `initialize`
+	void* state;						 // Allocated on arena by `initialize`
 
 	void (*initialize)(struct gpu_api* self, window_t* window, arena_t* arena,
 					   arena_t* scratch);
