@@ -20,6 +20,11 @@ typedef enum gpu_image_format {
 	// TODO: add 16 & 32 bit HDR and depth formats
 } gpu_image_format;
 
+typedef struct {
+	uint32_t width;
+	uint32_t height;
+} gpu_image_extent;
+
 typedef struct gpu_api_config {
 	gpu_api_type type;
 	char const* app_name;

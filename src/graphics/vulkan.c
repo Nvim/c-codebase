@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.h>
 
 #include "vulkan_init_info.h"
+#include "vulkan_internal.h"
 
 #include <containers/array.h>
 #include <core/core.h>
@@ -12,40 +13,9 @@
 #include <string.h>
 #include <vma/vk_mem_alloc.h>
 
-ARRAY_DEFINE_TYPE(VkPhysicalDevice, physical_device_array)
-ARRAY_DEFINE_TYPE(VkQueueFamilyProperties2, qf_props_array)
-ARRAY_DEFINE_TYPE(VkExtensionProperties, ext_props_array)
-
-// [TODO]: Could be nicer idk
-static inline bool check_result(VkResult result) {
-	bool ret = result == VK_SUCCESS;
-	ASSERT(ret);
-	return ret;
-}
-
-#define MAX_SWAPCHAIN_IMAGES 8
-
-typedef struct vk_api_state {
-	vulkan_init_info pf_init_info;
-	VkInstance instance;
-
-	VkPhysicalDevice physical_device;
-	uint32_t queue_family_idx;
-	VkPhysicalDeviceProperties2 device_props;
-
-	VkDevice device;
-	VmaAllocator allocator;
-
-	VkSurfaceKHR surface;
-	VkSurfaceCapabilitiesKHR surface_caps;
-
-	VkSwapchainKHR swapchain;
-	VkImage swapchain_imgs[MAX_SWAPCHAIN_IMAGES];
-	uint32_t swapchain_img_count;
-	VkFormat rendertarget_format;
-	// VkExtent2D swapchain_extents; // surface_caps.extent ?
-
-} vk_api_state;
+ARRAY_DEFINE_TYPE(VkPhysicalDevice, vk_physical_device_array)
+ARRAY_DEFINE_TYPE(VkQueueFamilyProperties2, vk_qf_props_array)
+ARRAY_DEFINE_TYPE(VkExtensionProperties, vk_ext_props_array)
 
 static VkFormat to_vk_format(gpu_image_format f) {
 	switch (f) {
@@ -77,10 +47,10 @@ static bool has_device_exts(VkPhysicalDevice dev, arena_t* scratch) {
 	check_result(
 		vkEnumerateDeviceExtensionProperties(dev, NULL, &ext_count, NULL));
 
-	ext_props_array arr = ext_props_array_create(scratch, ext_count);
+	vk_ext_props_array arr = vk_ext_props_array_create(scratch, ext_count);
 	assert(arr.raw);
 
-	VkExtensionProperties* props = ext_props_array_begin(arr);
+	VkExtensionProperties* props = vk_ext_props_array_begin(arr);
 	check_result(
 		vkEnumerateDeviceExtensionProperties(dev, NULL, &ext_count, props));
 
@@ -92,42 +62,6 @@ static bool has_device_exts(VkPhysicalDevice dev, arena_t* scratch) {
 	}
 	return false;
 }
-
-// [NOTE]: used for inital creation, and re-creation
-static bool create_swapchain(vk_api_state* state, uint32_t width,
-							 uint32_t height) {
-	// Refresh surface capabilities in case resized
-	check_result(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-		state->physical_device, state->surface, &state->surface_caps));
-
-	VkExtent2D sc_extent = state->surface_caps.currentExtent;
-	if (state->surface_caps.currentExtent.width == 0xFFFFFFFF) {
-		sc_extent = (VkExtent2D){.width = width, .height = height};
-	}
-
-	VkSwapchainCreateInfoKHR sc_ci = {
-		.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-		.surface = state->surface,
-		.minImageCount = state->swapchain_img_count,
-		.imageFormat = state->rendertarget_format,
-		.imageColorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR,
-		.imageExtent = sc_extent,
-		.imageArrayLayers = 1,
-		.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-		.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
-		.compositeAlpha =
-			VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,	// TODO: from config
-		.presentMode = VK_PRESENT_MODE_FIFO_KHR // TODO: from config
-	};
-
-	return check_result(
-		vkCreateSwapchainKHR(state->device, &sc_ci, NULL, &state->swapchain));
-}
-
-// static bool can_present(vulkan_init_info* init_info, VkInstance instance,
-// 						VkPhysicalDevice dev, uint32_t queue_family_idx) {
-// 	return init_info->can_device_queue_present(instance, dev, queue_family_idx);
-// }
 
 // Returns index of the first queue family with graphics and compute
 // capabilities
@@ -141,9 +75,9 @@ static uint32_t vk_get_queue_family(VkPhysicalDevice dev, arena_t* scratch) {
 	LOG_DEBUG("vulkan_initialize: enumerating %zu qf properties", qf_count);
 
 	// Create array with the right size:
-	qf_props_array props_arr = qf_props_array_create(scratch, qf_count);
+	vk_qf_props_array props_arr = vk_qf_props_array_create(scratch, qf_count);
 	ASSERT(props_arr.raw);
-	VkQueueFamilyProperties2* qf_props = qf_props_array_begin(props_arr);
+	VkQueueFamilyProperties2* qf_props = vk_qf_props_array_begin(props_arr);
 
 	// Validation layers complain if sType aren't initialized:
 	for (size_t i = 0; i < qf_count; ++i) {
@@ -189,14 +123,14 @@ static vk_find_device_result vk_find_device(vulkan_init_info* pf_info,
 	uint32_t device_count = 0;
 	check_result(vkEnumeratePhysicalDevices(instance, &device_count, NULL));
 
-	physical_device_array arr = physical_device_array_create(scratch, 16);
+	vk_physical_device_array arr = vk_physical_device_array_create(scratch, 16);
 	if (!arr.raw) { return ret; }
-	check_result(vkEnumeratePhysicalDevices(instance, &device_count,
-											physical_device_array_begin(arr)));
+	check_result(vkEnumeratePhysicalDevices(
+		instance, &device_count, vk_physical_device_array_begin(arr)));
 
 	LOG_DEBUG("vulkan_initialize: %zu physical devices", device_count);
 
-	VkPhysicalDevice* dev = physical_device_array_begin(arr);
+	VkPhysicalDevice* dev = vk_physical_device_array_begin(arr);
 	VkPhysicalDeviceProperties2 device_props = {
 		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
 	size_t i = 0;
@@ -389,27 +323,11 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	{
 		VkSurfaceKHR surface =
 			state->pf_init_info.create_surface(window, state->instance);
-		ASSERT(surface);
-		state->surface = surface;
-
-		check_result(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-			state->physical_device, surface, &state->surface_caps));
-
-		// Buffering setup:
-		uint32_t buffering = self->config.frames_in_flight;
-		uint32_t sc_min = state->surface_caps.minImageCount;
-		uint32_t sc_max = state->surface_caps.maxImageCount;
-
-		if (sc_max < buffering) {
-			LOG_ERR("vulkan_initialize: required frames_in_flight is above "
-					"swapchain buffering limit");
+		if (!vk_surface_create(&state->surface, state->physical_device,
+							   surface)) {
+			LOG_ERR("vulkan_initialize: couldn't create surface");
 			return;
 		}
-
-		// [NOTE]: More images than buffering is allowed. We can double-buffer
-		// with 4 swapchain images, no problem.
-
-		state->swapchain_img_count = CLAMP(buffering, sc_min, sc_max);
 	}
 
 	// Swapchain:
@@ -418,10 +336,30 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		state->rendertarget_format =
 			to_vk_format(self->config.target_image_format);
 
-		if (!create_swapchain(state, win_size.width, win_size.height)) {
+		// Buffering setup:
+		uint32_t buffering = self->config.frames_in_flight;
+		uint32_t sc_min = state->surface.capabilities.minImageCount;
+		uint32_t sc_max = state->surface.capabilities.maxImageCount;
+
+		if (sc_max < buffering) {
+			LOG_ERR("vulkan_initialize: required frames_in_flight is above "
+					"swapchain buffering limit");
+			return;
+		}
+		// [NOTE]: More images than buffering is allowed. We can double-buffer
+		// with 4 swapchain images, no problem.
+
+		uint32_t sc_img_count = CLAMP(buffering, sc_min, sc_max);
+
+		if (!vk_swapchain_create(&state->swapchain, arena, state->device,
+								 &state->surface, win_size.width,
+								 win_size.height, sc_img_count,
+								 state->rendertarget_format)) {
 			LOG_ERR("vulkan_initialize: couldn't create swapchain");
 			return;
 		}
+		LOG_DEBUG("vulkan_initialize: created swapchain with %u images",
+				  state->swapchain.img_count);
 	}
 
 	{
@@ -445,8 +383,8 @@ void vulkan_destroy(struct gpu_api* self) {
 
 	{
 		if (state->device) {
-			vkDestroySwapchainKHR(state->device, state->swapchain, NULL);
-			vkDestroySurfaceKHR(state->instance, state->surface, NULL);
+			vk_swapchain_destroy(&state->swapchain, state->device);
+			vk_surface_destroy(&state->surface, state->instance);
 			vmaDestroyAllocator(state->allocator);
 			vkDestroyDevice(state->device, NULL);
 		}

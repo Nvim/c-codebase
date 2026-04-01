@@ -364,7 +364,8 @@ arena_checkpoint* arena_get_checkpoint(arena_t* arena) {
 	}
 	arena_impl* impl = (arena_impl*)arena;
 
-	DEBUG(impl, "setting checkpoint at %p.", impl->current);
+	DEBUG(impl, "arena_get_checkpoint: setting checkpoint at %p.",
+		  impl->current);
 	return impl->current;
 }
 
