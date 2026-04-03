@@ -17,32 +17,19 @@ ARRAY_DEFINE_TYPE(VkPhysicalDevice, vk_physical_device_array)
 ARRAY_DEFINE_TYPE(VkQueueFamilyProperties2, vk_qf_props_array)
 ARRAY_DEFINE_TYPE(VkExtensionProperties, vk_ext_props_array)
 
-static VkFormat to_vk_format(gpu_image_format f) {
-	switch (f) {
-	case IMAGE_FORMAT_RGBA_UNORM: return VK_FORMAT_R8G8B8A8_UNORM;
-	case IMAGE_FORMAT_RGBA_SNORM: return VK_FORMAT_R8G8B8A8_SNORM;
-	case IMAGE_FORMAT_RGBA_SRGB: return VK_FORMAT_R8G8B8A8_SRGB;
-
-	case IMAGE_FORMAT_RGB_UNORM: return VK_FORMAT_R8G8B8_UNORM;
-	case IMAGE_FORMAT_RGB_SNORM: return VK_FORMAT_R8G8B8_SNORM;
-	case IMAGE_FORMAT_RGB_SRGB: return VK_FORMAT_R8G8B8_SRGB;
-	default: ASSERT(false); return VK_FORMAT_R8G8B8_UNORM;
-	}
-}
-
-static bool is_vk_13(VkPhysicalDeviceProperties2 props) {
+static bool _is_vk_13(VkPhysicalDeviceProperties2 props) {
 	return props.properties.apiVersion >= VK_API_VERSION_1_3;
 }
-static bool is_dgpu(VkPhysicalDeviceProperties2 props) {
+static bool _is_dgpu(VkPhysicalDeviceProperties2 props) {
 	return props.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
 }
-static bool is_igpu(VkPhysicalDeviceProperties2 props) {
+static bool _is_igpu(VkPhysicalDeviceProperties2 props) {
 	return props.properties.deviceType ==
 		   VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
 }
 
 // Only look for swapchain for now
-static bool has_device_exts(VkPhysicalDevice dev, arena_t* scratch) {
+static bool _device_exts(VkPhysicalDevice dev, arena_t* scratch) {
 	uint32_t ext_count;
 	check_result(
 		vkEnumerateDeviceExtensionProperties(dev, NULL, &ext_count, NULL));
@@ -65,7 +52,7 @@ static bool has_device_exts(VkPhysicalDevice dev, arena_t* scratch) {
 
 // Returns index of the first queue family with graphics and compute
 // capabilities
-static uint32_t vk_get_queue_family(VkPhysicalDevice dev, arena_t* scratch) {
+static uint32_t _get_queue_family(VkPhysicalDevice dev, arena_t* scratch) {
 
 	// Get array size first:
 	uint32_t qf_count = 0;
@@ -116,9 +103,8 @@ typedef struct vk_find_device_result {
  * fallback to an iGPU. If none if available, fails
  *
  */
-static vk_find_device_result vk_find_device(vulkan_init_info* pf_info,
-											VkInstance instance,
-											arena_t* scratch) {
+static vk_find_device_result
+_find_device(vulkan_init_info* pf_info, VkInstance instance, arena_t* scratch) {
 	vk_find_device_result ret = {0};
 	uint32_t device_count = 0;
 	check_result(vkEnumeratePhysicalDevices(instance, &device_count, NULL));
@@ -137,14 +123,14 @@ static vk_find_device_result vk_find_device(vulkan_init_info* pf_info,
 	for (; i < device_count; ++i) {
 
 		vkGetPhysicalDeviceProperties2(dev[i], &device_props);
-		if (!is_dgpu(device_props) && !is_igpu(device_props)) { continue; }
+		if (!_is_dgpu(device_props) && !_is_igpu(device_props)) { continue; }
 
-		if (!is_vk_13(device_props)) { continue; }
-		uint32_t qf = vk_get_queue_family(dev[i], scratch);
+		if (!_is_vk_13(device_props)) { continue; }
+		uint32_t qf = _get_queue_family(dev[i], scratch);
 		if (qf == UINT32_MAX) { continue; }
 
 		if (!pf_info->can_device_queue_present(instance, dev[i], qf) ||
-			!has_device_exts(dev[i], scratch)) {
+			!_device_exts(dev[i], scratch)) {
 			LOG_DEBUG("device `%s` can't present",
 					  device_props.properties.deviceName);
 			continue;
@@ -156,7 +142,7 @@ static vk_find_device_result vk_find_device(vulkan_init_info* pf_info,
 			ret.device_props = device_props;
 			ret.found = true;
 		}
-		if (is_dgpu(device_props)) { return ret; }
+		if (_is_dgpu(device_props)) { return ret; }
 		// Keep searching in case we get dgpu later
 	}
 
@@ -171,8 +157,8 @@ static vk_find_device_result vk_find_device(vulkan_init_info* pf_info,
 	return ret;
 }
 
-VkDevice vk_create_device(VkPhysicalDevice physical_device,
-						  uint32_t queue_idx) {
+static VkDevice _create_device(VkPhysicalDevice physical_device,
+							   uint32_t queue_idx) {
 	VkPhysicalDeviceVulkan12Features vk_12_features = {0};
 	{
 		vk_12_features.sType =
@@ -220,12 +206,23 @@ VkDevice vk_create_device(VkPhysicalDevice physical_device,
 	return device;
 }
 
+static bool validate_gpu_config(gpu_api_config* config) {
+	if (!config->frames_in_flight ||
+		config->frames_in_flight > VK_MAX_BUFFERING) {
+		LOG_ERR("validate_gpu_config: invalid buffering amount");
+		return false;
+	}
+	return true;
+}
+
 void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 					   arena_t* scratch) {
 	if (!self || !arena || !scratch) {
 		LOG_ERR("vulkan_initialize: invalid parameters");
 		return;
 	}
+
+	if (!validate_gpu_config(&self->config)) { return; }
 
 	vk_api_state* state = arena_push(arena, vk_api_state);
 	if (!state) {
@@ -278,7 +275,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	// Physical Device:
 	{
 		vk_find_device_result dev_result =
-			vk_find_device(&state->pf_init_info, state->instance, scratch);
+			_find_device(&state->pf_init_info, state->instance, scratch);
 		if (!dev_result.found) {
 			ASSERT(false);
 			return;
@@ -291,7 +288,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	// Logical Device:
 	{
 		VkDevice device =
-			vk_create_device(state->physical_device, state->queue_family_idx);
+			_create_device(state->physical_device, state->queue_family_idx);
 		if (!device) {
 			ASSERT(false);
 			return;
@@ -323,11 +320,13 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	{
 		VkSurfaceKHR surface =
 			state->pf_init_info.create_surface(window, state->instance);
+		ASSERT(surface);
 		if (!vk_surface_create(&state->surface, state->physical_device,
 							   surface)) {
 			LOG_ERR("vulkan_initialize: couldn't create surface");
 			return;
 		}
+		ASSERT(state->surface.capabilities.minImageCount);
 	}
 
 	// Swapchain:
@@ -338,12 +337,17 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 
 		// Buffering setup:
 		uint32_t buffering = self->config.frames_in_flight;
+		ASSERT(buffering);
 		uint32_t sc_min = state->surface.capabilities.minImageCount;
 		uint32_t sc_max = state->surface.capabilities.maxImageCount;
 
+		// capabilities.maxImageCount can be 0 (unlimited)
+		if(sc_max == 0) { sc_max = buffering; }
+
 		if (sc_max < buffering) {
 			LOG_ERR("vulkan_initialize: required frames_in_flight is above "
-					"swapchain buffering limit");
+					"swapchain buffering limit (%u < %u)",
+					sc_max, buffering);
 			return;
 		}
 		// [NOTE]: More images than buffering is allowed. We can double-buffer
@@ -400,12 +404,14 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 	}
 	ASSERT(config.type == GRAPHICS_API_VULKAN);
 
+	memset(out, 0, sizeof(*out));
 	{
 		out->type = GRAPHICS_API_VULKAN;
 		out->is_init = false;
 		out->name = config.app_name;
 		out->initialize = vulkan_initialize;
 		out->destroy = vulkan_destroy;
+		out->config = config;
 	}
 
 	return true;
