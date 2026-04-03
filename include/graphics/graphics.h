@@ -47,11 +47,13 @@ typedef struct gpu_api {
 	bool is_init;
 	char const* name;
 	gpu_api_config config;
+	window_t* window;
 	gpu_api_platform_init_info* pf_info; // Allocated on arena by `initialize`
 	void* state;						 // Allocated on arena by `initialize`
 
 	void (*initialize)(struct gpu_api* self, window_t* window, arena_t* arena,
 					   arena_t* scratch);
+	void (*render)(struct gpu_api* self);
 	void (*destroy)(struct gpu_api* self);
 } gpu_api;
 

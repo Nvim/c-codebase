@@ -5,6 +5,9 @@
 #include <graphics/graphics.h>
 #include <limits.h>
 
+static bool _quit = false;
+static double const TARGET_FRAMETIME = (1 / 60.f) * 1000.f;
+
 int main(void) {
 
 	ASSERT(platform_init());
@@ -32,6 +35,26 @@ int main(void) {
 	ASSERT(gpu.is_init);
 
 	arena_clear_scratch(scratch);
+
+	double t_prev = platform_get_time();
+	double delta = 0.0f;
+
+	while (!_quit) {
+		platform_poll();
+		if (platform_window_should_close(win)) { break; }
+		gpu.render(&gpu);
+		double t_now = platform_get_time();
+		delta = t_now - t_prev;
+		if (delta < TARGET_FRAMETIME) {
+			platform_sleep(TARGET_FRAMETIME - delta);
+			LOG_DEBUG("frame took %f. sleeping for %f ms", delta,
+					  TARGET_FRAMETIME - delta);
+		}
+		t_now = platform_get_time();
+		t_prev = t_now;
+	}
+
+	platform_destroy_window(win);
 
 	gpu.destroy(&gpu);
 

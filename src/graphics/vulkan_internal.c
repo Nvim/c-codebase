@@ -144,15 +144,18 @@ vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 
 	ASSERT(swapchain->img_index == 0);
 
-	uint32_t image_index = 0;
-	VkAcquireNextImageInfoKHR info = {0};
-	{
-		info.sType = VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR;
-		info.semaphore = semaphore;
-		info.timeout = UINT64_MAX;
-	}
+	// VkAcquireNextImageInfoKHR info = {0};
+	// {
+	// 	info.sType = VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR;
+	// 	info.semaphore = semaphore;
+	// 	info.swapchain = swapchain->swapchain;
+	// 	info.timeout = UINT64_MAX;
+	// }
 
-	VkResult res = vkAcquireNextImage2KHR(device, &info, &image_index);
+	// VkResult res = vkAcquireNextImage2KHR(device, &info, &image_index);
+	VkResult res =
+		vkAcquireNextImageKHR(device, swapchain->swapchain, UINT64_MAX,
+							  semaphore, NULL, &swapchain->img_index);
 
 	if (res == VK_ERROR_OUT_OF_DATE_KHR) { return ACQUIRE_OUT_OF_DATE; }
 	if (res != VK_SUCCESS && res != VK_ERROR_OUT_OF_DATE_KHR) {
@@ -163,8 +166,8 @@ vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 		VkImage* imgs_p = vk_image_array_begin(swapchain->images);
 		VkImageView* img_views_p =
 			vk_image_view_array_begin(swapchain->image_views);
-		out->image = imgs_p[image_index];
-		out->image_view = img_views_p[image_index];
+		out->image = imgs_p[swapchain->img_index];
+		out->image_view = img_views_p[swapchain->img_index];
 		out->extent = swapchain->ci.imageExtent;
 	};
 	return ACQUIRE_SUCCESS;
@@ -185,10 +188,11 @@ bool vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue) {
 		present_info.pSwapchains = &swapchain->swapchain;
 	}
 
+	swapchain->img_index = 0;
+
+	// [TODO]: check this result as it can fail when out of date
 	vkQueuePresentKHR(queue, &present_info);
 
-	swapchain->img_index = 0;
-	// TODO
 	return true;
 }
 
@@ -205,6 +209,66 @@ void vk_swapchain_destroy(vk_swapchain* swapchain, VkDevice device) {
 		}
 	}
 	vkDestroySwapchainKHR(device, swapchain->swapchain, NULL);
+}
+
+bool vk_render_sync_create(VkDevice device, vk_render_sync* out,
+						   VkCommandPool command_pool) {
+	VkSemaphoreCreateInfo sem_ci = {
+		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+
+	// Create fences signalled since there's nothing to wait for on 1st frame
+	VkFenceCreateInfo fence_ci = {
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+		.flags = VK_FENCE_CREATE_SIGNALED_BIT,
+	};
+
+	if (!check_result(
+			vkCreateSemaphore(device, &sem_ci, NULL, &out->draw_sem))) {
+		return false;
+	}
+	if (!check_result(
+			vkCreateFence(device, &fence_ci, NULL, &out->drawn_fence))) {
+		return false;
+	}
+
+	VkCommandBufferAllocateInfo alloc_info = {0};
+	{
+		alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		alloc_info.commandBufferCount = 1;
+		alloc_info.commandPool = command_pool;
+		alloc_info.level = 0;
+	}
+
+	if (!check_result(vkAllocateCommandBuffers(device, &alloc_info,
+											   &out->command_buffer))) {
+		return false;
+	}
+
+	return true;
+}
+
+void vk_render_sync_destroy(VkDevice device, vk_render_sync* sync) {
+	vkDestroySemaphore(device, sync->draw_sem, NULL);
+	vkDestroyFence(device, sync->drawn_fence, NULL);
+	// Command buffer will be destroyed by the pool
+}
+
+bool vk_sync_buffer_create(VkDevice device, vk_sync_buffer* out,
+						   uint32_t frames_in_flight,
+						   VkCommandPool command_pool) {
+	out->frames_in_flight = frames_in_flight;
+	for (uint32_t i = 0; i < out->frames_in_flight; ++i) {
+		if (!vk_render_sync_create(device, &out->frames[i], command_pool)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+void vk_sync_buffer_destroy(VkDevice device, vk_sync_buffer* out) {
+	for (uint32_t i = 0; i < out->frames_in_flight; ++i) {
+		vk_render_sync_destroy(device, &out->frames[i]);
+	}
 }
 
 VkFormat to_vk_format(gpu_image_format f) {

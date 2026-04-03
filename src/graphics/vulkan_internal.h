@@ -62,15 +62,32 @@ vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 bool vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue);
 void vk_swapchain_destroy(vk_swapchain* swapchain, VkDevice device);
 
+// Used to shove every frame-buffered resource
 typedef struct vk_render_sync {
-	// signaled when Swapchain image has been acquired.
+	// Signaled when Swapchain image has been acquired.
+	// Wait on this before drawing
 	VkSemaphore draw_sem;
 
-	// signaled with present Semaphore, waited on before next render.
+	// Signaled with present Semaphore, after frame is done.
+	// Waited on before next render.
 	VkFence drawn_fence;
 
 	VkCommandBuffer command_buffer;
 } vk_render_sync;
+
+typedef struct vk_sync_buffer {
+	vk_render_sync frames[VK_MAX_BUFFERING];
+	uint32_t frames_in_flight;
+} vk_sync_buffer;
+
+bool vk_render_sync_create(VkDevice device, vk_render_sync* out,
+						   VkCommandPool command_pool);
+void vk_render_sync_destroy(VkDevice device, vk_render_sync* sync);
+
+bool vk_sync_buffer_create(VkDevice device, vk_sync_buffer* out,
+						   uint32_t frames_in_flight,
+						   VkCommandPool command_pool);
+void vk_sync_buffer_destroy(VkDevice device, vk_sync_buffer* out);
 
 typedef struct vk_api_state {
 	vulkan_init_info pf_init_info;
@@ -81,7 +98,9 @@ typedef struct vk_api_state {
 	VkPhysicalDeviceProperties2 device_props;
 
 	VkDevice device;
+	VkQueue queue;
 	VmaAllocator allocator;
+	VkCommandPool command_pool; // TODO: one pool per frame?
 
 	vk_surface surface;
 
@@ -89,7 +108,7 @@ typedef struct vk_api_state {
 	vk_swapchain swapchain;
 
 	uint64_t frame_idx;
-	vk_render_sync sync_buffer[VK_MAX_BUFFERING];
+	vk_sync_buffer sync_buffer;
 } vk_api_state;
 
 // [TODO]: Could be nicer idk

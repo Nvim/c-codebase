@@ -217,13 +217,14 @@ static bool validate_gpu_config(gpu_api_config* config) {
 
 void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 					   arena_t* scratch) {
-	if (!self || !arena || !scratch) {
+	if (!self || !arena || !scratch || !window) {
 		LOG_ERR("vulkan_initialize: invalid parameters");
 		return;
 	}
 
 	if (!validate_gpu_config(&self->config)) { return; }
 
+	self->window = window;
 	vk_api_state* state = arena_push(arena, vk_api_state);
 	if (!state) {
 		LOG_ERR("vulkan_initialize: couldn't allocate state");
@@ -247,8 +248,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		state->pf_init_info = vk_pf_info;
 	}
 
-	// Instance:
-	{
+	{ // Instance:
 		VkInstance instance;
 		VkApplicationInfo app_ci = {0};
 		{
@@ -272,8 +272,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		state->instance = instance;
 	}
 
-	// Physical Device:
-	{
+	{ // Physical Device:
 		vk_find_device_result dev_result =
 			_find_device(&state->pf_init_info, state->instance, scratch);
 		if (!dev_result.found) {
@@ -285,8 +284,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		state->device_props = dev_result.device_props;
 	}
 
-	// Logical Device:
-	{
+	{ // Logical Device:
 		VkDevice device =
 			_create_device(state->physical_device, state->queue_family_idx);
 		if (!device) {
@@ -294,10 +292,29 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			return;
 		}
 		state->device = device;
+
+		vkGetDeviceQueue(device, state->queue_family_idx, 0, &state->queue);
+		ASSERT(state->queue);
 	}
 
-	// VMA:
-	{
+	{ // Frame sync
+		VkCommandPoolCreateInfo pool_ci = {0};
+		{
+			pool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+			pool_ci.queueFamilyIndex = state->queue_family_idx;
+			pool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+		}
+		check_result(vkCreateCommandPool(state->device, &pool_ci, NULL,
+										 &state->command_pool));
+		if (!vk_sync_buffer_create(state->device, &state->sync_buffer,
+								   self->config.frames_in_flight,
+								   state->command_pool)) {
+			LOG_FATAL("vulkan_initialize: couldn't create rendersync");
+			return;
+		}
+	}
+
+	{ // VMA:
 		VmaVulkanFunctions vk_funcs = {
 			.vkGetInstanceProcAddr = vkGetInstanceProcAddr,
 			.vkGetDeviceProcAddr = vkGetDeviceProcAddr,
@@ -342,7 +359,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		uint32_t sc_max = state->surface.capabilities.maxImageCount;
 
 		// capabilities.maxImageCount can be 0 (unlimited)
-		if(sc_max == 0) { sc_max = buffering; }
+		if (sc_max == 0) { sc_max = buffering; }
 
 		if (sc_max < buffering) {
 			LOG_ERR("vulkan_initialize: required frames_in_flight is above "
@@ -374,6 +391,115 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			  state->device_props.properties.deviceName);
 	LOG_DEBUG("vulkan_initialize: Using queue family: '%u'",
 			  state->queue_family_idx);
+}
+
+void vulkan_render(struct gpu_api* self) {
+
+	// render is called in a (very) hot loop, no validation here
+	vk_api_state* state = self->state;
+	vk_render_sync frame_sync = state->sync_buffer.frames[state->frame_idx];
+
+	static uint64_t const fence_timeout = sec_to_ns(1);
+	vkWaitForFences(state->device, 1, &frame_sync.drawn_fence, false,
+					fence_timeout);
+	vkResetFences(state->device, 1, &frame_sync.drawn_fence);
+
+	vk_rendertarget rendertarget;
+	{ // Acquire a swapchain image
+		LOG_WARN("vulkan_render: acquiring rendertarget");
+		vk_sc_image_acquire_result ret =
+			vk_swapchain_acquire_image(&state->swapchain, state->device,
+									   &rendertarget, frame_sync.draw_sem);
+
+		// [TODO]: don't just crash on this
+		ASSERT(ret != ACQUIRE_ERROR);
+
+		if (ret == ACQUIRE_OUT_OF_DATE) {
+			LOG_INFO("vulkan_render: handling out of date swapchain");
+			window_size win_size = platform_get_window_size(self->window);
+			bool ok = vk_swapchain_refresh(&state->swapchain, state->device,
+										   &state->surface, win_size.width,
+										   win_size.height);
+			ASSERT(ok); // [TODO]: don't crash
+		}
+	}
+
+	VkCommandBuffer cmd_buf = frame_sync.command_buffer;
+	{ // Begin command buffer
+		LOG_WARN("vulkan_render: beginning command buffer");
+		VkCommandBufferBeginInfo begin_info = {0};
+		begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		// [TODO]: handle in release too
+		check_result(vkBeginCommandBuffer(cmd_buf, &begin_info));
+	}
+
+	{ // Actually draw:
+		LOG_WARN("vulkan_render: clearing");
+		VkImageSubresourceRange view_range = {0};
+		{
+			view_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			view_range.levelCount = 1;
+			view_range.layerCount = 1;
+		}
+
+		VkClearColorValue color = {.uint32 = {0xaa00aa}};
+
+		vkCmdClearColorImage(cmd_buf, rendertarget.image,
+							 VK_IMAGE_LAYOUT_GENERAL, &color, 1, &view_range);
+	}
+
+	{ // Submit:
+		LOG_WARN("vulkan_render: submitting");
+		check_result(vkEndCommandBuffer(cmd_buf));
+		VkCommandBufferSubmitInfo cmd_info = {0};
+		{
+			cmd_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+			cmd_info.commandBuffer = cmd_buf;
+			cmd_info.deviceMask = 0;
+		}
+
+		VkSemaphoreSubmitInfo signal_sem_info = {0};
+		{
+			signal_sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+			signal_sem_info.pNext = NULL;
+			signal_sem_info.semaphore = frame_sync.draw_sem;
+			signal_sem_info.stageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+			signal_sem_info.deviceIndex = 0;
+			signal_sem_info.value = 1;
+		}
+
+		VkSemaphoreSubmitInfo wait_sem_info = {0};
+		{
+			VkSemaphore* p_sems =
+				vk_sem_array_begin(state->swapchain.present_semaphores);
+			wait_sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+			wait_sem_info.pNext = NULL;
+			wait_sem_info.semaphore = p_sems[state->swapchain.img_index];
+			wait_sem_info.stageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+			wait_sem_info.deviceIndex = 0;
+			wait_sem_info.value = 1;
+		}
+
+		VkSubmitInfo2 submit_info = {0};
+		{
+			submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+			submit_info.commandBufferInfoCount = 1;
+			submit_info.pCommandBufferInfos = &cmd_info;
+			submit_info.signalSemaphoreInfoCount = 1;
+			submit_info.pSignalSemaphoreInfos = &signal_sem_info;
+			submit_info.waitSemaphoreInfoCount = 1;
+			submit_info.pWaitSemaphoreInfos = &wait_sem_info;
+		}
+		check_result(vkQueueSubmit2(state->queue, 1, &submit_info,
+									frame_sync.drawn_fence));
+	}
+
+	LOG_WARN("vulkan_render: presenting");
+	ASSERT(vk_swapchain_present(&state->swapchain, state->queue));
+
+	state->frame_idx++;
 }
 
 void vulkan_destroy(struct gpu_api* self) {
@@ -409,9 +535,10 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->type = GRAPHICS_API_VULKAN;
 		out->is_init = false;
 		out->name = config.app_name;
-		out->initialize = vulkan_initialize;
-		out->destroy = vulkan_destroy;
 		out->config = config;
+		out->initialize = vulkan_initialize;
+		out->render = vulkan_render;
+		out->destroy = vulkan_destroy;
 	}
 
 	return true;

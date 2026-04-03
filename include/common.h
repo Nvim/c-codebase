@@ -7,6 +7,7 @@
 #define COMMON_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 #define CLAMP(x, min, max) ((x) < (min) ? (min) : ((x) > (max) ? (max) : (x)))
 
@@ -43,6 +44,8 @@ inline size_t align_up(size_t value, size_t alignment) {
 			   ? res & ~(alignment - 1)
 			   : 0;
 }
+
+#define sec_to_ns(seconds) seconds * 1000000000ULL
 
 typedef enum gpu_api_type {
 	GRAPHICS_API_VULKAN,
