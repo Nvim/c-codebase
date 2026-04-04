@@ -55,6 +55,11 @@ bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
 						 uint32_t min_image_count, VkFormat image_format);
 bool vk_swapchain_refresh(vk_swapchain* swapchain, VkDevice device,
 						  vk_surface* surface, uint32_t width, uint32_t height);
+bool vk_swapchain_get_current_image(vk_swapchain* swapchain, VkImage* out);
+bool vk_swapchain_get_current_image_view(vk_swapchain* swapchain,
+										 VkImageView* out);
+bool vk_swapchain_get_current_semaphore(vk_swapchain* swapchain,
+										VkSemaphore* out);
 vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 													  VkDevice device,
 													  vk_rendertarget* out,
@@ -118,6 +123,7 @@ static inline bool check_result(VkResult result) {
 	return ret;
 }
 
+VkImageSubresourceRange vk_base_subresource_range(void);
 VkFormat to_vk_format(gpu_image_format f);
 
 #endif // !VULKAN_UTIL_H

@@ -33,24 +33,23 @@ static bool _swapchain_refresh_arrays(vk_swapchain* out, VkDevice device) {
 	VkSemaphore* p_sems = vk_sem_array_begin(out->present_semaphores);
 	ASSERT(p_images && p_views && p_sems);
 
+	// First clear old semaphores:
+	for (uint32_t i = 0; i < out->img_count; ++i) {
+		vkDestroySemaphore(device, p_sems[i], NULL);
+	}
+
 	if (!check_result(vkGetSwapchainImagesKHR(device, out->swapchain,
 											  &out->img_count, p_images))) {
 		return false;
 	}
 
-	VkImageSubresourceRange view_range = {0};
-	{
-		view_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		view_range.levelCount = 1;
-		view_range.layerCount = 1;
-	}
 	for (uint32_t i = 0; i < out->img_count; ++i) {
 		VkImageViewCreateInfo view_ci = {
 			.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 			.image = p_images[i],
 			.viewType = VK_IMAGE_VIEW_TYPE_2D,
 			.format = out->img_format,
-			.subresourceRange = view_range,
+			.subresourceRange = vk_base_subresource_range(),
 		};
 
 		VkSemaphoreCreateInfo sem_ci = {
@@ -137,22 +136,25 @@ bool vk_swapchain_refresh(vk_swapchain* swapchain, VkDevice device,
 	return _swapchain_refresh_arrays(swapchain, device);
 }
 
+bool vk_swapchain_get_current_image(vk_swapchain* swapchain, VkImage* out) {
+	return vk_image_array_get(swapchain->images, out, swapchain->img_index);
+}
+bool vk_swapchain_get_current_image_view(vk_swapchain* swapchain,
+										 VkImageView* out) {
+	return vk_image_view_array_get(swapchain->image_views, out,
+								   swapchain->img_index);
+}
+bool vk_swapchain_get_current_semaphore(vk_swapchain* swapchain,
+										VkSemaphore* out) {
+	return vk_sem_array_get(swapchain->present_semaphores, out,
+							swapchain->img_index);
+}
+
 vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 													  VkDevice device,
 													  vk_rendertarget* out,
 													  VkSemaphore semaphore) {
-
 	ASSERT(swapchain->img_index == 0);
-
-	// VkAcquireNextImageInfoKHR info = {0};
-	// {
-	// 	info.sType = VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR;
-	// 	info.semaphore = semaphore;
-	// 	info.swapchain = swapchain->swapchain;
-	// 	info.timeout = UINT64_MAX;
-	// }
-
-	// VkResult res = vkAcquireNextImage2KHR(device, &info, &image_index);
 	VkResult res =
 		vkAcquireNextImageKHR(device, swapchain->swapchain, UINT64_MAX,
 							  semaphore, NULL, &swapchain->img_index);
@@ -162,6 +164,8 @@ vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 		return ACQUIRE_ERROR;
 	}
 
+	LOG_DEBUG("vk_swapchain_acquire_image: acquired image %u",
+			  swapchain->img_index);
 	{
 		VkImage* imgs_p = vk_image_array_begin(swapchain->images);
 		VkImageView* img_views_p =
@@ -178,6 +182,8 @@ bool vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue) {
 	ASSERT(vk_sem_array_get(swapchain->present_semaphores, &wait_semaphore,
 							swapchain->img_index));
 
+	LOG_DEBUG("vk_swapchain_present: presenting to image %u",
+			  swapchain->img_index);
 	VkPresentInfoKHR present_info = {0};
 	{
 		present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -188,10 +194,10 @@ bool vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue) {
 		present_info.pSwapchains = &swapchain->swapchain;
 	}
 
-	swapchain->img_index = 0;
-
 	// [TODO]: check this result as it can fail when out of date
 	vkQueuePresentKHR(queue, &present_info);
+
+	swapchain->img_index = 0;
 
 	return true;
 }
@@ -199,13 +205,12 @@ bool vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue) {
 void vk_swapchain_destroy(vk_swapchain* swapchain, VkDevice device) {
 	ASSERT(swapchain->img_count);
 	VkImageView* v = vk_image_view_array_begin(swapchain->image_views);
+	VkSemaphore* s = vk_sem_array_begin(swapchain->present_semaphores);
 	ASSERT(v);
 	if (v) {
 		for (uint32_t i = 0; i < swapchain->img_count; ++i) {
-			LOG_DEBUG(
-				"vk_swapchain_destroy: destroying swapchain image view %p",
-				v[i]);
 			vkDestroyImageView(device, v[i], NULL);
+			vkDestroySemaphore(device, s[i], NULL);
 		}
 	}
 	vkDestroySwapchainKHR(device, swapchain->swapchain, NULL);
@@ -269,6 +274,15 @@ void vk_sync_buffer_destroy(VkDevice device, vk_sync_buffer* out) {
 	for (uint32_t i = 0; i < out->frames_in_flight; ++i) {
 		vk_render_sync_destroy(device, &out->frames[i]);
 	}
+}
+
+VkImageSubresourceRange vk_base_subresource_range(void) {
+	static VkImageSubresourceRange const view_range = {
+		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+		.levelCount = 1,
+		.layerCount = 1,
+	};
+	return view_range;
 }
 
 VkFormat to_vk_format(gpu_image_format f) {

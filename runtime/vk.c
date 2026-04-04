@@ -39,7 +39,9 @@ int main(void) {
 	double t_prev = platform_get_time();
 	double delta = 0.0f;
 
+	// uint32_t frame_count = 0;
 	while (!_quit) {
+		// if(frame_count++ > 12) { break; }
 		platform_poll();
 		if (platform_window_should_close(win)) { break; }
 		gpu.render(&gpu);

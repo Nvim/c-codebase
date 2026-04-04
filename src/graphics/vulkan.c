@@ -394,10 +394,11 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 }
 
 void vulkan_render(struct gpu_api* self) {
-
 	// render is called in a (very) hot loop, no validation here
 	vk_api_state* state = self->state;
-	vk_render_sync frame_sync = state->sync_buffer.frames[state->frame_idx];
+	vk_render_sync frame_sync =
+		state->sync_buffer
+			.frames[state->frame_idx % self->config.frames_in_flight];
 
 	static uint64_t const fence_timeout = sec_to_ns(1);
 	vkWaitForFences(state->device, 1, &frame_sync.drawn_fence, false,
@@ -424,8 +425,12 @@ void vulkan_render(struct gpu_api* self) {
 		}
 	}
 
+	VkSemaphore sc_sem;
+	ASSERT(vk_swapchain_get_current_semaphore(&state->swapchain, &sc_sem));
+
 	VkCommandBuffer cmd_buf = frame_sync.command_buffer;
 	{ // Begin command buffer
+		// check_result(vkResetCommandBuffer(cmd_buf, 0));
 		LOG_WARN("vulkan_render: beginning command buffer");
 		VkCommandBufferBeginInfo begin_info = {0};
 		begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -435,19 +440,90 @@ void vulkan_render(struct gpu_api* self) {
 		check_result(vkBeginCommandBuffer(cmd_buf, &begin_info));
 	}
 
-	{ // Actually draw:
-		LOG_WARN("vulkan_render: clearing");
-		VkImageSubresourceRange view_range = {0};
+	{ // Transition swapchain image UNDEFINED -> ATTACHMENT_OPTIMAL
+		VkImageMemoryBarrier2 barrier = {0};
 		{
-			view_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			view_range.levelCount = 1;
-			view_range.layerCount = 1;
+			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+			barrier.image = rendertarget.image;
+			barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			barrier.newLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+			barrier.srcStageMask =
+				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+			barrier.dstStageMask =
+				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+			barrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+									VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+			barrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+									VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+			barrier.subresourceRange = vk_base_subresource_range();
+			barrier.srcQueueFamilyIndex = state->queue_family_idx;
+			barrier.dstQueueFamilyIndex = state->queue_family_idx;
 		}
 
-		VkClearColorValue color = {.uint32 = {0xaa00aa}};
+		VkDependencyInfo dep_info = {0};
+		{
+			dep_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+			dep_info.imageMemoryBarrierCount = 1;
+			dep_info.pImageMemoryBarriers = &barrier;
+		}
+		vkCmdPipelineBarrier2(cmd_buf, &dep_info);
+	}
 
-		vkCmdClearColorImage(cmd_buf, rendertarget.image,
-							 VK_IMAGE_LAYOUT_GENERAL, &color, 1, &view_range);
+	{ // Actually draw:
+		LOG_WARN("vulkan_render: rendering");
+
+		VkRenderingAttachmentInfo color_attachment = {0};
+		VkClearValue color = {.color = {.float32 = {1.f, 0.f, 1.f, 1.f}}};
+		{
+			color_attachment.sType =
+				VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+			color_attachment.imageView = rendertarget.image_view;
+			color_attachment.clearValue = color;
+			color_attachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+			color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+			color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		}
+		VkRect2D rect = {.extent = rendertarget.extent,
+						 .offset = (VkOffset2D){.x = 0, .y = 0}};
+		VkRenderingInfo rendering_info = {0};
+		{
+			rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+			rendering_info.renderArea = rect;
+			rendering_info.colorAttachmentCount = 1;
+			rendering_info.pColorAttachments = &color_attachment;
+			rendering_info.layerCount = 1;
+		}
+		vkCmdBeginRendering(cmd_buf, &rendering_info);
+		vkCmdEndRendering(cmd_buf);
+	}
+
+	{ // Transition swapchain image ATTACHMENT_OPTIMAL -> PRESENT_SRC
+		VkImageMemoryBarrier2 barrier = {0};
+		{
+			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+			barrier.image = rendertarget.image;
+			barrier.oldLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+			barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+			barrier.srcStageMask =
+				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+			barrier.dstStageMask =
+				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+			barrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+									VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+			barrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+									VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+			barrier.subresourceRange = vk_base_subresource_range();
+			barrier.srcQueueFamilyIndex = state->queue_family_idx;
+			barrier.dstQueueFamilyIndex = state->queue_family_idx;
+		}
+
+		VkDependencyInfo dep_info = {0};
+		{
+			dep_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+			dep_info.imageMemoryBarrierCount = 1;
+			dep_info.pImageMemoryBarriers = &barrier;
+		}
+		vkCmdPipelineBarrier2(cmd_buf, &dep_info);
 	}
 
 	{ // Submit:
@@ -464,7 +540,7 @@ void vulkan_render(struct gpu_api* self) {
 		{
 			signal_sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
 			signal_sem_info.pNext = NULL;
-			signal_sem_info.semaphore = frame_sync.draw_sem;
+			signal_sem_info.semaphore = sc_sem;
 			signal_sem_info.stageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
 			signal_sem_info.deviceIndex = 0;
 			signal_sem_info.value = 1;
@@ -472,11 +548,9 @@ void vulkan_render(struct gpu_api* self) {
 
 		VkSemaphoreSubmitInfo wait_sem_info = {0};
 		{
-			VkSemaphore* p_sems =
-				vk_sem_array_begin(state->swapchain.present_semaphores);
 			wait_sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
 			wait_sem_info.pNext = NULL;
-			wait_sem_info.semaphore = p_sems[state->swapchain.img_index];
+			wait_sem_info.semaphore = frame_sync.draw_sem;
 			wait_sem_info.stageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
 			wait_sem_info.deviceIndex = 0;
 			wait_sem_info.value = 1;
@@ -513,9 +587,12 @@ void vulkan_destroy(struct gpu_api* self) {
 
 	{
 		if (state->device) {
+			check_result(vkDeviceWaitIdle(state->device));
 			vk_swapchain_destroy(&state->swapchain, state->device);
 			vk_surface_destroy(&state->surface, state->instance);
 			vmaDestroyAllocator(state->allocator);
+			vk_sync_buffer_destroy(state->device, &state->sync_buffer);
+			vkDestroyCommandPool(state->device, state->command_pool, NULL);
 			vkDestroyDevice(state->device, NULL);
 		}
 		vkDestroyInstance(state->instance, NULL);
