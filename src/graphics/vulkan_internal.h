@@ -17,11 +17,101 @@ ARRAY_DEFINE_TYPE(VkSemaphore, vk_sem_array)
 
 #define VK_MAX_BUFFERING 4
 
-typedef struct vk_rendertarget {
+/* ===========================================================================
+ * Resource pools
+ * ========================================================================== */
+#define VK_IMAGE_POOL_SIZE 1024
+#define VK_BUFFER_POOL_SIZE 1024
+#define VK_COMMAND_BUFFER_POOL_SIZE 1024
+
+// 32-bit handle layout:
+// [ generation (12 bits) | index (20 bits) ]
+#define GPU_INDEX_BITS 20
+#define GPU_GENERATION_BITS 12
+#define GPU_INDEX_MASK ((1u << GPU_INDEX_BITS) - 1)
+#define GPU_GENERATION_MASK ((1u << GPU_GENERATION_BITS) - 1)
+
+#define GPU_INVALID_HANDLE 0xFFFFFFFF
+
+static inline uint32_t gpu_handle_create(uint32_t index, uint32_t generation) {
+	return ((generation & GPU_GENERATION_MASK) << GPU_INDEX_BITS) |
+		   (index & GPU_INDEX_MASK);
+}
+
+static inline uint32_t gpu_handle_index(uint32_t handle) {
+	return handle & GPU_INDEX_MASK;
+}
+
+static inline uint32_t gpu_handle_generation(uint32_t handle) {
+	return (handle >> GPU_INDEX_BITS) & GPU_GENERATION_MASK;
+}
+
+typedef enum {
+	IMAGE_FLAGS_SWAPCHAIN = BIT(1),
+} vk_image_flags;
+
+typedef struct vk_image_data {
 	VkImage image;
 	VkImageView image_view;
+	VmaAllocation alloc;
 	VkExtent2D extent;
-} vk_rendertarget;
+	uint32_t next_free;
+	VkFormat format;
+	VkImageUsageFlags usage_flags;
+	gpu_resource_usage gpu_usage;
+	uint8_t vk_image_flags;
+} vk_image_data;
+
+STATIC_ASSERT(sizeof(vk_image_data) == 56, "pretty tight");
+
+typedef struct {
+	vk_image_data images[VK_IMAGE_POOL_SIZE];
+	uint16_t generations[VK_IMAGE_POOL_SIZE];
+	uint32_t first_free;
+	uint32_t free_count;
+} vk_image_pool;
+
+// TODO: Make this less global
+static vk_image_pool _image_pool;
+
+bool vk_image_is_valid(gpu_image handle);
+gpu_image vk_image_create(VkImage image, VkImageView image_view,
+						   VmaAllocation alloc, VkExtent2D extent,
+						   VkFormat format, VkImageUsageFlags flags,
+						   vk_image_flags custom_flags);
+vk_image_data* vk_image_get(gpu_image handle);
+void vk_image_destroy(gpu_image handle);
+
+typedef struct vk_command_buffer_data {
+	VkCommandBuffer command_buffer;
+	uint32_t next_free;
+} vk_command_buffer_data;
+
+typedef struct {
+	vk_command_buffer_data buffers[VK_IMAGE_POOL_SIZE];
+	uint16_t generations[VK_IMAGE_POOL_SIZE];
+	uint32_t first_free;
+	uint32_t free_count;
+} vk_command_buffer_pool;
+
+// TODO: Make this less global
+static vk_command_buffer_pool _cmd_pool;
+
+bool vk_command_buffer_is_valid(gpu_command_buffer handle);
+gpu_command_buffer vk_command_buffer_create(VkCommandBuffer command_buffer);
+vk_command_buffer_data* vk_command_buffer_get(gpu_command_buffer handle);
+void vk_command_buffer_destroy(gpu_command_buffer handle);
+
+/* ============================================================================
+ * Types
+ * ========================================================================== */
+
+// typedef struct vk_rendertarget {
+// 	VkImage image;
+// 	VkImageView image_view;
+// 	VkExtent2D extent;
+// 	VkFormat format;
+// } vk_rendertarget;
 
 typedef struct vk_surface {
 	VkSurfaceKHR surface;
@@ -45,9 +135,14 @@ typedef struct vk_swapchain {
 } vk_swapchain;
 
 typedef enum {
-	ACQUIRE_SUCCESS,
-	ACQUIRE_OUT_OF_DATE,
 	ACQUIRE_ERROR,
+	ACQUIRE_OUT_OF_DATE,
+	ACQUIRE_SUCCESS,
+} vk_swapchain_status;
+
+typedef struct {
+	vk_swapchain_status status;
+	gpu_image image; // Only valid if status is `ACQUIRE_SUCCESS`.
 } vk_sc_image_acquire_result;
 
 bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
@@ -62,7 +157,6 @@ bool vk_swapchain_get_current_semaphore(vk_swapchain* swapchain,
 										VkSemaphore* out);
 vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 													  VkDevice device,
-													  vk_rendertarget* out,
 													  VkSemaphore semaphore);
 bool vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue);
 void vk_swapchain_destroy(vk_swapchain* swapchain, VkDevice device);
@@ -77,7 +171,9 @@ typedef struct vk_render_sync {
 	// Waited on before next render.
 	VkFence drawn_fence;
 
-	VkCommandBuffer command_buffer;
+	// [NOTE]: Should this have the right to keep the raw handle?
+	gpu_command_buffer command_buffer;
+	// VkCommandBuffer command_buffer;
 } vk_render_sync;
 
 typedef struct vk_sync_buffer {
@@ -93,6 +189,13 @@ bool vk_sync_buffer_create(VkDevice device, vk_sync_buffer* out,
 						   uint32_t frames_in_flight,
 						   VkCommandPool command_pool);
 void vk_sync_buffer_destroy(VkDevice device, vk_sync_buffer* out);
+
+typedef struct {
+	uint64_t frame_idx;
+	gpu_image rendertarget;
+	vk_render_sync* frame_sync;
+	VkSemaphore swapchain_semaphore;
+} vk_frame;
 
 typedef struct vk_api_state {
 	vulkan_init_info pf_init_info;
@@ -114,7 +217,17 @@ typedef struct vk_api_state {
 
 	uint64_t frame_idx;
 	vk_sync_buffer sync_buffer;
+	bool frame_in_progress;
+	uint32_t frames_in_flight;
 } vk_api_state;
+
+vk_render_sync* vk_get_current_sync(vk_api_state* state);
+bool vk_begin_frame(vk_api_state* state, vk_frame* out,
+					window_size window_size);
+
+/* ===========================================================================
+ * Utils & conversion
+ * ========================================================================== */
 
 // [TODO]: Could be nicer idk
 static inline bool check_result(VkResult result) {
@@ -124,6 +237,14 @@ static inline bool check_result(VkResult result) {
 }
 
 VkImageSubresourceRange vk_base_subresource_range(void);
-VkFormat to_vk_format(gpu_image_format f);
+
+VkFormat gpu_to_vk_image_format(gpu_image_format f);
+gpu_image_format vk_to_gpu_image_format(VkFormat f);
+
+gpu_image_extent vk_to_gpu_image_extent(VkExtent2D e);
+
+// gpu_rendertarget vk_to_gpu_rendertarget(gpu_image* t);
+
+gpu_frame vk_to_gpu_frame(vk_frame* f);
 
 #endif // !VULKAN_UTIL_H
