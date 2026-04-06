@@ -44,7 +44,13 @@ int main(void) {
 		// if(frame_count++ > 12) { break; }
 		platform_poll();
 		if (platform_window_should_close(win)) { break; }
-		gpu.render(&gpu);
+		gpu_frame_result frame_res = gpu.begin_frame(&gpu);
+		ASSERT(frame_res.ok);
+		gpu_frame frame = frame_res.frame;
+		gpu_render_state s = {0};
+		gpu.cmd_begin_rendering(&gpu, frame.frame_cmd, &s);
+		gpu.cmd_submit(&gpu, frame.frame_cmd);
+		gpu.end_frame(&gpu);
 		double t_now = platform_get_time();
 		delta = t_now - t_prev;
 		if (delta < TARGET_FRAMETIME) {

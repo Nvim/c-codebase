@@ -31,7 +31,7 @@ ARRAY_DEFINE_TYPE(VkSemaphore, vk_sem_array)
 #define GPU_INDEX_MASK ((1u << GPU_INDEX_BITS) - 1)
 #define GPU_GENERATION_MASK ((1u << GPU_GENERATION_BITS) - 1)
 
-#define GPU_INVALID_HANDLE 0xFFFFFFFF
+#define GPU_INVALID_HANDLE 0
 
 static inline uint32_t gpu_handle_create(uint32_t index, uint32_t generation) {
 	return ((generation & GPU_GENERATION_MASK) << GPU_INDEX_BITS) |
@@ -59,25 +59,30 @@ typedef struct vk_image_data {
 	VkFormat format;
 	VkImageUsageFlags usage_flags;
 	gpu_resource_usage gpu_usage;
+	uint16_t generation;
 	uint8_t vk_image_flags;
 } vk_image_data;
 
 STATIC_ASSERT(sizeof(vk_image_data) == 56, "pretty tight");
 
+// A valid X is an X whose generation is higher than its recycle count.
+// Creating an X increment its generation
+// Destroying an X increments the recycle counter
 typedef struct {
 	vk_image_data images[VK_IMAGE_POOL_SIZE];
-	uint16_t generations[VK_IMAGE_POOL_SIZE];
+	uint16_t recycle_counts[VK_IMAGE_POOL_SIZE];
 	uint32_t first_free;
 	uint32_t free_count;
 } vk_image_pool;
 
 // TODO: Make this less global
-static vk_image_pool _image_pool;
+extern vk_image_pool _image_pool;
 
 bool vk_image_is_valid(gpu_image handle);
 gpu_image vk_image_create(VkImage image, VkImageView image_view,
 						   VmaAllocation alloc, VkExtent2D extent,
 						   VkFormat format, VkImageUsageFlags flags,
+						   gpu_resource_usage resource_usage,
 						   vk_image_flags custom_flags);
 vk_image_data* vk_image_get(gpu_image handle);
 void vk_image_destroy(gpu_image handle);
@@ -85,17 +90,18 @@ void vk_image_destroy(gpu_image handle);
 typedef struct vk_command_buffer_data {
 	VkCommandBuffer command_buffer;
 	uint32_t next_free;
+	uint16_t generation;
 } vk_command_buffer_data;
 
 typedef struct {
 	vk_command_buffer_data buffers[VK_IMAGE_POOL_SIZE];
-	uint16_t generations[VK_IMAGE_POOL_SIZE];
+	uint16_t recycle_counts[VK_IMAGE_POOL_SIZE];
 	uint32_t first_free;
 	uint32_t free_count;
 } vk_command_buffer_pool;
 
 // TODO: Make this less global
-static vk_command_buffer_pool _cmd_pool;
+extern vk_command_buffer_pool _cmd_pool;
 
 bool vk_command_buffer_is_valid(gpu_command_buffer handle);
 gpu_command_buffer vk_command_buffer_create(VkCommandBuffer command_buffer);

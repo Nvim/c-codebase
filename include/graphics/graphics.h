@@ -36,13 +36,14 @@ typedef union {
 } gpu_color;
 
 typedef enum {
-	GPU_USAGE_SHADER_READ = BIT(0),
-	GPU_USAGE_SHADER_WRITE = BIT(1),
-	GPU_USAGE_RENDER_TARGET = BIT(2),
-	GPU_USAGE_DEPTH = BIT(3),
-	GPU_USAGE_TRANSFER_SRC = BIT(4),
-	GPU_USAGE_TRANSFER_DST = BIT(5),
-	GPU_USAGE_PRESENT = BIT(6),
+	GPU_USAGE_UNKNOWN = BIT(0),
+	GPU_USAGE_SHADER_READ = BIT(1),
+	GPU_USAGE_SHADER_WRITE = BIT(2),
+	GPU_USAGE_RENDER_TARGET = BIT(3),
+	GPU_USAGE_DEPTH = BIT(4),
+	GPU_USAGE_TRANSFER_SRC = BIT(5),
+	GPU_USAGE_TRANSFER_DST = BIT(6),
+	GPU_USAGE_PRESENT = BIT(7),
 } gpu_resource_usage;
 
 typedef enum {
@@ -149,7 +150,7 @@ typedef struct gpu_api {
 	void (*cmd_begin_rendering)(struct gpu_api*, gpu_command_buffer cmd,
 								gpu_render_state* s);
 	void (*cmd_submit)(struct gpu_api*, gpu_command_buffer cmd);
-	void (*end_frame)(struct gpu_api*);
+	void (*end_frame)(struct gpu_api*); // presents
 } gpu_api;
 
 LIB_EXPORT bool gpu_create_api(gpu_api_config config, gpu_api* out);

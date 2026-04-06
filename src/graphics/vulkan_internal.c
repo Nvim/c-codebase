@@ -2,6 +2,129 @@
 
 #include <graphics/graphics.h>
 
+vk_image_pool _image_pool = {0};
+vk_command_buffer_pool _cmd_pool = {0};
+
+gpu_image vk_image_create(VkImage image, VkImageView image_view,
+						  VmaAllocation alloc, VkExtent2D extent,
+						  VkFormat format, VkImageUsageFlags flags,
+						  gpu_resource_usage resource_usage,
+						  vk_image_flags custom_flags) {
+	ASSERT(_image_pool.free_count);
+
+	uint32_t idx = _image_pool.first_free;
+	gpu_image ret = (gpu_image){.handle = idx};
+	vk_image_data* data = &_image_pool.images[idx];
+	ASSERT(!vk_image_is_valid(ret));
+
+	if(data->next_free == GPU_INVALID_HANDLE) {
+		data->next_free = idx+1; // TODO overflow
+	}
+	// vk_image_data* new_first = &_image_pool.images[data->next_free];
+	// new_first->next_free = _image_pool.first_free;
+	_image_pool.first_free = data->next_free;
+	_image_pool.free_count--;
+
+	{
+		data->generation++;
+		data->image = image;
+		data->image_view = image_view;
+		data->alloc = alloc;
+		data->extent = extent;
+		data->format = format;
+		data->usage_flags = flags;
+		data->gpu_usage = resource_usage;
+		data->vk_image_flags = custom_flags;
+	}
+
+	return ret;
+}
+
+bool vk_image_is_valid(gpu_image handle) {
+	uint32_t idx = handle.handle;
+	uint32_t gen = _image_pool.images[idx].generation;
+	if (gen <= _image_pool.recycle_counts[idx]) {
+		return false;
+	}
+	return true;
+}
+
+vk_image_data* vk_image_get(gpu_image handle) {
+	if (!vk_image_is_valid(handle)) {
+		LOG_ERR("vk_image_get: invalid image handle requested");
+		ASSERT(false);
+		return NULL;
+	}
+	return &_image_pool.images[handle.handle];
+}
+
+void vk_image_destroy(gpu_image handle) {
+	if (!vk_image_is_valid(handle)) {
+		LOG_ERR("vk_image_destroy: trying to destroy invalid image handle");
+		ASSERT(false);
+		return;
+	}
+
+	_image_pool.first_free = handle.handle;
+	_image_pool.free_count++;
+	_image_pool.recycle_counts[handle.handle]++;
+}
+
+gpu_command_buffer vk_command_buffer_create(VkCommandBuffer command_buffer) {
+	ASSERT(_cmd_pool.free_count);
+
+	uint32_t idx = _cmd_pool.first_free;
+	gpu_command_buffer ret = (gpu_command_buffer){.handle = idx};
+	vk_command_buffer_data* data = &_cmd_pool.buffers[idx];
+	ASSERT(!vk_command_buffer_is_valid(ret));
+
+	if(data->next_free == GPU_INVALID_HANDLE) {
+		data->next_free = idx+1; // TODO overflow
+	}
+	// vk_command_buffer_data* new_first = &_cmd_pool.buffers[data->next_free];
+	// new_first->next_free = _cmd_pool.first_free;
+	_cmd_pool.first_free = data->next_free;
+	_cmd_pool.free_count--;
+
+	{
+		data->generation++;
+		data->command_buffer = command_buffer;
+	}
+
+	return ret;
+}
+
+bool vk_command_buffer_is_valid(gpu_command_buffer handle) {
+	uint32_t idx = handle.handle;
+	uint32_t gen = _cmd_pool.buffers[idx].generation;
+	if (gen <= _cmd_pool.recycle_counts[idx]) {
+		return false;
+	}
+	return true;
+}
+
+vk_command_buffer_data* vk_command_buffer_get(gpu_command_buffer handle) {
+	if (!vk_command_buffer_is_valid(handle)) {
+		LOG_ERR("vk_command_buffer_get: invalid image handle requested");
+		ASSERT(false);
+		return NULL;
+	}
+	return &_cmd_pool.buffers[handle.handle];
+}
+
+void vk_command_buffer_destroy(gpu_command_buffer handle) {
+	if (!vk_command_buffer_is_valid(handle)) {
+		LOG_ERR("vk_command_buffer_destroy: trying to destroy invalid image "
+				"handle");
+		ASSERT(false);
+		return;
+	}
+
+	_cmd_pool.first_free = handle.handle;
+	_cmd_pool.free_count++;
+	_cmd_pool.recycle_counts[handle.handle]++;
+}
+
 bool vk_surface_create(vk_surface* out, VkPhysicalDevice device,
 					   VkSurfaceKHR surface) {
 	if (!surface) { return false; }
@@ -179,9 +302,9 @@ vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 		ASSERT(vk_image_view_array_get(swapchain->image_views, &img_view,
 									   swapchain->img_index));
 
-		handle =
-			vk_image_create(img, img_view, NULL, swapchain->ci.imageExtent,
-							swapchain->img_format, 0, IMAGE_FLAGS_SWAPCHAIN);
+		handle = vk_image_create(img, img_view, NULL, swapchain->ci.imageExtent,
+								 swapchain->img_format, 0, GPU_USAGE_UNKNOWN,
+								 IMAGE_FLAGS_SWAPCHAIN);
 	};
 
 	ret.image = handle;

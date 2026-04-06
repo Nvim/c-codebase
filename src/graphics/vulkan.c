@@ -235,6 +235,15 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	// Auto-zeroing arena can be toggled off, so let's be pedantic
 	memset(state, 0, sizeof(*state));
 
+	// Init global pools:
+	memset(&_image_pool, 0, sizeof(_image_pool));
+	_image_pool.free_count = VK_IMAGE_POOL_SIZE-1;
+	_image_pool.first_free = 1;
+
+	memset(&_cmd_pool, 0, sizeof(_cmd_pool));
+	_cmd_pool.free_count = VK_COMMAND_BUFFER_POOL_SIZE-1;
+	_cmd_pool.first_free = 1;
+
 	{
 		vulkan_init_info vk_pf_info = {0};
 		if (!platform_init_graphics_api(
@@ -312,6 +321,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			LOG_FATAL("vulkan_initialize: couldn't create rendersync");
 			return;
 		}
+		state->frames_in_flight = self->config.frames_in_flight;
 	}
 
 	{ // VMA:
@@ -605,44 +615,172 @@ gpu_frame_result vulkan_begin_frame(struct gpu_api* self) {
 	return ret;
 }
 
-void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer* cmd,
+void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer cmd,
 								gpu_render_state* s) {
 	vk_api_state* state = self->state;
+	VkCommandBuffer cmd_buf = vk_command_buffer_get(cmd)->command_buffer;
 
-	(void)s; // TODO: create rendering info from s
-	VkRenderingAttachmentInfo color_attachment = {0};
-	VkImageView sc_view;
-	ASSERT(vk_swapchain_get_current_image_view(&state->swapchain, &sc_view));
+	{ // [TODO]: Hardcoded UNDEFINED -> ATTACHMENT_OPTIMAL barrier
+		// vk_image_data* img_data = vk_image_get(s->color_targets[0]);
+		VkImage sc_img;
+		ASSERT( vk_swapchain_get_current_image(&state->swapchain, &sc_img));
+		VkImageMemoryBarrier2 barrier = {0};
+		{
+			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+			barrier.image = sc_img;
+			barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			barrier.newLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+			barrier.srcStageMask =
+				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+			barrier.dstStageMask =
+				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+			barrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+									VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+			barrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+									VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+			barrier.subresourceRange = vk_base_subresource_range();
+			barrier.srcQueueFamilyIndex = state->queue_family_idx;
+			barrier.dstQueueFamilyIndex = state->queue_family_idx;
+		}
 
-	VkClearValue color = {.color = {.float32 = {1.f, 0.f, 1.f, 1.f}}};
-	{
-		color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		color_attachment.imageView = sc_view;
-		color_attachment.clearValue = color;
-		color_attachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-		color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		VkDependencyInfo dep_info = {0};
+		{
+			dep_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+			dep_info.imageMemoryBarrierCount = 1;
+			dep_info.pImageMemoryBarriers = &barrier;
+		}
+		vkCmdPipelineBarrier2(cmd_buf, &dep_info);
 	}
-	VkRect2D rect = {.extent = state->swapchain.ci.imageExtent,
-					 .offset = (VkOffset2D){.x = 0, .y = 0}};
+
 	VkRenderingInfo rendering_info = {0};
 	{
-		rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-		rendering_info.renderArea = rect;
-		rendering_info.colorAttachmentCount = 1;
-		rendering_info.pColorAttachments = &color_attachment;
-		rendering_info.layerCount = 1;
-	}
+		(void)s; // [TODO]: create rendering info from s
+		VkRenderingAttachmentInfo color_attachment = {0};
+		VkImageView sc_view;
+		ASSERT(
+			vk_swapchain_get_current_image_view(&state->swapchain, &sc_view));
 
-	VkCommandBuffer* vk_cmd = (VkCommandBuffer*)cmd;
-	vkCmdBeginRendering(*vk_cmd, &rendering_info);
+		VkClearValue color = {.color = {.float32 = {1.f, 0.f, 1.f, 1.f}}};
+		{
+			color_attachment.sType =
+				VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+			color_attachment.imageView = sc_view;
+			color_attachment.clearValue = color;
+			color_attachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+			color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+			color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		}
+		VkRect2D rect = {.extent = state->swapchain.ci.imageExtent,
+						 .offset = (VkOffset2D){.x = 0, .y = 0}};
+		{
+			rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+			rendering_info.renderArea = rect;
+			rendering_info.colorAttachmentCount = 1;
+			rendering_info.pColorAttachments = &color_attachment;
+			rendering_info.layerCount = 1;
+		}
+	}
+	vkCmdBeginRendering(cmd_buf, &rendering_info);
 }
 
 void vulkan_submit(UNUSED struct gpu_api* self, gpu_command_buffer cmd) {
-	// vk_api_state* state = self->state;
-	vk_command_buffer_data* cmd_data =
-		vk_command_buffer_get(cmd);
-	vkCmdEndRendering(cmd_data->command_buffer);
+	vk_api_state* state = self->state;
+	VkCommandBuffer cmd_buf = vk_command_buffer_get(cmd)->command_buffer;
+
+	// TODO: dedicated method:
+	vkCmdEndRendering(cmd_buf);
+
+	{ // [TODO]: Hardcode barrier ATTACHMENT_OPTIMAL -> PRESENT_SRC
+		VkImage img;
+		vk_swapchain_get_current_image(&state->swapchain, &img);
+		VkImageMemoryBarrier2 barrier = {0};
+		{
+			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+			barrier.image = img;
+			barrier.oldLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+			barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+			barrier.srcStageMask =
+				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+			barrier.dstStageMask =
+				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+			barrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+									VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+			barrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+									VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+			barrier.subresourceRange = vk_base_subresource_range();
+			barrier.srcQueueFamilyIndex = state->queue_family_idx;
+			barrier.dstQueueFamilyIndex = state->queue_family_idx;
+		}
+
+		VkDependencyInfo dep_info = {0};
+		{
+			dep_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+			dep_info.imageMemoryBarrierCount = 1;
+			dep_info.pImageMemoryBarriers = &barrier;
+		}
+		vkCmdPipelineBarrier2(cmd_buf, &dep_info);
+	}
+
+	VkSemaphore sc_sem;
+	ASSERT(vk_swapchain_get_current_semaphore(&state->swapchain, &sc_sem));
+
+	vk_render_sync frame_sync =
+		state->sync_buffer
+			.frames[state->frame_idx % self->config.frames_in_flight];
+
+	{ // Submit:
+		LOG_WARN("vulkan_render: submitting");
+		check_result(vkEndCommandBuffer(cmd_buf));
+		VkCommandBufferSubmitInfo cmd_info = {0};
+		{
+			cmd_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+			cmd_info.commandBuffer = cmd_buf;
+			cmd_info.deviceMask = 0;
+		}
+
+		VkSemaphoreSubmitInfo signal_sem_info = {0};
+		{
+			signal_sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+			signal_sem_info.pNext = NULL;
+			signal_sem_info.semaphore = sc_sem;
+			signal_sem_info.stageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+			signal_sem_info.deviceIndex = 0;
+			signal_sem_info.value = 1;
+		}
+
+		VkSemaphoreSubmitInfo wait_sem_info = {0};
+		{
+			wait_sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+			wait_sem_info.pNext = NULL;
+			wait_sem_info.semaphore = frame_sync.draw_sem;
+			wait_sem_info.stageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+			wait_sem_info.deviceIndex = 0;
+			wait_sem_info.value = 1;
+		}
+
+		VkSubmitInfo2 submit_info = {0};
+		{
+			submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+			submit_info.commandBufferInfoCount = 1;
+			submit_info.pCommandBufferInfos = &cmd_info;
+			submit_info.signalSemaphoreInfoCount = 1;
+			submit_info.pSignalSemaphoreInfos = &signal_sem_info;
+			submit_info.waitSemaphoreInfoCount = 1;
+			submit_info.pWaitSemaphoreInfos = &wait_sem_info;
+		}
+		check_result(vkQueueSubmit2(state->queue, 1, &submit_info,
+									frame_sync.drawn_fence));
+	}
+}
+
+void vulkan_end_frame(gpu_api* self) {
+	vk_api_state* state = self->state;
+
+	LOG_WARN("vulkan_end_frame: presenting");
+	ASSERT(vk_swapchain_present(&state->swapchain, state->queue));
+
+	state->frame_idx++;
+	state->frame_in_progress = false;
 }
 
 void vulkan_destroy(struct gpu_api* self) {
@@ -683,7 +821,10 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->name = config.app_name;
 		out->config = config;
 		out->initialize = vulkan_initialize;
-		// out->render = vulkan_render;
+		out->begin_frame = vulkan_begin_frame;
+		out->cmd_begin_rendering = vulkan_cmd_begin_rendering;
+		out->cmd_submit = vulkan_submit;
+		out->end_frame = vulkan_end_frame;
 		out->destroy = vulkan_destroy;
 	}
 
