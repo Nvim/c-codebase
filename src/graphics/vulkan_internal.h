@@ -59,7 +59,6 @@ typedef struct vk_image_data {
 	VkFormat format;
 	VkImageUsageFlags usage_flags;
 	gpu_resource_usage gpu_usage;
-	uint16_t generation;
 	uint8_t vk_image_flags;
 } vk_image_data;
 
@@ -90,7 +89,6 @@ void vk_image_destroy(gpu_image handle);
 typedef struct vk_command_buffer_data {
 	VkCommandBuffer command_buffer;
 	uint32_t next_free;
-	uint16_t generation;
 } vk_command_buffer_data;
 
 typedef struct {

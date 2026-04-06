@@ -12,21 +12,19 @@ gpu_image vk_image_create(VkImage image, VkImageView image_view,
 						  vk_image_flags custom_flags) {
 	ASSERT(_image_pool.free_count);
 
-	uint32_t idx = _image_pool.first_free;
-	gpu_image ret = (gpu_image){.handle = idx};
-	vk_image_data* data = &_image_pool.images[idx];
-	ASSERT(!vk_image_is_valid(ret));
+	uint32_t idx = gpu_handle_index(_image_pool.first_free);
+	uint16_t generation = _image_pool.recycle_counts[idx] + 1;
+	gpu_image ret = (gpu_image){.handle = gpu_handle_create(idx, generation)};
+	ASSERT(vk_image_is_valid(ret));
 
-	if(data->next_free == GPU_INVALID_HANDLE) {
-		data->next_free = idx+1; // TODO overflow
+	vk_image_data* data = &_image_pool.images[idx];
+	if (data->next_free == GPU_INVALID_HANDLE) {
+		data->next_free = idx + 1; // TODO overflow
 	}
-	// vk_image_data* new_first = &_image_pool.images[data->next_free];
-	// new_first->next_free = _image_pool.first_free;
 	_image_pool.first_free = data->next_free;
 	_image_pool.free_count--;
 
 	{
-		data->generation++;
 		data->image = image;
 		data->image_view = image_view;
 		data->alloc = alloc;
@@ -41,11 +39,9 @@ gpu_image vk_image_create(VkImage image, VkImageView image_view,
 }
 
 bool vk_image_is_valid(gpu_image handle) {
-	uint32_t idx = handle.handle;
-	uint32_t gen = _image_pool.images[idx].generation;
-	if (gen <= _image_pool.recycle_counts[idx]) {
-		return false;
-	}
+	uint32_t idx = gpu_handle_index(handle.handle);
+	uint16_t generation = gpu_handle_generation(handle.handle);
+	if (generation <= _image_pool.recycle_counts[idx]) { return false; }
 	return true;
 }
 
@@ -55,7 +51,7 @@ vk_image_data* vk_image_get(gpu_image handle) {
 		ASSERT(false);
 		return NULL;
 	}
-	return &_image_pool.images[handle.handle];
+	return &_image_pool.images[gpu_handle_index(handle.handle)];
 }
 
 void vk_image_destroy(gpu_image handle) {
@@ -64,42 +60,38 @@ void vk_image_destroy(gpu_image handle) {
 		ASSERT(false);
 		return;
 	}
+	uint32_t idx = gpu_handle_index(handle.handle);
 
-	_image_pool.first_free = handle.handle;
+	_image_pool.first_free = idx;
 	_image_pool.free_count++;
-	_image_pool.recycle_counts[handle.handle]++;
+	_image_pool.recycle_counts[idx]++;
 }
 
 gpu_command_buffer vk_command_buffer_create(VkCommandBuffer command_buffer) {
 	ASSERT(_cmd_pool.free_count);
 
-	uint32_t idx = _cmd_pool.first_free;
-	gpu_command_buffer ret = (gpu_command_buffer){.handle = idx};
-	vk_command_buffer_data* data = &_cmd_pool.buffers[idx];
-	ASSERT(!vk_command_buffer_is_valid(ret));
+	uint32_t idx = gpu_handle_index(_cmd_pool.first_free);
+	uint16_t generation = _cmd_pool.recycle_counts[idx] + 1;
+	gpu_command_buffer ret =
+		(gpu_command_buffer){.handle = gpu_handle_create(idx, generation)};
+	ASSERT(vk_command_buffer_is_valid(ret));
 
-	if(data->next_free == GPU_INVALID_HANDLE) {
-		data->next_free = idx+1; // TODO overflow
+	vk_command_buffer_data* data = &_cmd_pool.buffers[idx];
+	if (data->next_free == GPU_INVALID_HANDLE) {
+		data->next_free = idx + 1; // TODO overflow
 	}
-	// vk_command_buffer_data* new_first = &_cmd_pool.buffers[data->next_free];
-	// new_first->next_free = _cmd_pool.first_free;
 	_cmd_pool.first_free = data->next_free;
 	_cmd_pool.free_count--;
 
-	{
-		data->generation++;
-		data->command_buffer = command_buffer;
-	}
+	data->command_buffer = command_buffer;
 
 	return ret;
 }
 
 bool vk_command_buffer_is_valid(gpu_command_buffer handle) {
-	uint32_t idx = handle.handle;
-	uint32_t gen = _cmd_pool.buffers[idx].generation;
-	if (gen <= _cmd_pool.recycle_counts[idx]) {
-		return false;
-	}
+	uint32_t idx = gpu_handle_index(handle.handle);
+	uint16_t generation = gpu_handle_generation(handle.handle);
+	if (generation <= _cmd_pool.recycle_counts[idx]) { return false; }
 	return true;
 }
 
@@ -109,7 +101,7 @@ vk_command_buffer_data* vk_command_buffer_get(gpu_command_buffer handle) {
 		ASSERT(false);
 		return NULL;
 	}
-	return &_cmd_pool.buffers[handle.handle];
+	return &_cmd_pool.buffers[gpu_handle_index(handle.handle)];
 }
 
 void vk_command_buffer_destroy(gpu_command_buffer handle) {
@@ -120,9 +112,10 @@ void vk_command_buffer_destroy(gpu_command_buffer handle) {
 		return;
 	}
 
-	_cmd_pool.first_free = handle.handle;
+	uint32_t idx = gpu_handle_index(handle.handle);
+	_cmd_pool.first_free = idx;
 	_cmd_pool.free_count++;
-	_cmd_pool.recycle_counts[handle.handle]++;
+	_cmd_pool.recycle_counts[idx]++;
 }
 
 bool vk_surface_create(vk_surface* out, VkPhysicalDevice device,

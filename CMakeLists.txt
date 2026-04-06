@@ -48,7 +48,7 @@ target_compile_definitions(compile_flags
 # Build type specific:
 target_compile_options(compile_flags
     INTERFACE
-        $<$<CONFIG:Debug>:-Og -g -fno-omit-frame-pointer -fvisibility=default>
+        $<$<CONFIG:Debug>:-O0 -g3 -fno-inline -fno-omit-frame-pointer -fvisibility=default>
         $<$<NOT:$<CONFIG:Debug>>:-fvisibility=hidden>
 )
 
