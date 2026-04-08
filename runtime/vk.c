@@ -19,13 +19,21 @@ int main(void) {
 	scratch_arena scratch = {0};
 	ASSERT(arena_get_scratch(NULL, &scratch));
 
-	arena_t* arena = arena_create(4096);
+	arena_create_info arena_ci = {0};
+	{
+		arena_ci.initial_size = 8 * MEMORY_KIB;
+		arena_ci.max_size = MEMORY_MIB;
+		arena_ci.alignment = 8;
+		arena_ci.flags = ARENA_LOG | ARENA_GROWING;
+	}
+	arena_t* arena = arena_create_from_config(arena_ci);
+	ASSERT(arena);
 
 	gpu_api gpu = {0};
 	gpu_api_config gpu_ci = {0};
 	{
 		gpu_ci.app_name = "please work";
-		gpu_ci.frames_in_flight = 2;
+		gpu_ci.frames_in_flight = 3;
 		gpu_ci.target_image_format = IMAGE_FORMAT_RGBA_SRGB;
 		gpu_ci.type = GRAPHICS_API_VULKAN;
 	}

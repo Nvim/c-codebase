@@ -4,6 +4,7 @@
 #include "vulkan_init_info.h"
 
 #include <containers/array.h>
+#include <containers/pool.h>
 #include <core/core.h>
 #include <graphics/graphics.h>
 #include <platform/platform.h>
@@ -20,32 +21,32 @@ ARRAY_DEFINE_TYPE(VkSemaphore, vk_sem_array)
 /* ===========================================================================
  * Resource pools
  * ========================================================================== */
-#define VK_IMAGE_POOL_SIZE 1024
-#define VK_BUFFER_POOL_SIZE 1024
-#define VK_COMMAND_BUFFER_POOL_SIZE 1024
-
-// 32-bit handle layout:
-// [ generation (12 bits) | index (20 bits) ]
-#define GPU_INDEX_BITS 20
-#define GPU_GENERATION_BITS 12
-#define GPU_INDEX_MASK ((1u << GPU_INDEX_BITS) - 1)
-#define GPU_GENERATION_MASK ((1u << GPU_GENERATION_BITS) - 1)
-
-#define GPU_INVALID_HANDLE 0
-
-static inline uint32_t gpu_handle_create(uint32_t index, uint32_t generation) {
-	return ((generation & GPU_GENERATION_MASK) << GPU_INDEX_BITS) |
-		   (index & GPU_INDEX_MASK);
-}
-
-static inline uint32_t gpu_handle_index(uint32_t handle) {
-	return handle & GPU_INDEX_MASK;
-}
-
-static inline uint32_t gpu_handle_generation(uint32_t handle) {
-	return (handle >> GPU_INDEX_BITS) & GPU_GENERATION_MASK;
-}
-
+// #define VK_IMAGE_POOL_SIZE 1024
+// #define VK_BUFFER_POOL_SIZE 1024
+// #define VK_COMMAND_BUFFER_POOL_SIZE 1024
+//
+// // 32-bit handle layout:
+// // [ generation (12 bits) | index (20 bits) ]
+// #define GPU_INDEX_BITS 20
+// #define GPU_GENERATION_BITS 12
+// #define GPU_INDEX_MASK ((1u << GPU_INDEX_BITS) - 1)
+// #define GPU_GENERATION_MASK ((1u << GPU_GENERATION_BITS) - 1)
+//
+// #define GPU_INVALID_HANDLE 0
+//
+// static inline uint32_t gpu_handle_create(uint32_t index, uint32_t generation)
+// { 	return ((generation & GPU_GENERATION_MASK) << GPU_INDEX_BITS) |
+// (index & GPU_INDEX_MASK);
+// }
+//
+// static inline uint32_t gpu_handle_index(uint32_t handle) {
+// 	return handle & GPU_INDEX_MASK;
+// }
+//
+// static inline uint32_t gpu_handle_generation(uint32_t handle) {
+// 	return (handle >> GPU_INDEX_BITS) & GPU_GENERATION_MASK;
+// }
+//
 typedef enum {
 	IMAGE_FLAGS_SWAPCHAIN = BIT(1),
 } vk_image_flags;
@@ -55,56 +56,34 @@ typedef struct vk_image_data {
 	VkImageView image_view;
 	VmaAllocation alloc;
 	VkExtent2D extent;
-	uint32_t next_free;
 	VkFormat format;
 	VkImageUsageFlags usage_flags;
 	gpu_resource_usage gpu_usage;
 	uint8_t vk_image_flags;
 } vk_image_data;
 
-STATIC_ASSERT(sizeof(vk_image_data) == 56, "pretty tight");
-
-// A valid X is an X whose generation is higher than its recycle count.
-// Creating an X increment its generation
-// Destroying an X increments the recycle counter
-typedef struct {
-	vk_image_data images[VK_IMAGE_POOL_SIZE];
-	uint16_t recycle_counts[VK_IMAGE_POOL_SIZE];
-	uint32_t first_free;
-	uint32_t free_count;
-} vk_image_pool;
-
+STATIC_ASSERT(sizeof(vk_image_data) == 48, "pretty tight");
+POOL_DEFINE_TYPE(vk_image_data, vk_image_pool)
 // TODO: Make this less global
 extern vk_image_pool _image_pool;
 
-bool vk_image_is_valid(gpu_image handle);
-gpu_image vk_image_create(VkImage image, VkImageView image_view,
-						   VmaAllocation alloc, VkExtent2D extent,
-						   VkFormat format, VkImageUsageFlags flags,
-						   gpu_resource_usage resource_usage,
-						   vk_image_flags custom_flags);
-vk_image_data* vk_image_get(gpu_image handle);
-void vk_image_destroy(gpu_image handle);
+vk_image_pool_handle vk_image_create(VkImage image, VkImageView image_view,
+									 VmaAllocation alloc, VkExtent2D extent,
+									 VkFormat format, VkImageUsageFlags flags,
+									 gpu_resource_usage resource_usage,
+									 vk_image_flags custom_flags);
+vk_image_data* vk_image_get(vk_image_pool_handle handle);
 
-typedef struct vk_command_buffer_data {
+typedef struct vk_cmdbuf_data {
 	VkCommandBuffer command_buffer;
-	uint32_t next_free;
-} vk_command_buffer_data;
+} vk_cmdbuf_data;
 
-typedef struct {
-	vk_command_buffer_data buffers[VK_IMAGE_POOL_SIZE];
-	uint16_t recycle_counts[VK_IMAGE_POOL_SIZE];
-	uint32_t first_free;
-	uint32_t free_count;
-} vk_command_buffer_pool;
-
+POOL_DEFINE_TYPE(vk_cmdbuf_data, vk_cmdbuf_pool)
 // TODO: Make this less global
-extern vk_command_buffer_pool _cmd_pool;
+extern vk_cmdbuf_pool _cmd_pool;
 
-bool vk_command_buffer_is_valid(gpu_command_buffer handle);
-gpu_command_buffer vk_command_buffer_create(VkCommandBuffer command_buffer);
-vk_command_buffer_data* vk_command_buffer_get(gpu_command_buffer handle);
-void vk_command_buffer_destroy(gpu_command_buffer handle);
+vk_cmdbuf_pool_handle vk_command_buffer_create(VkCommandBuffer command_buffer);
+vk_cmdbuf_data* vk_command_buffer_get(vk_cmdbuf_pool_handle handle);
 
 /* ============================================================================
  * Types
@@ -176,7 +155,7 @@ typedef struct vk_render_sync {
 	VkFence drawn_fence;
 
 	// [NOTE]: Should this have the right to keep the raw handle?
-	gpu_command_buffer command_buffer;
+	vk_cmdbuf_pool_handle command_buffer;
 	// VkCommandBuffer command_buffer;
 } vk_render_sync;
 

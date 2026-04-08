@@ -17,6 +17,9 @@ ARRAY_DEFINE_TYPE(VkPhysicalDevice, vk_physical_device_array)
 ARRAY_DEFINE_TYPE(VkQueueFamilyProperties2, vk_qf_props_array)
 ARRAY_DEFINE_TYPE(VkExtensionProperties, vk_ext_props_array)
 
+#define IMAGE_POOL_SIZE 1024
+#define CMDBUF_POOL_SIZE 1024
+
 static bool _is_vk_13(VkPhysicalDeviceProperties2 props) {
 	return props.properties.apiVersion >= VK_API_VERSION_1_3;
 }
@@ -225,24 +228,18 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	if (!validate_gpu_config(&self->config)) { return; }
 
 	self->window = window;
-	vk_api_state* state = arena_push(arena, vk_api_state);
+	vk_api_state* state = arena_push_z(arena, vk_api_state);
 	if (!state) {
 		LOG_ERR("vulkan_initialize: couldn't allocate state");
 		ASSERT(false);
 		return;
 	}
 
-	// Auto-zeroing arena can be toggled off, so let's be pedantic
-	memset(state, 0, sizeof(*state));
-
 	// Init global pools:
-	memset(&_image_pool, 0, sizeof(_image_pool));
-	_image_pool.free_count = VK_IMAGE_POOL_SIZE-1;
-	_image_pool.first_free = 1;
+	_image_pool = vk_image_pool_create(arena, IMAGE_POOL_SIZE);
+	_cmd_pool = vk_cmdbuf_pool_create(arena, CMDBUF_POOL_SIZE);
 
-	memset(&_cmd_pool, 0, sizeof(_cmd_pool));
-	_cmd_pool.free_count = VK_COMMAND_BUFFER_POOL_SIZE-1;
-	_cmd_pool.first_free = 1;
+	ASSERT(_image_pool.raw && _cmd_pool.raw);
 
 	{
 		vulkan_init_info vk_pf_info = {0};
@@ -306,23 +303,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		ASSERT(state->queue);
 	}
 
-	{ // Frame sync
-		VkCommandPoolCreateInfo pool_ci = {0};
-		{
-			pool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-			pool_ci.queueFamilyIndex = state->queue_family_idx;
-			pool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-		}
-		check_result(vkCreateCommandPool(state->device, &pool_ci, NULL,
-										 &state->command_pool));
-		if (!vk_sync_buffer_create(state->device, &state->sync_buffer,
-								   self->config.frames_in_flight,
-								   state->command_pool)) {
-			LOG_FATAL("vulkan_initialize: couldn't create rendersync");
-			return;
-		}
-		state->frames_in_flight = self->config.frames_in_flight;
-	}
+	state->frames_in_flight = self->config.frames_in_flight;
 
 	{ // VMA:
 		VmaVulkanFunctions vk_funcs = {
@@ -391,6 +372,23 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		}
 		LOG_DEBUG("vulkan_initialize: created swapchain with %u images",
 				  state->swapchain.img_count);
+	}
+
+	{ // Frame sync
+		VkCommandPoolCreateInfo pool_ci = {0};
+		{
+			pool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+			pool_ci.queueFamilyIndex = state->queue_family_idx;
+			pool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+		}
+		check_result(vkCreateCommandPool(state->device, &pool_ci, NULL,
+										 &state->command_pool));
+		if (!vk_sync_buffer_create(state->device, &state->sync_buffer,
+								   self->config.frames_in_flight,
+								   state->command_pool)) {
+			LOG_FATAL("vulkan_initialize: couldn't create rendersync");
+			return;
+		}
 	}
 
 	{
@@ -603,10 +601,10 @@ gpu_frame_result vulkan_begin_frame(struct gpu_api* self) {
 		begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	}
 
-	vk_command_buffer_data* cmd_data =
+	vk_cmdbuf_data* cmd_data =
 		vk_command_buffer_get(frame.frame_sync->command_buffer);
-	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
-	if (!check_result(vkBeginCommandBuffer(cmd_buf, &begin_info))) {
+	if (!check_result(
+			vkBeginCommandBuffer(cmd_data->command_buffer, &begin_info))) {
 		return ret;
 	}
 
@@ -618,12 +616,13 @@ gpu_frame_result vulkan_begin_frame(struct gpu_api* self) {
 void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer cmd,
 								gpu_render_state* s) {
 	vk_api_state* state = self->state;
-	VkCommandBuffer cmd_buf = vk_command_buffer_get(cmd)->command_buffer;
+	vk_cmdbuf_pool_handle vk_handle = {.raw_handle.handle = cmd.handle};
+	VkCommandBuffer cmd_buf = vk_command_buffer_get(vk_handle)->command_buffer;
 
 	{ // [TODO]: Hardcoded UNDEFINED -> ATTACHMENT_OPTIMAL barrier
 		// vk_image_data* img_data = vk_image_get(s->color_targets[0]);
 		VkImage sc_img;
-		ASSERT( vk_swapchain_get_current_image(&state->swapchain, &sc_img));
+		ASSERT(vk_swapchain_get_current_image(&state->swapchain, &sc_img));
 		VkImageMemoryBarrier2 barrier = {0};
 		{
 			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
@@ -685,7 +684,8 @@ void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer cmd,
 
 void vulkan_submit(UNUSED struct gpu_api* self, gpu_command_buffer cmd) {
 	vk_api_state* state = self->state;
-	VkCommandBuffer cmd_buf = vk_command_buffer_get(cmd)->command_buffer;
+	vk_cmdbuf_pool_handle vk_handle = {.raw_handle.handle = cmd.handle};
+	VkCommandBuffer cmd_buf = vk_command_buffer_get(vk_handle)->command_buffer;
 
 	// TODO: dedicated method:
 	vkCmdEndRendering(cmd_buf);

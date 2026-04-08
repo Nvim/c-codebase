@@ -3,119 +3,50 @@
 #include <graphics/graphics.h>
 
 vk_image_pool _image_pool = {0};
-vk_command_buffer_pool _cmd_pool = {0};
+vk_cmdbuf_pool _cmd_pool = {0};
 
-gpu_image vk_image_create(VkImage image, VkImageView image_view,
-						  VmaAllocation alloc, VkExtent2D extent,
-						  VkFormat format, VkImageUsageFlags flags,
-						  gpu_resource_usage resource_usage,
-						  vk_image_flags custom_flags) {
-	ASSERT(_image_pool.free_count);
-
-	uint32_t idx = gpu_handle_index(_image_pool.first_free);
-	uint16_t generation = _image_pool.recycle_counts[idx] + 1;
-	gpu_image ret = (gpu_image){.handle = gpu_handle_create(idx, generation)};
-	ASSERT(vk_image_is_valid(ret));
-
-	vk_image_data* data = &_image_pool.images[idx];
-	if (data->next_free == GPU_INVALID_HANDLE) {
-		data->next_free = idx + 1; // TODO overflow
-	}
-	_image_pool.first_free = data->next_free;
-	_image_pool.free_count--;
-
+vk_image_pool_handle vk_image_create(VkImage image, VkImageView image_view,
+									 VmaAllocation alloc, VkExtent2D extent,
+									 VkFormat format, VkImageUsageFlags flags,
+									 gpu_resource_usage resource_usage,
+									 vk_image_flags custom_flags) {
+	vk_image_data data;
 	{
-		data->image = image;
-		data->image_view = image_view;
-		data->alloc = alloc;
-		data->extent = extent;
-		data->format = format;
-		data->usage_flags = flags;
-		data->gpu_usage = resource_usage;
-		data->vk_image_flags = custom_flags;
+		data.image = image;
+		data.image_view = image_view;
+		data.alloc = alloc;
+		data.extent = extent;
+		data.format = format;
+		data.usage_flags = flags;
+		data.gpu_usage = resource_usage;
+		data.vk_image_flags = custom_flags;
 	}
-
+	vk_image_pool_handle ret = vk_image_pool_new(_image_pool, &data);
+	ASSERT(vk_image_pool_is_handle_valid(_image_pool, ret));
 	return ret;
 }
 
-bool vk_image_is_valid(gpu_image handle) {
-	uint32_t idx = gpu_handle_index(handle.handle);
-	uint16_t generation = gpu_handle_generation(handle.handle);
-	if (generation <= _image_pool.recycle_counts[idx]) { return false; }
-	return true;
-}
-
-vk_image_data* vk_image_get(gpu_image handle) {
-	if (!vk_image_is_valid(handle)) {
-		LOG_ERR("vk_image_get: invalid image handle requested");
-		ASSERT(false);
-		return NULL;
-	}
-	return &_image_pool.images[gpu_handle_index(handle.handle)];
-}
-
-void vk_image_destroy(gpu_image handle) {
-	if (!vk_image_is_valid(handle)) {
-		LOG_ERR("vk_image_destroy: trying to destroy invalid image handle");
-		ASSERT(false);
-		return;
-	}
-	uint32_t idx = gpu_handle_index(handle.handle);
-
-	_image_pool.first_free = idx;
-	_image_pool.free_count++;
-	_image_pool.recycle_counts[idx]++;
-}
-
-gpu_command_buffer vk_command_buffer_create(VkCommandBuffer command_buffer) {
-	ASSERT(_cmd_pool.free_count);
-
-	uint32_t idx = gpu_handle_index(_cmd_pool.first_free);
-	uint16_t generation = _cmd_pool.recycle_counts[idx] + 1;
-	gpu_command_buffer ret =
-		(gpu_command_buffer){.handle = gpu_handle_create(idx, generation)};
-	ASSERT(vk_command_buffer_is_valid(ret));
-
-	vk_command_buffer_data* data = &_cmd_pool.buffers[idx];
-	if (data->next_free == GPU_INVALID_HANDLE) {
-		data->next_free = idx + 1; // TODO overflow
-	}
-	_cmd_pool.first_free = data->next_free;
-	_cmd_pool.free_count--;
-
-	data->command_buffer = command_buffer;
-
+vk_image_data* vk_image_get(vk_image_pool_handle handle) {
+	vk_image_data* ret = vk_image_pool_get(_image_pool, handle);
+	ASSERT(ret);
 	return ret;
 }
 
-bool vk_command_buffer_is_valid(gpu_command_buffer handle) {
-	uint32_t idx = gpu_handle_index(handle.handle);
-	uint16_t generation = gpu_handle_generation(handle.handle);
-	if (generation <= _cmd_pool.recycle_counts[idx]) { return false; }
-	return true;
+vk_cmdbuf_pool_handle vk_command_buffer_create(VkCommandBuffer command_buffer) {
+	vk_cmdbuf_data data = (vk_cmdbuf_data){.command_buffer = command_buffer};
+	vk_cmdbuf_pool_handle ret = vk_cmdbuf_pool_new(_cmd_pool, &data);
+	ASSERT(vk_cmdbuf_pool_is_handle_valid(_cmd_pool, ret));
+	{
+		vk_cmdbuf_data* got = vk_cmdbuf_pool_get(_cmd_pool, ret);
+		ASSERT(got->command_buffer == command_buffer);
+	}
+	return ret;
 }
 
-vk_command_buffer_data* vk_command_buffer_get(gpu_command_buffer handle) {
-	if (!vk_command_buffer_is_valid(handle)) {
-		LOG_ERR("vk_command_buffer_get: invalid image handle requested");
-		ASSERT(false);
-		return NULL;
-	}
-	return &_cmd_pool.buffers[gpu_handle_index(handle.handle)];
-}
-
-void vk_command_buffer_destroy(gpu_command_buffer handle) {
-	if (!vk_command_buffer_is_valid(handle)) {
-		LOG_ERR("vk_command_buffer_destroy: trying to destroy invalid image "
-				"handle");
-		ASSERT(false);
-		return;
-	}
-
-	uint32_t idx = gpu_handle_index(handle.handle);
-	_cmd_pool.first_free = idx;
-	_cmd_pool.free_count++;
-	_cmd_pool.recycle_counts[idx]++;
+vk_cmdbuf_data* vk_command_buffer_get(vk_cmdbuf_pool_handle handle) {
+	vk_cmdbuf_data* ret = vk_cmdbuf_pool_get(_cmd_pool, handle);
+	ASSERT(ret);
+	return ret;
 }
 
 bool vk_surface_create(vk_surface* out, VkPhysicalDevice device,
@@ -295,9 +226,11 @@ vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 		ASSERT(vk_image_view_array_get(swapchain->image_views, &img_view,
 									   swapchain->img_index));
 
-		handle = vk_image_create(img, img_view, NULL, swapchain->ci.imageExtent,
-								 swapchain->img_format, 0, GPU_USAGE_UNKNOWN,
-								 IMAGE_FLAGS_SWAPCHAIN);
+		vk_image_pool_handle vk_handle = vk_image_create(
+			img, img_view, NULL, swapchain->ci.imageExtent,
+			swapchain->img_format, 0, GPU_USAGE_UNKNOWN, IMAGE_FLAGS_SWAPCHAIN);
+		ASSERT(vk_image_pool_is_handle_valid(_image_pool, vk_handle));
+		handle.handle = vk_handle.raw_handle.handle;
 	};
 
 	ret.image = handle;
@@ -350,7 +283,8 @@ bool vk_render_sync_create(VkDevice device, vk_render_sync* out,
 	VkSemaphoreCreateInfo sem_ci = {
 		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
 
-	// Create fences signalled since there's nothing to wait for on 1st frame
+	// Create fences signalled since there's nothing to wait for on 1st
+	// frame
 	VkFenceCreateInfo fence_ci = {
 		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
 		.flags = VK_FENCE_CREATE_SIGNALED_BIT,
@@ -378,8 +312,10 @@ bool vk_render_sync_create(VkDevice device, vk_render_sync* out,
 			vkAllocateCommandBuffers(device, &alloc_info, &command_buffer))) {
 		return false;
 	}
-	gpu_command_buffer cmd_handle = vk_command_buffer_create(command_buffer);
-	out->command_buffer = cmd_handle;
+
+	vk_cmdbuf_pool_handle handle = vk_command_buffer_create(command_buffer);
+	ASSERT(vk_cmdbuf_pool_is_handle_valid(_cmd_pool, handle));
+	out->command_buffer = handle;
 
 	return true;
 }
@@ -482,9 +418,11 @@ gpu_image_extent vk_to_gpu_image_extent(VkExtent2D e) {
 // }
 
 gpu_frame vk_to_gpu_frame(vk_frame* f) {
-	return (gpu_frame){.frame_index = f->frame_idx,
-					   .backbuffer = f->rendertarget,
-					   .frame_cmd = f->frame_sync->command_buffer};
+	return (gpu_frame){
+		.frame_index = f->frame_idx,
+		.backbuffer = f->rendertarget,
+		.frame_cmd = (gpu_command_buffer){
+			.handle = f->frame_sync->command_buffer.raw_handle.handle}};
 }
 
 VkImageSubresourceRange vk_base_subresource_range(void) {

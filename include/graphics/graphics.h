@@ -59,7 +59,6 @@ typedef enum {
 	GPU_SHADER_COMPUTE,
 } gpu_shader_type;
 
-
 // clang-format off
 typedef struct { uint32_t handle; } gpu_image;
 typedef struct { uint32_t handle; } gpu_buffer;
