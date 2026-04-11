@@ -21,32 +21,6 @@ ARRAY_DEFINE_TYPE(VkSemaphore, vk_sem_array)
 /* ===========================================================================
  * Resource pools
  * ========================================================================== */
-// #define VK_IMAGE_POOL_SIZE 1024
-// #define VK_BUFFER_POOL_SIZE 1024
-// #define VK_COMMAND_BUFFER_POOL_SIZE 1024
-//
-// // 32-bit handle layout:
-// // [ generation (12 bits) | index (20 bits) ]
-// #define GPU_INDEX_BITS 20
-// #define GPU_GENERATION_BITS 12
-// #define GPU_INDEX_MASK ((1u << GPU_INDEX_BITS) - 1)
-// #define GPU_GENERATION_MASK ((1u << GPU_GENERATION_BITS) - 1)
-//
-// #define GPU_INVALID_HANDLE 0
-//
-// static inline uint32_t gpu_handle_create(uint32_t index, uint32_t generation)
-// { 	return ((generation & GPU_GENERATION_MASK) << GPU_INDEX_BITS) |
-// (index & GPU_INDEX_MASK);
-// }
-//
-// static inline uint32_t gpu_handle_index(uint32_t handle) {
-// 	return handle & GPU_INDEX_MASK;
-// }
-//
-// static inline uint32_t gpu_handle_generation(uint32_t handle) {
-// 	return (handle >> GPU_INDEX_BITS) & GPU_GENERATION_MASK;
-// }
-//
 typedef enum {
 	IMAGE_FLAGS_SWAPCHAIN = BIT(1),
 } vk_image_flags;
@@ -64,26 +38,12 @@ typedef struct vk_image_data {
 
 STATIC_ASSERT(sizeof(vk_image_data) == 48, "pretty tight");
 POOL_DEFINE_TYPE(vk_image_data, vk_image_pool)
-// TODO: Make this less global
-extern vk_image_pool _image_pool;
-
-vk_image_pool_handle vk_image_create(VkImage image, VkImageView image_view,
-									 VmaAllocation alloc, VkExtent2D extent,
-									 VkFormat format, VkImageUsageFlags flags,
-									 gpu_resource_usage resource_usage,
-									 vk_image_flags custom_flags);
-vk_image_data* vk_image_get(vk_image_pool_handle handle);
 
 typedef struct vk_cmdbuf_data {
 	VkCommandBuffer command_buffer;
 } vk_cmdbuf_data;
 
 POOL_DEFINE_TYPE(vk_cmdbuf_data, vk_cmdbuf_pool)
-// TODO: Make this less global
-extern vk_cmdbuf_pool _cmd_pool;
-
-vk_cmdbuf_pool_handle vk_command_buffer_create(VkCommandBuffer command_buffer);
-vk_cmdbuf_data* vk_command_buffer_get(vk_cmdbuf_pool_handle handle);
 
 /* ============================================================================
  * Types
@@ -140,6 +100,7 @@ bool vk_swapchain_get_current_semaphore(vk_swapchain* swapchain,
 										VkSemaphore* out);
 vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 													  VkDevice device,
+													  vk_image_pool image_pool,
 													  VkSemaphore semaphore);
 bool vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue);
 void vk_swapchain_destroy(vk_swapchain* swapchain, VkDevice device);
@@ -165,11 +126,11 @@ typedef struct vk_sync_buffer {
 } vk_sync_buffer;
 
 bool vk_render_sync_create(VkDevice device, vk_render_sync* out,
-						   VkCommandPool command_pool);
+						   vk_cmdbuf_pool cmd_pool, VkCommandPool command_pool);
 void vk_render_sync_destroy(VkDevice device, vk_render_sync* sync);
 
 bool vk_sync_buffer_create(VkDevice device, vk_sync_buffer* out,
-						   uint32_t frames_in_flight,
+						   vk_cmdbuf_pool cmd_pool, uint32_t frames_in_flight,
 						   VkCommandPool command_pool);
 void vk_sync_buffer_destroy(VkDevice device, vk_sync_buffer* out);
 
@@ -181,27 +142,33 @@ typedef struct {
 } vk_frame;
 
 typedef struct vk_api_state {
+	// Initialization stuff:
 	vulkan_init_info pf_init_info;
 	VkInstance instance;
-
 	VkPhysicalDevice physical_device;
 	uint32_t queue_family_idx;
 	VkPhysicalDeviceProperties2 device_props;
 
+	// Base handles
 	VkDevice device;
 	VkQueue queue;
 	VmaAllocator allocator;
 	VkCommandPool command_pool; // TODO: one pool per frame?
 
+	// Swapchain
 	vk_surface surface;
-
 	VkFormat rendertarget_format;
 	vk_swapchain swapchain;
 
+	// Frame-in-flight buffering
 	uint64_t frame_idx;
 	vk_sync_buffer sync_buffer;
 	bool frame_in_progress;
 	uint32_t frames_in_flight;
+
+	// Resource pools:
+	vk_image_pool image_pool;
+	vk_cmdbuf_pool cmd_pool;
 } vk_api_state;
 
 vk_render_sync* vk_get_current_sync(vk_api_state* state);

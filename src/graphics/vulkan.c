@@ -235,11 +235,11 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		return;
 	}
 
-	// Init global pools:
-	_image_pool = vk_image_pool_create(arena, IMAGE_POOL_SIZE);
-	_cmd_pool = vk_cmdbuf_pool_create(arena, CMDBUF_POOL_SIZE);
+	// Init resource pools:
+	state->image_pool = vk_image_pool_create(arena, IMAGE_POOL_SIZE);
+	state->cmd_pool = vk_cmdbuf_pool_create(arena, CMDBUF_POOL_SIZE);
 
-	ASSERT(_image_pool.raw && _cmd_pool.raw);
+	ASSERT(state->image_pool.raw && state->cmd_pool.raw);
 
 	{
 		vulkan_init_info vk_pf_info = {0};
@@ -383,9 +383,9 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		}
 		check_result(vkCreateCommandPool(state->device, &pool_ci, NULL,
 										 &state->command_pool));
-		if (!vk_sync_buffer_create(state->device, &state->sync_buffer,
-								   self->config.frames_in_flight,
-								   state->command_pool)) {
+		if (!vk_sync_buffer_create(
+				state->device, &state->sync_buffer, state->cmd_pool,
+				self->config.frames_in_flight, state->command_pool)) {
 			LOG_FATAL("vulkan_initialize: couldn't create rendersync");
 			return;
 		}
@@ -602,7 +602,7 @@ gpu_frame_result vulkan_begin_frame(struct gpu_api* self) {
 	}
 
 	vk_cmdbuf_data* cmd_data =
-		vk_command_buffer_get(frame.frame_sync->command_buffer);
+		vk_cmdbuf_pool_get(state->cmd_pool, frame.frame_sync->command_buffer);
 	if (!check_result(
 			vkBeginCommandBuffer(cmd_data->command_buffer, &begin_info))) {
 		return ret;
@@ -617,7 +617,7 @@ void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer cmd,
 								gpu_render_state* s) {
 	vk_api_state* state = self->state;
 	vk_cmdbuf_pool_handle vk_handle = {.raw_handle.handle = cmd.handle};
-	VkCommandBuffer cmd_buf = vk_command_buffer_get(vk_handle)->command_buffer;
+	VkCommandBuffer cmd_buf = vk_cmdbuf_pool_get(state->cmd_pool, vk_handle)->command_buffer;
 
 	{ // [TODO]: Hardcoded UNDEFINED -> ATTACHMENT_OPTIMAL barrier
 		// vk_image_data* img_data = vk_image_get(s->color_targets[0]);
@@ -685,7 +685,7 @@ void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer cmd,
 void vulkan_submit(UNUSED struct gpu_api* self, gpu_command_buffer cmd) {
 	vk_api_state* state = self->state;
 	vk_cmdbuf_pool_handle vk_handle = {.raw_handle.handle = cmd.handle};
-	VkCommandBuffer cmd_buf = vk_command_buffer_get(vk_handle)->command_buffer;
+	VkCommandBuffer cmd_buf = vk_cmdbuf_pool_get(state->cmd_pool, vk_handle)->command_buffer;
 
 	// TODO: dedicated method:
 	vkCmdEndRendering(cmd_buf);

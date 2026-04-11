@@ -2,53 +2,6 @@
 
 #include <graphics/graphics.h>
 
-vk_image_pool _image_pool = {0};
-vk_cmdbuf_pool _cmd_pool = {0};
-
-vk_image_pool_handle vk_image_create(VkImage image, VkImageView image_view,
-									 VmaAllocation alloc, VkExtent2D extent,
-									 VkFormat format, VkImageUsageFlags flags,
-									 gpu_resource_usage resource_usage,
-									 vk_image_flags custom_flags) {
-	vk_image_data data;
-	{
-		data.image = image;
-		data.image_view = image_view;
-		data.alloc = alloc;
-		data.extent = extent;
-		data.format = format;
-		data.usage_flags = flags;
-		data.gpu_usage = resource_usage;
-		data.vk_image_flags = custom_flags;
-	}
-	vk_image_pool_handle ret = vk_image_pool_new(_image_pool, &data);
-	ASSERT(vk_image_pool_is_handle_valid(_image_pool, ret));
-	return ret;
-}
-
-vk_image_data* vk_image_get(vk_image_pool_handle handle) {
-	vk_image_data* ret = vk_image_pool_get(_image_pool, handle);
-	ASSERT(ret);
-	return ret;
-}
-
-vk_cmdbuf_pool_handle vk_command_buffer_create(VkCommandBuffer command_buffer) {
-	vk_cmdbuf_data data = (vk_cmdbuf_data){.command_buffer = command_buffer};
-	vk_cmdbuf_pool_handle ret = vk_cmdbuf_pool_new(_cmd_pool, &data);
-	ASSERT(vk_cmdbuf_pool_is_handle_valid(_cmd_pool, ret));
-	{
-		vk_cmdbuf_data* got = vk_cmdbuf_pool_get(_cmd_pool, ret);
-		ASSERT(got->command_buffer == command_buffer);
-	}
-	return ret;
-}
-
-vk_cmdbuf_data* vk_command_buffer_get(vk_cmdbuf_pool_handle handle) {
-	vk_cmdbuf_data* ret = vk_cmdbuf_pool_get(_cmd_pool, handle);
-	ASSERT(ret);
-	return ret;
-}
-
 bool vk_surface_create(vk_surface* out, VkPhysicalDevice device,
 					   VkSurfaceKHR surface) {
 	if (!surface) { return false; }
@@ -199,6 +152,7 @@ bool vk_swapchain_get_current_semaphore(vk_swapchain* swapchain,
 
 vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 													  VkDevice device,
+													  vk_image_pool image_pool,
 													  VkSemaphore semaphore) {
 	ASSERT(swapchain->img_index == 0);
 	vk_sc_image_acquire_result ret = {0};
@@ -221,15 +175,22 @@ vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 	{
 		VkImage img;
 		VkImageView img_view;
-		ASSERT(
-			vk_image_array_get(swapchain->images, &img, swapchain->img_index));
-		ASSERT(vk_image_view_array_get(swapchain->image_views, &img_view,
-									   swapchain->img_index));
+		ASSERT(vk_swapchain_get_current_image(swapchain, &img));
+		ASSERT(vk_swapchain_get_current_image_view(swapchain, &img_view));
 
-		vk_image_pool_handle vk_handle = vk_image_create(
-			img, img_view, NULL, swapchain->ci.imageExtent,
-			swapchain->img_format, 0, GPU_USAGE_UNKNOWN, IMAGE_FLAGS_SWAPCHAIN);
-		ASSERT(vk_image_pool_is_handle_valid(_image_pool, vk_handle));
+		vk_image_data data;
+		{
+			data.image = img;
+			data.image_view = img_view;
+			data.alloc = NULL;
+			data.extent = swapchain->ci.imageExtent;
+			data.format = swapchain->img_format;
+			data.usage_flags = 0;
+			data.gpu_usage = GPU_USAGE_UNKNOWN;
+			data.vk_image_flags = IMAGE_FLAGS_SWAPCHAIN;
+		}
+		vk_image_pool_handle vk_handle = vk_image_pool_new(image_pool, &data);
+		ASSERT(vk_image_pool_is_handle_valid(image_pool, vk_handle));
 		handle.handle = vk_handle.raw_handle.handle;
 	};
 
@@ -279,6 +240,7 @@ void vk_swapchain_destroy(vk_swapchain* swapchain, VkDevice device) {
 }
 
 bool vk_render_sync_create(VkDevice device, vk_render_sync* out,
+						   vk_cmdbuf_pool cmd_pool,
 						   VkCommandPool command_pool) {
 	VkSemaphoreCreateInfo sem_ci = {
 		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
@@ -313,8 +275,9 @@ bool vk_render_sync_create(VkDevice device, vk_render_sync* out,
 		return false;
 	}
 
-	vk_cmdbuf_pool_handle handle = vk_command_buffer_create(command_buffer);
-	ASSERT(vk_cmdbuf_pool_is_handle_valid(_cmd_pool, handle));
+	vk_cmdbuf_data data = {.command_buffer = command_buffer};
+	vk_cmdbuf_pool_handle handle = vk_cmdbuf_pool_new(cmd_pool, &data);
+	ASSERT(vk_cmdbuf_pool_is_handle_valid(cmd_pool, handle));
 	out->command_buffer = handle;
 
 	return true;
@@ -327,11 +290,12 @@ void vk_render_sync_destroy(VkDevice device, vk_render_sync* sync) {
 }
 
 bool vk_sync_buffer_create(VkDevice device, vk_sync_buffer* out,
-						   uint32_t frames_in_flight,
+						   vk_cmdbuf_pool cmd_pool, uint32_t frames_in_flight,
 						   VkCommandPool command_pool) {
 	out->frames_in_flight = frames_in_flight;
 	for (uint32_t i = 0; i < out->frames_in_flight; ++i) {
-		if (!vk_render_sync_create(device, &out->frames[i], command_pool)) {
+		if (!vk_render_sync_create(device, &out->frames[i], cmd_pool,
+								   command_pool)) {
 			return false;
 		}
 	}
@@ -374,7 +338,7 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 	{ // Acquire a swapchain image
 		LOG_DEBUG("vk_begin_frame: acquiring swapchain image");
 		vk_sc_image_acquire_result sc_ret = vk_swapchain_acquire_image(
-			&state->swapchain, state->device, frame_sync->draw_sem);
+			&state->swapchain, state->device, state->image_pool, frame_sync->draw_sem);
 
 		if (sc_ret.status == ACQUIRE_ERROR) {
 			LOG_ERR("vk_begin_frame: couldn't acquire swapchain image");
