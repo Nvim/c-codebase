@@ -55,7 +55,12 @@ int main(void) {
 		gpu_frame_result frame_res = gpu.begin_frame(&gpu);
 		ASSERT(frame_res.ok);
 		gpu_frame frame = frame_res.frame;
-		gpu_render_state s = {0};
+
+		gpu_render_state s = {
+			.clear_color = (gpu_color){.floats = {.3f, .7f, .2f, 1.f}},
+			.color_target_count = 1,
+			.color_targets = {frame.backbuffer},
+		};
 		gpu.cmd_begin_rendering(&gpu, frame.frame_cmd, &s);
 		gpu.cmd_submit(&gpu, frame.frame_cmd);
 		gpu.end_frame(&gpu);

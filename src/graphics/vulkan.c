@@ -617,16 +617,17 @@ void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer cmd,
 								gpu_render_state* s) {
 	vk_api_state* state = self->state;
 	vk_cmdbuf_pool_handle vk_handle = {.raw_handle.handle = cmd.handle};
-	VkCommandBuffer cmd_buf = vk_cmdbuf_pool_get(state->cmd_pool, vk_handle)->command_buffer;
+	VkCommandBuffer cmd_buf =
+		vk_cmdbuf_pool_get(state->cmd_pool, vk_handle)->command_buffer;
 
+	vk_image_data* img_data = vk_image_pool_get(
+			state->image_pool,
+			(vk_image_pool_handle){s->color_targets[0].handle});
 	{ // [TODO]: Hardcoded UNDEFINED -> ATTACHMENT_OPTIMAL barrier
-		// vk_image_data* img_data = vk_image_get(s->color_targets[0]);
-		VkImage sc_img;
-		ASSERT(vk_swapchain_get_current_image(&state->swapchain, &sc_img));
 		VkImageMemoryBarrier2 barrier = {0};
 		{
 			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-			barrier.image = sc_img;
+			barrier.image = img_data->image;
 			barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 			barrier.newLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 			barrier.srcStageMask =
@@ -653,17 +654,13 @@ void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer cmd,
 
 	VkRenderingInfo rendering_info = {0};
 	{
-		(void)s; // [TODO]: create rendering info from s
 		VkRenderingAttachmentInfo color_attachment = {0};
-		VkImageView sc_view;
-		ASSERT(
-			vk_swapchain_get_current_image_view(&state->swapchain, &sc_view));
 
 		VkClearValue color = {.color = {.float32 = {1.f, 0.f, 1.f, 1.f}}};
 		{
 			color_attachment.sType =
 				VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-			color_attachment.imageView = sc_view;
+			color_attachment.imageView = img_data->image_view;
 			color_attachment.clearValue = color;
 			color_attachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 			color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -685,7 +682,8 @@ void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer cmd,
 void vulkan_submit(UNUSED struct gpu_api* self, gpu_command_buffer cmd) {
 	vk_api_state* state = self->state;
 	vk_cmdbuf_pool_handle vk_handle = {.raw_handle.handle = cmd.handle};
-	VkCommandBuffer cmd_buf = vk_cmdbuf_pool_get(state->cmd_pool, vk_handle)->command_buffer;
+	VkCommandBuffer cmd_buf =
+		vk_cmdbuf_pool_get(state->cmd_pool, vk_handle)->command_buffer;
 
 	// TODO: dedicated method:
 	vkCmdEndRendering(cmd_buf);
