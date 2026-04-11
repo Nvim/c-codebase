@@ -11,7 +11,9 @@
 
 #define CLAMP(x, min, max) ((x) < (min) ? (min) : ((x) > (max) ? (max) : (x)))
 
-inline size_t next_power_of_two(size_t n) {
+#define BIT(n) 1 << n
+
+static inline size_t next_power_of_two(size_t n) {
 	n--;
 	n |= n >> 1;
 	n |= n >> 2;
@@ -33,7 +35,7 @@ inline size_t next_power_of_two(size_t n) {
  * @note alignment must be a non-zero power of two.
  * @return Aligned value, or 0 on overflow
  */
-inline size_t align_up(size_t value, size_t alignment) {
+static inline size_t align_up(size_t value, size_t alignment) {
 	// Alignment must be a power of two. Clamp it otherwise
 	if ((alignment & (alignment - 1)) != 0) {
 		alignment = next_power_of_two(alignment);

@@ -17,6 +17,9 @@ ARRAY_DEFINE_TYPE(VkPhysicalDevice, vk_physical_device_array)
 ARRAY_DEFINE_TYPE(VkQueueFamilyProperties2, vk_qf_props_array)
 ARRAY_DEFINE_TYPE(VkExtensionProperties, vk_ext_props_array)
 
+#define IMAGE_POOL_SIZE 1024
+#define CMDBUF_POOL_SIZE 1024
+
 static bool _is_vk_13(VkPhysicalDeviceProperties2 props) {
 	return props.properties.apiVersion >= VK_API_VERSION_1_3;
 }
@@ -225,15 +228,18 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	if (!validate_gpu_config(&self->config)) { return; }
 
 	self->window = window;
-	vk_api_state* state = arena_push(arena, vk_api_state);
+	vk_api_state* state = arena_push_z(arena, vk_api_state);
 	if (!state) {
 		LOG_ERR("vulkan_initialize: couldn't allocate state");
 		ASSERT(false);
 		return;
 	}
 
-	// Auto-zeroing arena can be toggled off, so let's be pedantic
-	memset(state, 0, sizeof(*state));
+	// Init resource pools:
+	state->image_pool = vk_image_pool_create(arena, IMAGE_POOL_SIZE);
+	state->cmd_pool = vk_cmdbuf_pool_create(arena, CMDBUF_POOL_SIZE);
+
+	ASSERT(state->image_pool.raw && state->cmd_pool.raw);
 
 	{
 		vulkan_init_info vk_pf_info = {0};
@@ -297,22 +303,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		ASSERT(state->queue);
 	}
 
-	{ // Frame sync
-		VkCommandPoolCreateInfo pool_ci = {0};
-		{
-			pool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-			pool_ci.queueFamilyIndex = state->queue_family_idx;
-			pool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-		}
-		check_result(vkCreateCommandPool(state->device, &pool_ci, NULL,
-										 &state->command_pool));
-		if (!vk_sync_buffer_create(state->device, &state->sync_buffer,
-								   self->config.frames_in_flight,
-								   state->command_pool)) {
-			LOG_FATAL("vulkan_initialize: couldn't create rendersync");
-			return;
-		}
-	}
+	state->frames_in_flight = self->config.frames_in_flight;
 
 	{ // VMA:
 		VmaVulkanFunctions vk_funcs = {
@@ -350,7 +341,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	{
 		window_size win_size = platform_get_window_size(window);
 		state->rendertarget_format =
-			to_vk_format(self->config.target_image_format);
+			gpu_to_vk_image_format(self->config.target_image_format);
 
 		// Buffering setup:
 		uint32_t buffering = self->config.frames_in_flight;
@@ -383,6 +374,23 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 				  state->swapchain.img_count);
 	}
 
+	{ // Frame sync
+		VkCommandPoolCreateInfo pool_ci = {0};
+		{
+			pool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+			pool_ci.queueFamilyIndex = state->queue_family_idx;
+			pool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+		}
+		check_result(vkCreateCommandPool(state->device, &pool_ci, NULL,
+										 &state->command_pool));
+		if (!vk_sync_buffer_create(
+				state->device, &state->sync_buffer, state->cmd_pool,
+				self->config.frames_in_flight, state->command_pool)) {
+			LOG_FATAL("vulkan_initialize: couldn't create rendersync");
+			return;
+		}
+	}
+
 	{
 		self->is_init = true;
 		self->state = state;
@@ -393,58 +401,233 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			  state->queue_family_idx);
 }
 
-void vulkan_render(struct gpu_api* self) {
-	// render is called in a (very) hot loop, no validation here
+// void vulkan_render(struct gpu_api* self) {
+// 	// render is called in a (very) hot loop, no validation here
+// 	vk_api_state* state = self->state;
+// 	vk_render_sync frame_sync =
+// 		state->sync_buffer
+// 			.frames[state->frame_idx % self->config.frames_in_flight];
+//
+// 	static uint64_t const fence_timeout = sec_to_ns(1);
+// 	vkWaitForFences(state->device, 1, &frame_sync.drawn_fence, false,
+// 					fence_timeout);
+// 	vkResetFences(state->device, 1, &frame_sync.drawn_fence);
+//
+// 	vk_rendertarget rendertarget;
+// 	{ // Acquire a swapchain image
+// 		LOG_WARN("vulkan_render: acquiring rendertarget");
+// 		vk_sc_image_acquire_result ret =
+// 			vk_swapchain_acquire_image(&state->swapchain, state->device,
+// 									   &rendertarget, frame_sync.draw_sem);
+//
+// 		// [TODO]: don't just crash on this
+// 		ASSERT(ret != ACQUIRE_ERROR);
+//
+// 		if (ret == ACQUIRE_OUT_OF_DATE) {
+// 			LOG_INFO("vulkan_render: handling out of date swapchain");
+// 			window_size win_size = platform_get_window_size(self->window);
+// 			bool ok = vk_swapchain_refresh(&state->swapchain, state->device,
+// 										   &state->surface, win_size.width,
+// 										   win_size.height);
+// 			ASSERT(ok); // [TODO]: don't crash
+// 		}
+// 	}
+//
+// 	VkSemaphore sc_sem;
+// 	ASSERT(vk_swapchain_get_current_semaphore(&state->swapchain, &sc_sem));
+//
+// 	VkCommandBuffer cmd_buf = frame_sync.command_buffer;
+// 	{ // Begin command buffer
+// 		// check_result(vkResetCommandBuffer(cmd_buf, 0));
+// 		LOG_WARN("vulkan_render: beginning command buffer");
+// 		VkCommandBufferBeginInfo begin_info = {0};
+// 		begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+// 		begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+//
+// 		// [TODO]: handle in release too
+// 		check_result(vkBeginCommandBuffer(cmd_buf, &begin_info));
+// 	}
+//
+// 	{ // Transition swapchain image UNDEFINED -> ATTACHMENT_OPTIMAL
+// 		VkImageMemoryBarrier2 barrier = {0};
+// 		{
+// 			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+// 			barrier.image = rendertarget.image;
+// 			barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+// 			barrier.newLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+// 			barrier.srcStageMask =
+// 				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+// 			barrier.dstStageMask =
+// 				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+// 			barrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+// 									VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+// 			barrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+// 									VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+// 			barrier.subresourceRange = vk_base_subresource_range();
+// 			barrier.srcQueueFamilyIndex = state->queue_family_idx;
+// 			barrier.dstQueueFamilyIndex = state->queue_family_idx;
+// 		}
+//
+// 		VkDependencyInfo dep_info = {0};
+// 		{
+// 			dep_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+// 			dep_info.imageMemoryBarrierCount = 1;
+// 			dep_info.pImageMemoryBarriers = &barrier;
+// 		}
+// 		vkCmdPipelineBarrier2(cmd_buf, &dep_info);
+// 	}
+//
+// 	{ // Actually draw:
+// 		LOG_WARN("vulkan_render: rendering");
+//
+// 		VkRenderingAttachmentInfo color_attachment = {0};
+// 		VkClearValue color = {.color = {.float32 = {1.f, 0.f, 1.f, 1.f}}};
+// 		{
+// 			color_attachment.sType =
+// 				VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+// 			color_attachment.imageView = rendertarget.image_view;
+// 			color_attachment.clearValue = color;
+// 			color_attachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+// 			color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+// 			color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+// 		}
+// 		VkRect2D rect = {.extent = rendertarget.extent,
+// 						 .offset = (VkOffset2D){.x = 0, .y = 0}};
+// 		VkRenderingInfo rendering_info = {0};
+// 		{
+// 			rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+// 			rendering_info.renderArea = rect;
+// 			rendering_info.colorAttachmentCount = 1;
+// 			rendering_info.pColorAttachments = &color_attachment;
+// 			rendering_info.layerCount = 1;
+// 		}
+// 		vkCmdBeginRendering(cmd_buf, &rendering_info);
+// 		vkCmdEndRendering(cmd_buf);
+// 	}
+//
+// 	{ // Transition swapchain image ATTACHMENT_OPTIMAL -> PRESENT_SRC
+// 		VkImageMemoryBarrier2 barrier = {0};
+// 		{
+// 			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+// 			barrier.image = rendertarget.image;
+// 			barrier.oldLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+// 			barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+// 			barrier.srcStageMask =
+// 				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+// 			barrier.dstStageMask =
+// 				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+// 			barrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+// 									VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+// 			barrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+// 									VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+// 			barrier.subresourceRange = vk_base_subresource_range();
+// 			barrier.srcQueueFamilyIndex = state->queue_family_idx;
+// 			barrier.dstQueueFamilyIndex = state->queue_family_idx;
+// 		}
+//
+// 		VkDependencyInfo dep_info = {0};
+// 		{
+// 			dep_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+// 			dep_info.imageMemoryBarrierCount = 1;
+// 			dep_info.pImageMemoryBarriers = &barrier;
+// 		}
+// 		vkCmdPipelineBarrier2(cmd_buf, &dep_info);
+// 	}
+//
+// 	{ // Submit:
+// 		LOG_WARN("vulkan_render: submitting");
+// 		check_result(vkEndCommandBuffer(cmd_buf));
+// 		VkCommandBufferSubmitInfo cmd_info = {0};
+// 		{
+// 			cmd_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+// 			cmd_info.commandBuffer = cmd_buf;
+// 			cmd_info.deviceMask = 0;
+// 		}
+//
+// 		VkSemaphoreSubmitInfo signal_sem_info = {0};
+// 		{
+// 			signal_sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+// 			signal_sem_info.pNext = NULL;
+// 			signal_sem_info.semaphore = sc_sem;
+// 			signal_sem_info.stageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+// 			signal_sem_info.deviceIndex = 0;
+// 			signal_sem_info.value = 1;
+// 		}
+//
+// 		VkSemaphoreSubmitInfo wait_sem_info = {0};
+// 		{
+// 			wait_sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+// 			wait_sem_info.pNext = NULL;
+// 			wait_sem_info.semaphore = frame_sync.draw_sem;
+// 			wait_sem_info.stageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+// 			wait_sem_info.deviceIndex = 0;
+// 			wait_sem_info.value = 1;
+// 		}
+//
+// 		VkSubmitInfo2 submit_info = {0};
+// 		{
+// 			submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+// 			submit_info.commandBufferInfoCount = 1;
+// 			submit_info.pCommandBufferInfos = &cmd_info;
+// 			submit_info.signalSemaphoreInfoCount = 1;
+// 			submit_info.pSignalSemaphoreInfos = &signal_sem_info;
+// 			submit_info.waitSemaphoreInfoCount = 1;
+// 			submit_info.pWaitSemaphoreInfos = &wait_sem_info;
+// 		}
+// 		check_result(vkQueueSubmit2(state->queue, 1, &submit_info,
+// 									frame_sync.drawn_fence));
+// 	}
+//
+// 	LOG_WARN("vulkan_render: presenting");
+// 	ASSERT(vk_swapchain_present(&state->swapchain, state->queue));
+//
+// 	state->frame_idx++;
+// }
+
+gpu_frame_result vulkan_begin_frame(struct gpu_api* self) {
+	gpu_frame_result ret = {0};
+
 	vk_api_state* state = self->state;
-	vk_render_sync frame_sync =
-		state->sync_buffer
-			.frames[state->frame_idx % self->config.frames_in_flight];
-
-	static uint64_t const fence_timeout = sec_to_ns(1);
-	vkWaitForFences(state->device, 1, &frame_sync.drawn_fence, false,
-					fence_timeout);
-	vkResetFences(state->device, 1, &frame_sync.drawn_fence);
-
-	vk_rendertarget rendertarget;
-	{ // Acquire a swapchain image
-		LOG_WARN("vulkan_render: acquiring rendertarget");
-		vk_sc_image_acquire_result ret =
-			vk_swapchain_acquire_image(&state->swapchain, state->device,
-									   &rendertarget, frame_sync.draw_sem);
-
-		// [TODO]: don't just crash on this
-		ASSERT(ret != ACQUIRE_ERROR);
-
-		if (ret == ACQUIRE_OUT_OF_DATE) {
-			LOG_INFO("vulkan_render: handling out of date swapchain");
-			window_size win_size = platform_get_window_size(self->window);
-			bool ok = vk_swapchain_refresh(&state->swapchain, state->device,
-										   &state->surface, win_size.width,
-										   win_size.height);
-			ASSERT(ok); // [TODO]: don't crash
-		}
+	window_size win_size = platform_get_window_size(self->window);
+	vk_frame frame = {0};
+	if (!vk_begin_frame(state, &frame, win_size)) {
+		LOG_ERR("vulkan_begin_frame: couldn't begin frame");
+		return ret;
 	}
 
-	VkSemaphore sc_sem;
-	ASSERT(vk_swapchain_get_current_semaphore(&state->swapchain, &sc_sem));
-
-	VkCommandBuffer cmd_buf = frame_sync.command_buffer;
-	{ // Begin command buffer
-		// check_result(vkResetCommandBuffer(cmd_buf, 0));
-		LOG_WARN("vulkan_render: beginning command buffer");
-		VkCommandBufferBeginInfo begin_info = {0};
+	VkCommandBufferBeginInfo begin_info = {0};
+	{
 		begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 		begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-		// [TODO]: handle in release too
-		check_result(vkBeginCommandBuffer(cmd_buf, &begin_info));
 	}
 
-	{ // Transition swapchain image UNDEFINED -> ATTACHMENT_OPTIMAL
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, frame.frame_sync->command_buffer);
+	if (!check_result(
+			vkBeginCommandBuffer(cmd_data->command_buffer, &begin_info))) {
+		return ret;
+	}
+
+	ret.frame = vk_to_gpu_frame(&frame);
+	ret.ok = true;
+	return ret;
+}
+
+void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer cmd,
+								gpu_render_state* s) {
+	vk_api_state* state = self->state;
+	vk_cmdbuf_pool_handle vk_handle = {.raw_handle.handle = cmd.handle};
+	VkCommandBuffer cmd_buf =
+		vk_cmdbuf_pool_get(state->cmd_pool, vk_handle)->command_buffer;
+
+	vk_image_data* img_data = vk_image_pool_get(
+			state->image_pool,
+			(vk_image_pool_handle){s->color_targets[0].handle});
+	{ // [TODO]: Hardcoded UNDEFINED -> ATTACHMENT_OPTIMAL barrier
 		VkImageMemoryBarrier2 barrier = {0};
 		{
 			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-			barrier.image = rendertarget.image;
+			barrier.image = img_data->image;
 			barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 			barrier.newLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 			barrier.srcStageMask =
@@ -469,23 +652,22 @@ void vulkan_render(struct gpu_api* self) {
 		vkCmdPipelineBarrier2(cmd_buf, &dep_info);
 	}
 
-	{ // Actually draw:
-		LOG_WARN("vulkan_render: rendering");
-
+	VkRenderingInfo rendering_info = {0};
+	{
 		VkRenderingAttachmentInfo color_attachment = {0};
+
 		VkClearValue color = {.color = {.float32 = {1.f, 0.f, 1.f, 1.f}}};
 		{
 			color_attachment.sType =
 				VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-			color_attachment.imageView = rendertarget.image_view;
+			color_attachment.imageView = img_data->image_view;
 			color_attachment.clearValue = color;
 			color_attachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 			color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 			color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		}
-		VkRect2D rect = {.extent = rendertarget.extent,
+		VkRect2D rect = {.extent = state->swapchain.ci.imageExtent,
 						 .offset = (VkOffset2D){.x = 0, .y = 0}};
-		VkRenderingInfo rendering_info = {0};
 		{
 			rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
 			rendering_info.renderArea = rect;
@@ -493,15 +675,26 @@ void vulkan_render(struct gpu_api* self) {
 			rendering_info.pColorAttachments = &color_attachment;
 			rendering_info.layerCount = 1;
 		}
-		vkCmdBeginRendering(cmd_buf, &rendering_info);
-		vkCmdEndRendering(cmd_buf);
 	}
+	vkCmdBeginRendering(cmd_buf, &rendering_info);
+}
 
-	{ // Transition swapchain image ATTACHMENT_OPTIMAL -> PRESENT_SRC
+void vulkan_submit(UNUSED struct gpu_api* self, gpu_command_buffer cmd) {
+	vk_api_state* state = self->state;
+	vk_cmdbuf_pool_handle vk_handle = {.raw_handle.handle = cmd.handle};
+	VkCommandBuffer cmd_buf =
+		vk_cmdbuf_pool_get(state->cmd_pool, vk_handle)->command_buffer;
+
+	// TODO: dedicated method:
+	vkCmdEndRendering(cmd_buf);
+
+	{ // [TODO]: Hardcode barrier ATTACHMENT_OPTIMAL -> PRESENT_SRC
+		VkImage img;
+		vk_swapchain_get_current_image(&state->swapchain, &img);
 		VkImageMemoryBarrier2 barrier = {0};
 		{
 			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-			barrier.image = rendertarget.image;
+			barrier.image = img;
 			barrier.oldLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 			barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 			barrier.srcStageMask =
@@ -525,6 +718,13 @@ void vulkan_render(struct gpu_api* self) {
 		}
 		vkCmdPipelineBarrier2(cmd_buf, &dep_info);
 	}
+
+	VkSemaphore sc_sem;
+	ASSERT(vk_swapchain_get_current_semaphore(&state->swapchain, &sc_sem));
+
+	vk_render_sync frame_sync =
+		state->sync_buffer
+			.frames[state->frame_idx % self->config.frames_in_flight];
 
 	{ // Submit:
 		LOG_WARN("vulkan_render: submitting");
@@ -569,11 +769,16 @@ void vulkan_render(struct gpu_api* self) {
 		check_result(vkQueueSubmit2(state->queue, 1, &submit_info,
 									frame_sync.drawn_fence));
 	}
+}
 
-	LOG_WARN("vulkan_render: presenting");
+void vulkan_end_frame(gpu_api* self) {
+	vk_api_state* state = self->state;
+
+	LOG_WARN("vulkan_end_frame: presenting");
 	ASSERT(vk_swapchain_present(&state->swapchain, state->queue));
 
 	state->frame_idx++;
+	state->frame_in_progress = false;
 }
 
 void vulkan_destroy(struct gpu_api* self) {
@@ -614,7 +819,10 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->name = config.app_name;
 		out->config = config;
 		out->initialize = vulkan_initialize;
-		out->render = vulkan_render;
+		out->begin_frame = vulkan_begin_frame;
+		out->cmd_begin_rendering = vulkan_cmd_begin_rendering;
+		out->cmd_submit = vulkan_submit;
+		out->end_frame = vulkan_end_frame;
 		out->destroy = vulkan_destroy;
 	}
 

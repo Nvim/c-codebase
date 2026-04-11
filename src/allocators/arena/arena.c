@@ -29,7 +29,7 @@ static arena_impl* _arena_create_internal(arena_create_info info) {
 	bool const growable = info.flags & ARENA_GROWING;
 	if (growable) {
 		if (info.max_size == 0 || info.max_size < info.alignment) {
-			LOG_ERR("arena_create: invalid max size");
+			LOG_ERR("arena_create: invalid max size: %zu", info.max_size);
 			return NULL;
 		}
 	} else {
@@ -225,6 +225,14 @@ void* arena_alloc(arena_t* arena, size_t size) {
 	return ret;
 }
 
+LIB_EXPORT void* arena_alloc_clear(arena_t* arena, size_t size,
+								   int clear_value) {
+	void* ret = arena_alloc(arena, size);
+	if (!ret) { return NULL; }
+	memset(ret, clear_value, size);
+	return ret;
+}
+
 void* arena_alloc_array(arena_t* arena, size_t elem_size, size_t elem_count) {
 	if (!arena) {
 		LOG_ERR("arena_alloc_array: invalid arena handle: %p", arena);
@@ -232,6 +240,14 @@ void* arena_alloc_array(arena_t* arena, size_t elem_size, size_t elem_count) {
 	}
 	size_t size = elem_size * elem_count;
 	return arena_alloc(arena, size);
+}
+
+void* arena_alloc_array_clear(arena_t* arena, size_t elem_size,
+							  size_t elem_count, int clear_value) {
+	void* ret = arena_alloc_array(arena, elem_size, elem_count);
+	if (!ret) { return NULL; }
+	memset(ret, clear_value, elem_size * elem_count);
+	return ret;
 }
 
 void* arena_reset(arena_t* arena) {
@@ -342,11 +358,11 @@ size_t arena_get_remaining(arena_t* arena) {
 
 size_t arena_get_growth_remaining(arena_t* arena) {
 	if (!arena) {
-		LOG_ERR("arena_get_remaining: invalid arena handle: %p", arena);
+		LOG_ERR("arena_get_growth_remaining: invalid arena handle: %p", arena);
 		return 0;
 	}
 	arena_impl* impl = (arena_impl*)arena;
-	if (!impl->flags && ARENA_GROWING) { return arena_impl_remaining(impl); }
+	if (!(impl->flags & ARENA_GROWING)) { return arena_impl_remaining(impl); }
 
 	char* max = (char*)impl->begin + impl->max_size;
 	char* current = impl->current;

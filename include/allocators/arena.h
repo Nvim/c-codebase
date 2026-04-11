@@ -83,6 +83,14 @@ LIB_EXPORT size_t arena_header_size(void);
 LIB_EXPORT void* arena_alloc(arena_t* arena, size_t size);
 
 /**
+ * @brief Allocate memory from the arena. And explicitly memset it.
+ *
+ * @param size The amount of memory to allocate
+ */
+LIB_EXPORT void* arena_alloc_clear(arena_t* arena, size_t size,
+								   int clear_value);
+
+/**
  * @brief Allocate enough memory for an array of specified type
  *
  * @param elem_size Size of one array element
@@ -92,11 +100,26 @@ LIB_EXPORT void* arena_alloc_array(arena_t* arena, size_t elem_size,
 								   size_t elem_count);
 
 /**
+ * @brief Allocate enough memory for an array of specified type and explicitly
+ * memset it.
+ *
+ * @param elem_size Size of one array element
+ * @param elem_count Number of array element to allocate
+ */
+LIB_EXPORT void* arena_alloc_array_clear(arena_t* arena, size_t elem_size,
+										 size_t elem_count, int clear_value);
+
+/**
  * Convinient macros for pushing data
  */
 #define arena_push(arena, type) (type*)arena_alloc(arena, sizeof(type))
 #define arena_push_array(arena, type, count)                                   \
 	(type*)arena_alloc_array(arena, sizeof(type), count)
+
+#define arena_push_z(arena, type)                                              \
+	(type*)arena_alloc_clear(arena, sizeof(type), 0)
+#define arena_push_array_z(arena, type, count)                                 \
+	(type*)arena_alloc_array_clear(arena, sizeof(type), count, 0)
 
 /**
  * @brief Restore the arena to it's original state. No memory is freed

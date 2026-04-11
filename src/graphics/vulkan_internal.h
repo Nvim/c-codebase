@@ -4,6 +4,7 @@
 #include "vulkan_init_info.h"
 
 #include <containers/array.h>
+#include <containers/pool.h>
 #include <core/core.h>
 #include <graphics/graphics.h>
 #include <platform/platform.h>
@@ -17,11 +18,43 @@ ARRAY_DEFINE_TYPE(VkSemaphore, vk_sem_array)
 
 #define VK_MAX_BUFFERING 4
 
-typedef struct vk_rendertarget {
+/* ===========================================================================
+ * Resource pools
+ * ========================================================================== */
+typedef enum {
+	IMAGE_FLAGS_SWAPCHAIN = BIT(1),
+} vk_image_flags;
+
+typedef struct vk_image_data {
 	VkImage image;
 	VkImageView image_view;
+	VmaAllocation alloc;
 	VkExtent2D extent;
-} vk_rendertarget;
+	VkFormat format;
+	VkImageUsageFlags usage_flags;
+	gpu_resource_usage gpu_usage;
+	uint8_t vk_image_flags;
+} vk_image_data;
+
+STATIC_ASSERT(sizeof(vk_image_data) == 48, "pretty tight");
+POOL_DEFINE_TYPE(vk_image_data, vk_image_pool)
+
+typedef struct vk_cmdbuf_data {
+	VkCommandBuffer command_buffer;
+} vk_cmdbuf_data;
+
+POOL_DEFINE_TYPE(vk_cmdbuf_data, vk_cmdbuf_pool)
+
+/* ============================================================================
+ * Types
+ * ========================================================================== */
+
+// typedef struct vk_rendertarget {
+// 	VkImage image;
+// 	VkImageView image_view;
+// 	VkExtent2D extent;
+// 	VkFormat format;
+// } vk_rendertarget;
 
 typedef struct vk_surface {
 	VkSurfaceKHR surface;
@@ -45,9 +78,14 @@ typedef struct vk_swapchain {
 } vk_swapchain;
 
 typedef enum {
-	ACQUIRE_SUCCESS,
-	ACQUIRE_OUT_OF_DATE,
 	ACQUIRE_ERROR,
+	ACQUIRE_OUT_OF_DATE,
+	ACQUIRE_SUCCESS,
+} vk_swapchain_status;
+
+typedef struct {
+	vk_swapchain_status status;
+	gpu_image image; // Only valid if status is `ACQUIRE_SUCCESS`.
 } vk_sc_image_acquire_result;
 
 bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
@@ -62,7 +100,7 @@ bool vk_swapchain_get_current_semaphore(vk_swapchain* swapchain,
 										VkSemaphore* out);
 vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 													  VkDevice device,
-													  vk_rendertarget* out,
+													  vk_image_pool image_pool,
 													  VkSemaphore semaphore);
 bool vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue);
 void vk_swapchain_destroy(vk_swapchain* swapchain, VkDevice device);
@@ -77,7 +115,9 @@ typedef struct vk_render_sync {
 	// Waited on before next render.
 	VkFence drawn_fence;
 
-	VkCommandBuffer command_buffer;
+	// [NOTE]: Should this have the right to keep the raw handle?
+	vk_cmdbuf_pool_handle command_buffer;
+	// VkCommandBuffer command_buffer;
 } vk_render_sync;
 
 typedef struct vk_sync_buffer {
@@ -86,35 +126,58 @@ typedef struct vk_sync_buffer {
 } vk_sync_buffer;
 
 bool vk_render_sync_create(VkDevice device, vk_render_sync* out,
-						   VkCommandPool command_pool);
+						   vk_cmdbuf_pool cmd_pool, VkCommandPool command_pool);
 void vk_render_sync_destroy(VkDevice device, vk_render_sync* sync);
 
 bool vk_sync_buffer_create(VkDevice device, vk_sync_buffer* out,
-						   uint32_t frames_in_flight,
+						   vk_cmdbuf_pool cmd_pool, uint32_t frames_in_flight,
 						   VkCommandPool command_pool);
 void vk_sync_buffer_destroy(VkDevice device, vk_sync_buffer* out);
 
+typedef struct {
+	uint64_t frame_idx;
+	gpu_image rendertarget;
+	vk_render_sync* frame_sync;
+	VkSemaphore swapchain_semaphore;
+} vk_frame;
+
 typedef struct vk_api_state {
+	// Initialization stuff:
 	vulkan_init_info pf_init_info;
 	VkInstance instance;
-
 	VkPhysicalDevice physical_device;
 	uint32_t queue_family_idx;
 	VkPhysicalDeviceProperties2 device_props;
 
+	// Base handles
 	VkDevice device;
 	VkQueue queue;
 	VmaAllocator allocator;
 	VkCommandPool command_pool; // TODO: one pool per frame?
 
+	// Swapchain
 	vk_surface surface;
-
 	VkFormat rendertarget_format;
 	vk_swapchain swapchain;
 
+	// Frame-in-flight buffering
 	uint64_t frame_idx;
 	vk_sync_buffer sync_buffer;
+	bool frame_in_progress;
+	uint32_t frames_in_flight;
+
+	// Resource pools:
+	vk_image_pool image_pool;
+	vk_cmdbuf_pool cmd_pool;
 } vk_api_state;
+
+vk_render_sync* vk_get_current_sync(vk_api_state* state);
+bool vk_begin_frame(vk_api_state* state, vk_frame* out,
+					window_size window_size);
+
+/* ===========================================================================
+ * Utils & conversion
+ * ========================================================================== */
 
 // [TODO]: Could be nicer idk
 static inline bool check_result(VkResult result) {
@@ -124,6 +187,14 @@ static inline bool check_result(VkResult result) {
 }
 
 VkImageSubresourceRange vk_base_subresource_range(void);
-VkFormat to_vk_format(gpu_image_format f);
+
+VkFormat gpu_to_vk_image_format(gpu_image_format f);
+gpu_image_format vk_to_gpu_image_format(VkFormat f);
+
+gpu_image_extent vk_to_gpu_image_extent(VkExtent2D e);
+
+// gpu_rendertarget vk_to_gpu_rendertarget(gpu_image* t);
+
+gpu_frame vk_to_gpu_frame(vk_frame* f);
 
 #endif // !VULKAN_UTIL_H

@@ -152,29 +152,52 @@ bool vk_swapchain_get_current_semaphore(vk_swapchain* swapchain,
 
 vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 													  VkDevice device,
-													  vk_rendertarget* out,
+													  vk_image_pool image_pool,
 													  VkSemaphore semaphore) {
 	ASSERT(swapchain->img_index == 0);
+	vk_sc_image_acquire_result ret = {0};
 	VkResult res =
 		vkAcquireNextImageKHR(device, swapchain->swapchain, UINT64_MAX,
 							  semaphore, NULL, &swapchain->img_index);
 
-	if (res == VK_ERROR_OUT_OF_DATE_KHR) { return ACQUIRE_OUT_OF_DATE; }
+	if (res == VK_ERROR_OUT_OF_DATE_KHR) {
+		ret.status = ACQUIRE_OUT_OF_DATE;
+		return ret;
+	}
 	if (res != VK_SUCCESS && res != VK_ERROR_OUT_OF_DATE_KHR) {
-		return ACQUIRE_ERROR;
+		ret.status = ACQUIRE_ERROR;
+		return ret;
 	}
 
 	LOG_DEBUG("vk_swapchain_acquire_image: acquired image %u",
 			  swapchain->img_index);
+	gpu_image handle;
 	{
-		VkImage* imgs_p = vk_image_array_begin(swapchain->images);
-		VkImageView* img_views_p =
-			vk_image_view_array_begin(swapchain->image_views);
-		out->image = imgs_p[swapchain->img_index];
-		out->image_view = img_views_p[swapchain->img_index];
-		out->extent = swapchain->ci.imageExtent;
+		VkImage img;
+		VkImageView img_view;
+		ASSERT(vk_swapchain_get_current_image(swapchain, &img));
+		ASSERT(vk_swapchain_get_current_image_view(swapchain, &img_view));
+
+		vk_image_data data;
+		{
+			data.image = img;
+			data.image_view = img_view;
+			data.alloc = NULL;
+			data.extent = swapchain->ci.imageExtent;
+			data.format = swapchain->img_format;
+			data.usage_flags = 0;
+			data.gpu_usage = GPU_USAGE_UNKNOWN;
+			data.vk_image_flags = IMAGE_FLAGS_SWAPCHAIN;
+		}
+		vk_image_pool_handle vk_handle = vk_image_pool_new(image_pool, &data);
+		ASSERT(vk_image_pool_is_handle_valid(image_pool, vk_handle));
+		handle.handle = vk_handle.raw_handle.handle;
 	};
-	return ACQUIRE_SUCCESS;
+
+	ret.image = handle;
+	ret.status = ACQUIRE_SUCCESS;
+
+	return ret;
 }
 
 bool vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue) {
@@ -217,11 +240,13 @@ void vk_swapchain_destroy(vk_swapchain* swapchain, VkDevice device) {
 }
 
 bool vk_render_sync_create(VkDevice device, vk_render_sync* out,
+						   vk_cmdbuf_pool cmd_pool,
 						   VkCommandPool command_pool) {
 	VkSemaphoreCreateInfo sem_ci = {
 		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
 
-	// Create fences signalled since there's nothing to wait for on 1st frame
+	// Create fences signalled since there's nothing to wait for on 1st
+	// frame
 	VkFenceCreateInfo fence_ci = {
 		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
 		.flags = VK_FENCE_CREATE_SIGNALED_BIT,
@@ -244,10 +269,16 @@ bool vk_render_sync_create(VkDevice device, vk_render_sync* out,
 		alloc_info.level = 0;
 	}
 
-	if (!check_result(vkAllocateCommandBuffers(device, &alloc_info,
-											   &out->command_buffer))) {
+	VkCommandBuffer command_buffer;
+	if (!check_result(
+			vkAllocateCommandBuffers(device, &alloc_info, &command_buffer))) {
 		return false;
 	}
+
+	vk_cmdbuf_data data = {.command_buffer = command_buffer};
+	vk_cmdbuf_pool_handle handle = vk_cmdbuf_pool_new(cmd_pool, &data);
+	ASSERT(vk_cmdbuf_pool_is_handle_valid(cmd_pool, handle));
+	out->command_buffer = handle;
 
 	return true;
 }
@@ -259,11 +290,12 @@ void vk_render_sync_destroy(VkDevice device, vk_render_sync* sync) {
 }
 
 bool vk_sync_buffer_create(VkDevice device, vk_sync_buffer* out,
-						   uint32_t frames_in_flight,
+						   vk_cmdbuf_pool cmd_pool, uint32_t frames_in_flight,
 						   VkCommandPool command_pool) {
 	out->frames_in_flight = frames_in_flight;
 	for (uint32_t i = 0; i < out->frames_in_flight; ++i) {
-		if (!vk_render_sync_create(device, &out->frames[i], command_pool)) {
+		if (!vk_render_sync_create(device, &out->frames[i], cmd_pool,
+								   command_pool)) {
 			return false;
 		}
 	}
@@ -276,6 +308,87 @@ void vk_sync_buffer_destroy(VkDevice device, vk_sync_buffer* out) {
 	}
 }
 
+vk_render_sync* vk_get_current_sync(vk_api_state* state) {
+	return &state->sync_buffer
+				.frames[state->frame_idx % state->frames_in_flight];
+}
+
+bool vk_begin_frame(vk_api_state* state, vk_frame* out,
+					window_size window_size) {
+	*out = (vk_frame){0};
+	if (state->frame_in_progress) {
+		LOG_ERR("vulkan_begin_frame: a frame in already in progress");
+		return false;
+	}
+
+	vk_render_sync* frame_sync = vk_get_current_sync(state);
+
+	static uint64_t const fence_timeout = sec_to_ns(1);
+	if (!check_result(vkWaitForFences(state->device, 1,
+									  &frame_sync->drawn_fence, false,
+									  fence_timeout))) {
+		return false;
+	};
+	if (!check_result(
+			vkResetFences(state->device, 1, &frame_sync->drawn_fence))) {
+		return false;
+	};
+
+	gpu_image sc_image;
+	{ // Acquire a swapchain image
+		LOG_DEBUG("vk_begin_frame: acquiring swapchain image");
+		vk_sc_image_acquire_result sc_ret = vk_swapchain_acquire_image(
+			&state->swapchain, state->device, state->image_pool, frame_sync->draw_sem);
+
+		if (sc_ret.status == ACQUIRE_ERROR) {
+			LOG_ERR("vk_begin_frame: couldn't acquire swapchain image");
+			return false;
+		}
+
+		if (sc_ret.status == ACQUIRE_OUT_OF_DATE) {
+			LOG_INFO("vk_begin_frame: handling out of date swapchain");
+			bool ok = vk_swapchain_refresh(&state->swapchain, state->device,
+										   &state->surface, window_size.width,
+										   window_size.height);
+			if (!ok) {
+				LOG_ERR("vulkan_begin_frame: couldn't refresh swapchain");
+				return false;
+			}
+		}
+		sc_image = sc_ret.image;
+	}
+
+	VkSemaphore sc_sem;
+	ASSERT(vk_swapchain_get_current_semaphore(&state->swapchain, &sc_sem));
+
+	{
+		out->frame_idx = state->frame_idx;
+		out->rendertarget = sc_image;
+		out->frame_sync = frame_sync;
+		out->swapchain_semaphore = sc_sem;
+	}
+
+	return true;
+}
+
+gpu_image_extent vk_to_gpu_image_extent(VkExtent2D e) {
+	return (gpu_image_extent){.width = e.width, .height = e.height};
+}
+
+// gpu_rendertarget vk_to_gpu_rendertarget(gpu_image* t) {
+// 	return (gpu_rendertarget){.extent = vk_to_gpu_image_extent(t->extent),
+// 							  .format = vk_to_gpu_image_format(t->format),
+// 							  .image = t->image};
+// }
+
+gpu_frame vk_to_gpu_frame(vk_frame* f) {
+	return (gpu_frame){
+		.frame_index = f->frame_idx,
+		.backbuffer = f->rendertarget,
+		.frame_cmd = (gpu_command_buffer){
+			.handle = f->frame_sync->command_buffer.raw_handle.handle}};
+}
+
 VkImageSubresourceRange vk_base_subresource_range(void) {
 	static VkImageSubresourceRange const view_range = {
 		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -285,7 +398,7 @@ VkImageSubresourceRange vk_base_subresource_range(void) {
 	return view_range;
 }
 
-VkFormat to_vk_format(gpu_image_format f) {
+VkFormat gpu_to_vk_image_format(gpu_image_format f) {
 	switch (f) {
 	case IMAGE_FORMAT_RGBA_UNORM: return VK_FORMAT_R8G8B8A8_UNORM;
 	case IMAGE_FORMAT_RGBA_SNORM: return VK_FORMAT_R8G8B8A8_SNORM;
@@ -295,5 +408,17 @@ VkFormat to_vk_format(gpu_image_format f) {
 	case IMAGE_FORMAT_RGB_SNORM: return VK_FORMAT_R8G8B8_SNORM;
 	case IMAGE_FORMAT_RGB_SRGB: return VK_FORMAT_R8G8B8_SRGB;
 	default: ASSERT(false); return VK_FORMAT_R8G8B8_UNORM;
+	}
+}
+
+gpu_image_format vk_to_gpu_image_format(VkFormat f) {
+	switch (f) {
+	case VK_FORMAT_R8G8B8A8_UNORM: return IMAGE_FORMAT_RGBA_UNORM;
+	case VK_FORMAT_R8G8B8A8_SNORM: return IMAGE_FORMAT_RGBA_SNORM;
+	case VK_FORMAT_R8G8B8A8_SRGB: return IMAGE_FORMAT_RGBA_SRGB;
+	case VK_FORMAT_R8G8B8_UNORM: return IMAGE_FORMAT_RGB_UNORM;
+	case VK_FORMAT_R8G8B8_SNORM: return IMAGE_FORMAT_RGB_SNORM;
+	case VK_FORMAT_R8G8B8_SRGB: return IMAGE_FORMAT_RGB_SRGB;
+	default: ASSERT(false); return IMAGE_FORMAT_RGB_UNORM;
 	}
 }
