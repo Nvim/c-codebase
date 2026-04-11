@@ -47,11 +47,6 @@ typedef struct mouse_button_cb_entry {
 static key_cb_entry _key_callbacks[INPUT_KEY_COUNT] = {0};
 static mouse_button_cb_entry _mouse_button_callbacks[INPUT_KEY_COUNT] = {0};
 
-// [TODO]: Only needed for glfwSwapBuffers call. Remove when Vulkan is setup
-#if defined(CREATE_OPENGL_CONTEXT)
-static GLFWwindow* _window = NULL;
-#endif
-
 static void _key_callback(GLFWwindow* window, int key, int scancode, int action,
 						  int mods);
 static void _mouse_button_callback(GLFWwindow* window, int button, int action,
@@ -74,19 +69,13 @@ bool platform_init(void) {
 LIB_EXPORT void platform_destroy(void) { glfwTerminate(); }
 
 window_t* platform_create_window(window_size size, char const* name) {
+	// [TODO]: Someday another API might be supported who knows
 	if (glfwVulkanSupported() != GLFW_TRUE) {
 		ASSERT(false);
 		return NULL;
 	}
 
-#if defined(CREATE_OPENGL_CONTEXT)
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-#else
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-#endif
-
 	GLFWwindow* window =
 		glfwCreateWindow(size.width, size.height, name, NULL, NULL);
 
@@ -95,11 +84,6 @@ window_t* platform_create_window(window_size size, char const* name) {
 	glfwSetCursorPosCallback(window, cursor_position_callback);
 	glfwSetScrollCallback(window, scroll_callback);
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-
-#if defined(CREATE_OPENGL_CONTEXT)
-	glfwMakeContextCurrent(window);
-	_window = window;
-#endif
 
 	window_impl* ret = (window_impl*)window;
 	ret->internal = window;
@@ -244,11 +228,7 @@ static void _key_callback(GLFWwindow* window, int key, UNUSED int scancode,
 }
 
 static void _mouse_button_callback(GLFWwindow* window, int button, int action,
-								   int mods) {
-	(void)window;
-	(void)action;
-	(void)mods;
-	// TODO
+								   UNUSED int mods) {
 	input_mouse_button translated = input_translate_internal_button(button);
 	mouse_button_cb_entry* e = &_mouse_button_callbacks[translated];
 	switch (action) {

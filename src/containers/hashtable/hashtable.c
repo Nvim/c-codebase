@@ -23,8 +23,7 @@ hashtable_t* hashtable_create(arena_t* arena, uint32_t count,
 	// [TODO]: overflow check
 	size_t allocation_size = ht_allocation_size(count, elem_size);
 
-	// [TODO]: make a function for growning arena remaining
-	if (arena_get_remaining(arena) < sizeof(ht_impl) + allocation_size) {
+	if (arena_get_growth_remaining(arena) < sizeof(ht_impl) + allocation_size) {
 		LOG_ERR("hashtable_create: not enough space left on arena");
 		return NULL;
 	}
