@@ -39,8 +39,19 @@ typedef struct vk_image_data {
 STATIC_ASSERT(sizeof(vk_image_data) == 48, "pretty tight");
 POOL_DEFINE_TYPE(vk_image_data, vk_image_pool)
 
+typedef enum vk_cmdbuf_state {
+	CMDBUF_NOT_BEGAN, // -> VkBeginCommandBuffer not called yet
+	CMDBUF_RECORDING,
+	CMDBUF_RENDERING, // -> cmd_end_rendering must be called before cmd_submit
+	CMDBUF_ENDED,	  // -> VkEndCommandBuffer called. [TODO]: may need info on
+					  // async VkQueueSubmit
+	CMDBUF_INVALID,
+} vk_cmdbuf_state;
+
 typedef struct vk_cmdbuf_data {
 	VkCommandBuffer command_buffer;
+	vk_cmdbuf_state state;
+
 } vk_cmdbuf_data;
 
 POOL_DEFINE_TYPE(vk_cmdbuf_data, vk_cmdbuf_pool)

@@ -337,8 +337,9 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 	gpu_image sc_image;
 	{ // Acquire a swapchain image
 		LOG_DEBUG("vk_begin_frame: acquiring swapchain image");
-		vk_sc_image_acquire_result sc_ret = vk_swapchain_acquire_image(
-			&state->swapchain, state->device, state->image_pool, frame_sync->draw_sem);
+		vk_sc_image_acquire_result sc_ret =
+			vk_swapchain_acquire_image(&state->swapchain, state->device,
+									   state->image_pool, frame_sync->draw_sem);
 
 		if (sc_ret.status == ACQUIRE_ERROR) {
 			LOG_ERR("vk_begin_frame: couldn't acquire swapchain image");

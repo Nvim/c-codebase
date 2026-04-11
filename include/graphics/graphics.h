@@ -148,6 +148,7 @@ typedef struct gpu_api {
 	gpu_frame_result (*begin_frame)(struct gpu_api*);
 	void (*cmd_begin_rendering)(struct gpu_api*, gpu_command_buffer cmd,
 								gpu_render_state* s);
+	void (*cmd_end_rendering)(struct gpu_api*, gpu_command_buffer cmd);
 	void (*cmd_submit)(struct gpu_api*, gpu_command_buffer cmd);
 	void (*end_frame)(struct gpu_api*); // presents
 } gpu_api;

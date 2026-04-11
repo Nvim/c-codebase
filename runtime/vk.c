@@ -47,9 +47,9 @@ int main(void) {
 	double t_prev = platform_get_time();
 	double delta = 0.0f;
 
-	// uint32_t frame_count = 0;
+	uint32_t frame_count = 0;
 	while (!_quit) {
-		// if(frame_count++ > 12) { break; }
+		if(frame_count++ > 12) { break; }
 		platform_poll();
 		if (platform_window_should_close(win)) { break; }
 		gpu_frame_result frame_res = gpu.begin_frame(&gpu);
@@ -62,6 +62,7 @@ int main(void) {
 			.color_targets = {frame.backbuffer},
 		};
 		gpu.cmd_begin_rendering(&gpu, frame.frame_cmd, &s);
+		gpu.cmd_end_rendering(&gpu, frame.frame_cmd);
 		gpu.cmd_submit(&gpu, frame.frame_cmd);
 		gpu.end_frame(&gpu);
 		double t_now = platform_get_time();
