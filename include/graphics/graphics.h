@@ -35,15 +35,21 @@ typedef union {
 	float floats[4];
 } gpu_color;
 
+// Specify how image is used
 typedef enum {
-	GPU_USAGE_UNKNOWN = BIT(0),
-	GPU_USAGE_SHADER_READ = BIT(1),
-	GPU_USAGE_SHADER_WRITE = BIT(2),
-	GPU_USAGE_RENDER_TARGET = BIT(3),
-	GPU_USAGE_DEPTH = BIT(4),
-	GPU_USAGE_TRANSFER_SRC = BIT(5),
-	GPU_USAGE_TRANSFER_DST = BIT(6),
-	GPU_USAGE_PRESENT = BIT(7),
+	GPU_USAGE_NONE = 0,
+	GPU_USAGE_GENERAL, // temporary?? Vulkan has VK_IMAGE_LAYOUT_GENERAL
+
+	GPU_USAGE_SHADER_READ,
+	GPU_USAGE_SHADER_WRITE,
+
+	GPU_USAGE_RENDER_TARGET,
+
+	GPU_USAGE_DEPTH_READ,
+	GPU_USAGE_DEPTH_WRITE,
+
+	GPU_USAGE_TRANSFER_SRC,
+	GPU_USAGE_TRANSFER_DST,
 } gpu_resource_usage;
 
 typedef enum {
@@ -132,6 +138,15 @@ typedef struct gpu_frame_result {
  */
 typedef struct gpu_api_platform_init_info gpu_api_platform_init_info;
 
+/**
+ * @typedef gpu_api
+ * @brief Backend Graphics API interface.
+ * Low-level but provides built-in nice abstraction over swapchain and
+ * presenting, with Double/Triple buffering setups.
+ * Memory barriers and sync is also made easier to deal with, but isn't
+ * fully automated.
+ *
+ */
 typedef struct gpu_api {
 	gpu_api_type type;
 	bool is_init;
@@ -141,16 +156,73 @@ typedef struct gpu_api {
 	gpu_api_platform_init_info* pf_info; // Allocated on arena by `initialize`
 	void* state;						 // Allocated on arena by `initialize`
 
+	/**
+	 * @brief Initialize GPU API. Make sure `type`, `name` and `config` are set
+	 * before calling. ([TODO]: refactor this it sucks)
+	 *
+	 * @param arena Allocations for all resources
+	 * @param scratch Temporary
+	 */
 	void (*initialize)(struct gpu_api*, window_t*, arena_t* arena,
 					   arena_t* scratch);
-	void (*render)(struct gpu_api*);
+
+	/**
+	 * @brief Release and invalidate everything. Don't call while a frame is in
+	 * flight.
+	 */
 	void (*destroy)(struct gpu_api*);
+
+	/**
+	 * @brief Begin a new frame. Previous frame must have been ended.
+	 *
+	 * @return If result.ok is true, new frame.
+	 */
 	gpu_frame_result (*begin_frame)(struct gpu_api*);
-	void (*cmd_begin_rendering)(struct gpu_api*, gpu_command_buffer cmd,
-								gpu_render_state* s);
-	void (*cmd_end_rendering)(struct gpu_api*, gpu_command_buffer cmd);
-	void (*cmd_submit)(struct gpu_api*, gpu_command_buffer cmd);
-	void (*end_frame)(struct gpu_api*); // presents
+
+	/**
+	 * @brief Begin rendering. Call this before any rendering commands.
+	 */
+	void (*cmd_begin_rendering)(struct gpu_api*, gpu_command_buffer,
+								gpu_render_state*);
+
+	/**
+	 * @brief End rendering. It must have been begun beforehand.
+	 */
+	void (*cmd_end_rendering)(struct gpu_api*, gpu_command_buffer);
+
+	/**
+	 * @brief Specify a new usage for image. Image has to have been created with
+	 * support the new usage.
+	 *
+	 */
+	bool (*cmd_transition_image)(struct gpu_api*, gpu_command_buffer, gpu_image,
+								 gpu_resource_usage new_usage);
+
+	// present is a special layout. image must be a frame's backbuffer
+
+	/**
+	 * @brief Same as cmd_transition_image, but presenting is a special layout
+	 * that doesn't apply to all images. Given image must be a frame's
+	 * backbuffer.
+	 *
+	 * @return false if image or command buffer aren't valid, true otherwise.
+	 */
+	bool (*cmd_transition_for_present)(struct gpu_api*, gpu_command_buffer,
+									   gpu_image);
+
+	/**
+	 * @brief End command buffer recording, and submit it to GPU for execution.
+	 *
+	 */
+	void (*cmd_submit)(struct gpu_api*, gpu_command_buffer);
+
+	/**
+	 * @brief End the current frame. Must be called before requesting a new
+	 * frame.
+	 * This will present the frame's backbuffer to the screen.
+	 *
+	 */
+	void (*end_frame)(struct gpu_api*, gpu_frame*);
 } gpu_api;
 
 LIB_EXPORT bool gpu_create_api(gpu_api_config config, gpu_api* out);

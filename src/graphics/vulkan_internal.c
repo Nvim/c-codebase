@@ -185,8 +185,8 @@ vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 			data.alloc = NULL;
 			data.extent = swapchain->ci.imageExtent;
 			data.format = swapchain->img_format;
-			data.usage_flags = 0;
-			data.gpu_usage = GPU_USAGE_UNKNOWN;
+			data.usage_flags = 0; // Swapchain images don't get any
+			data.gpu_usage = GPU_USAGE_NONE;
 			data.vk_image_flags = IMAGE_FLAGS_SWAPCHAIN;
 		}
 		vk_image_pool_handle vk_handle = vk_image_pool_new(image_pool, &data);
@@ -370,6 +370,33 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 	}
 
 	return true;
+}
+
+void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
+					  vk_barrier_info from, vk_barrier_info to) {
+	VkImageMemoryBarrier2 barrier = {0};
+	{
+		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+		barrier.image = image;
+		barrier.oldLayout = from.layout;
+		barrier.newLayout = to.layout;
+		barrier.srcStageMask = from.stage;
+		barrier.dstStageMask = to.stage;
+		barrier.srcAccessMask = from.access;
+		barrier.dstAccessMask = to.access;
+		barrier.subresourceRange = vk_base_subresource_range();
+		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	}
+
+	VkDependencyInfo dep_info = {0};
+	{
+		dep_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+		dep_info.imageMemoryBarrierCount = 1;
+		dep_info.pImageMemoryBarriers = &barrier;
+	}
+
+	vkCmdPipelineBarrier2(cmd_buf, &dep_info);
 }
 
 gpu_image_extent vk_to_gpu_image_extent(VkExtent2D e) {

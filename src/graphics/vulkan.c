@@ -442,34 +442,6 @@ void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer cmd,
 
 	vk_image_data* img_data = vk_image_pool_get(
 		state->image_pool, (vk_image_pool_handle){s->color_targets[0].handle});
-	{ // [TODO]: Hardcoded UNDEFINED -> ATTACHMENT_OPTIMAL barrier
-		VkImageMemoryBarrier2 barrier = {0};
-		{
-			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-			barrier.image = img_data->image;
-			barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			barrier.newLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-			barrier.srcStageMask =
-				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-			barrier.dstStageMask =
-				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-			barrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
-									VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-			barrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
-									VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-			barrier.subresourceRange = vk_base_subresource_range();
-			barrier.srcQueueFamilyIndex = state->queue_family_idx;
-			barrier.dstQueueFamilyIndex = state->queue_family_idx;
-		}
-
-		VkDependencyInfo dep_info = {0};
-		{
-			dep_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-			dep_info.imageMemoryBarrierCount = 1;
-			dep_info.pImageMemoryBarriers = &barrier;
-		}
-		vkCmdPipelineBarrier2(cmd_buf, &dep_info);
-	}
 
 	VkRenderingInfo rendering_info = {0};
 	{
@@ -510,43 +482,104 @@ void vulkan_cmd_end_rendering(struct gpu_api* self, gpu_command_buffer cmd) {
 	cmd_data->state = CMDBUF_RECORDING;
 }
 
+bool vulkan_cmd_transition_image(gpu_api* self, gpu_command_buffer cmd_handle,
+								 gpu_image img_handle,
+								 gpu_resource_usage new_usage) {
+	vk_api_state* state = self->state;
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd_handle));
+	vk_image_data* img_data =
+		vk_image_pool_get(state->image_pool, to_vk_img(img_handle));
+
+	vk_cmdbuf_state cmd_state = cmd_data->state;
+	if (cmd_state != CMDBUF_RECORDING && cmd_state != CMDBUF_RENDERING) {
+		LOG_ERR("vk_transition_image: invalid command buffer state");
+		return false;
+	}
+
+	gpu_resource_usage cur_usage = img_data->gpu_usage;
+	if (new_usage == cur_usage) {
+		LOG_DEBUG("vk_transition_image: transition to same usage");
+		return true;
+	}
+
+	if (new_usage == GPU_USAGE_NONE) {
+		LOG_ERR("vk_transition_image: invalid transition");
+		return false;
+	}
+
+	if (img_data->vk_image_flags & IMAGE_FLAGS_SWAPCHAIN) {
+		// [TODO]: maybe other invariants?
+		switch (new_usage) {
+		case GPU_USAGE_DEPTH_READ:
+		case GPU_USAGE_DEPTH_WRITE:
+			LOG_ERR(
+				"vk_transition_image: invalid transition for swapchain image");
+			return false;
+		default: break;
+		}
+	} else {
+		// Check that image supports new layout
+		VkImageUsageFlags required = gpu_usage_to_vk_usage_flags[new_usage];
+		if ((img_data->vk_image_flags & required) != required) {
+			breakpoint();
+			LOG_ERR("vk_transition_image: transition to unsupported usage");
+			return false;
+		}
+	}
+
+	vk_image_barrier(cmd_data->command_buffer, img_data->image,
+					 gpu_usage_to_vk_barrier[img_data->gpu_usage],
+					 gpu_usage_to_vk_barrier[new_usage]);
+
+	// [TODO]: sync nightmare i won't think about it for now
+	img_data->gpu_usage = new_usage;
+
+	return true;
+}
+
+bool vk_cmd_transition_for_present(struct gpu_api* self,
+								   gpu_command_buffer cmd_handle,
+								   gpu_image img_handle) {
+	vk_api_state* state = self->state;
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd_handle));
+	vk_image_data* img_data =
+		vk_image_pool_get(state->image_pool, to_vk_img(img_handle));
+
+	vk_cmdbuf_state cmd_state = cmd_data->state;
+	if (cmd_state != CMDBUF_RECORDING && cmd_state != CMDBUF_RENDERING) {
+		LOG_ERR("vk_cmd_transition_for_present: invalid command buffer state");
+		return false;
+	}
+
+	if (!(img_data->vk_image_flags & IMAGE_FLAGS_SWAPCHAIN)) {
+		LOG_ERR("vk_cmd_transition_for_present: image isn't a swapchain image");
+		return false;
+	}
+
+	vk_barrier_info from = gpu_usage_to_vk_barrier[img_data->gpu_usage];
+	static vk_barrier_info const to = {
+		.layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+		.stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.access = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+				  VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+	};
+	vk_image_barrier(cmd_data->command_buffer, img_data->image, from, to);
+
+	// Reset usage for next frame
+	img_data->gpu_usage = GPU_USAGE_NONE;
+
+	return true;
+}
+
 void vulkan_submit(struct gpu_api* self, gpu_command_buffer cmd) {
 	vk_api_state* state = self->state;
-	vk_cmdbuf_pool_handle vk_handle = {.raw_handle.handle = cmd.handle};
-	vk_cmdbuf_data* cmd_data = vk_cmdbuf_pool_get(state->cmd_pool, vk_handle);
+
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
 	ASSERT(cmd_data->state == CMDBUF_RECORDING);
 	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
-
-	{ // [TODO]: Hardcode barrier ATTACHMENT_OPTIMAL -> PRESENT_SRC
-		VkImage img;
-		vk_swapchain_get_current_image(&state->swapchain, &img);
-		VkImageMemoryBarrier2 barrier = {0};
-		{
-			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-			barrier.image = img;
-			barrier.oldLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-			barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-			barrier.srcStageMask =
-				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-			barrier.dstStageMask =
-				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-			barrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
-									VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-			barrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
-									VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-			barrier.subresourceRange = vk_base_subresource_range();
-			barrier.srcQueueFamilyIndex = state->queue_family_idx;
-			barrier.dstQueueFamilyIndex = state->queue_family_idx;
-		}
-
-		VkDependencyInfo dep_info = {0};
-		{
-			dep_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-			dep_info.imageMemoryBarrierCount = 1;
-			dep_info.pImageMemoryBarriers = &barrier;
-		}
-		vkCmdPipelineBarrier2(cmd_buf, &dep_info);
-	}
 
 	VkSemaphore sc_sem;
 	ASSERT(vk_swapchain_get_current_semaphore(&state->swapchain, &sc_sem));
@@ -556,7 +589,7 @@ void vulkan_submit(struct gpu_api* self, gpu_command_buffer cmd) {
 			.frames[state->frame_idx % self->config.frames_in_flight];
 
 	{ // Submit:
-		LOG_WARN("vulkan_render: submitting");
+		LOG_DEBUG("vulkan_render: submitting");
 		check_result(vkEndCommandBuffer(cmd_buf));
 		cmd_data->state = CMDBUF_ENDED;
 		VkCommandBufferSubmitInfo cmd_info = {0};
@@ -601,19 +634,34 @@ void vulkan_submit(struct gpu_api* self, gpu_command_buffer cmd) {
 	}
 }
 
-void vulkan_end_frame(gpu_api* self) {
+void vulkan_end_frame(gpu_api* self, gpu_frame* f) {
 	vk_api_state* state = self->state;
+	vk_cmdbuf_pool_handle handle = vk_get_current_sync(state)->command_buffer;
 
-	// Present
-	LOG_WARN("vulkan_end_frame: presenting");
+	vk_cmdbuf_data* cmd_data = vk_cmdbuf_pool_get(state->cmd_pool, handle);
+
+	// cmd_submit must have been called before ending frame
+	ASSERT(cmd_data->state == CMDBUF_ENDED);
+
+	if (f->frame_index != state->frame_idx) {
+		LOG_ERR("vulkan_end_frame: invalid frame index");
+		return;
+	}
+
+#ifdef _DEBUG
+	{
+		// Swapchain image must be PRESENT_SRC with cmd_transition_for_present
+		vk_image_data* sc_img =
+			vk_image_pool_get(state->image_pool, to_vk_img(f->backbuffer));
+		ASSERT(sc_img->vk_image_flags & IMAGE_FLAGS_SWAPCHAIN);
+		ASSERT(sc_img->gpu_usage == GPU_USAGE_NONE);
+	}
+#endif
+
+	LOG_DEBUG("vulkan_end_frame: presenting");
 	ASSERT(vk_swapchain_present(&state->swapchain, state->queue));
 
 	// Reset frame's command buffer
-	vk_cmdbuf_pool_handle handle = vk_get_current_sync(state)->command_buffer;
-	vk_cmdbuf_data* cmd_data = vk_cmdbuf_pool_get(state->cmd_pool, handle);
-	ASSERT(
-		cmd_data->state ==
-		CMDBUF_ENDED); // cmd_submit must have been called before ending frame
 	// [TODO]: Should I reset it? Validation errors if I do
 	// vkResetCommandBuffer(cmd_data->command_buffer, 0);
 	cmd_data->state = CMDBUF_NOT_BEGAN;
@@ -664,6 +712,8 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->begin_frame = vulkan_begin_frame;
 		out->cmd_begin_rendering = vulkan_cmd_begin_rendering;
 		out->cmd_end_rendering = vulkan_cmd_end_rendering;
+		out->cmd_transition_image = vulkan_cmd_transition_image;
+		out->cmd_transition_for_present = vk_cmd_transition_for_present;
 		out->cmd_submit = vulkan_submit;
 		out->end_frame = vulkan_end_frame;
 		out->destroy = vulkan_destroy;

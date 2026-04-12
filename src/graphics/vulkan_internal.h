@@ -31,7 +31,7 @@ typedef struct vk_image_data {
 	VmaAllocation alloc;
 	VkExtent2D extent;
 	VkFormat format;
-	VkImageUsageFlags usage_flags;
+	VkImageUsageFlags usage_flags; // Set at creation (not swapchain)
 	gpu_resource_usage gpu_usage;
 	uint8_t vk_image_flags;
 } vk_image_data;
@@ -126,9 +126,7 @@ typedef struct vk_render_sync {
 	// Waited on before next render.
 	VkFence drawn_fence;
 
-	// [NOTE]: Should this have the right to keep the raw handle?
 	vk_cmdbuf_pool_handle command_buffer;
-	// VkCommandBuffer command_buffer;
 } vk_render_sync;
 
 typedef struct vk_sync_buffer {
@@ -187,6 +185,104 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 					window_size window_size);
 
 /* ===========================================================================
+ * Image Layouts, Capabilites and Barriers
+ * ========================================================================== */
+static VkImageUsageFlags gpu_usage_to_vk_usage_flags[] = {
+	[GPU_USAGE_NONE] = 0,
+
+	// [TODO]: Not sure about how to handle GENERAL:
+	[GPU_USAGE_GENERAL] =
+		VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+	[GPU_USAGE_SHADER_READ] = VK_IMAGE_USAGE_SAMPLED_BIT,
+	[GPU_USAGE_SHADER_WRITE] = VK_IMAGE_USAGE_STORAGE_BIT,
+	[GPU_USAGE_RENDER_TARGET] = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+	[GPU_USAGE_DEPTH_READ] = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+	[GPU_USAGE_DEPTH_WRITE] = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+	[GPU_USAGE_TRANSFER_SRC] = VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+	[GPU_USAGE_TRANSFER_DST] = VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+};
+
+typedef struct vk_barrier_info {
+	VkImageLayout layout;
+	VkAccessFlags2 access;
+	VkPipelineStageFlags2 stage;
+} vk_barrier_info;
+
+/**
+ * @brief Barrier lookup table. Not sure about some states, will mark them with
+ * todos.
+ * No shader stage granularity, I use fragment for all.
+ *
+ * - Sources:
+ * https://github.com/KhronosGroup/Vulkan-Docs/wiki/Synchronization-Examples#graphics-to-graphics-dependencies
+ * https://docs.vulkan.org/tutorial/latest/Building_a_Simple_Engine/Engine_Architecture/05_rendering_pipeline.html#_image_layout_transition_barrier_configuration_and_resource_specification
+ */
+static vk_barrier_info gpu_usage_to_vk_barrier[] = {
+	[GPU_USAGE_NONE] =
+		{
+			.layout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.access = VK_ACCESS_2_NONE,
+			.stage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+		},
+	[GPU_USAGE_GENERAL] =
+		{
+			// [TODO]: won't use it for color attachment, but it technically
+			// could?
+			.layout = VK_IMAGE_LAYOUT_GENERAL,
+			.access =
+				VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
+			.stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+		},
+	[GPU_USAGE_SHADER_READ] =
+		{
+			.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			.access = VK_ACCESS_2_SHADER_READ_BIT,
+			.stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+		},
+	[GPU_USAGE_SHADER_WRITE] =
+		{
+			.layout = VK_IMAGE_LAYOUT_GENERAL,
+			.access =
+				VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT,
+			.stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+		},
+	[GPU_USAGE_RENDER_TARGET] =
+		{
+			.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			.access = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+					  VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+			.stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+		},
+	[GPU_USAGE_DEPTH_READ] =
+		{
+			.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+			.access = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+			.stage = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+		},
+	[GPU_USAGE_DEPTH_WRITE] =
+		{
+			.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+			.access = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+			.stage = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+		},
+	[GPU_USAGE_TRANSFER_SRC] =
+		{
+			.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			.access = VK_ACCESS_2_TRANSFER_READ_BIT,
+			.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+		},
+	[GPU_USAGE_TRANSFER_DST] =
+		{
+			.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			.access = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+			.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+		},
+};
+
+void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
+					  vk_barrier_info from, vk_barrier_info to);
+
+/* ===========================================================================
  * Utils & conversion
  * ========================================================================== */
 
@@ -195,6 +291,14 @@ static inline bool check_result(VkResult result) {
 	bool ret = result == VK_SUCCESS;
 	ASSERT(ret);
 	return ret;
+}
+
+static inline vk_image_pool_handle to_vk_img(gpu_image handle) {
+	return (vk_image_pool_handle){.raw_handle = handle.handle};
+}
+
+static inline vk_cmdbuf_pool_handle to_vk_cmdbuf(gpu_command_buffer handle) {
+	return (vk_cmdbuf_pool_handle){.raw_handle = handle.handle};
 }
 
 VkImageSubresourceRange vk_base_subresource_range(void);

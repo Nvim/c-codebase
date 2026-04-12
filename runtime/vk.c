@@ -47,9 +47,9 @@ int main(void) {
 	double t_prev = platform_get_time();
 	double delta = 0.0f;
 
-	uint32_t frame_count = 0;
+	// uint32_t frame_count = 0;
 	while (!_quit) {
-		if(frame_count++ > 12) { break; }
+		// if(frame_count++ > 12) { break; }
 		platform_poll();
 		if (platform_window_should_close(win)) { break; }
 		gpu_frame_result frame_res = gpu.begin_frame(&gpu);
@@ -61,16 +61,20 @@ int main(void) {
 			.color_target_count = 1,
 			.color_targets = {frame.backbuffer},
 		};
+		gpu.cmd_transition_image(&gpu, frame.frame_cmd, frame.backbuffer,
+								 GPU_USAGE_RENDER_TARGET);
 		gpu.cmd_begin_rendering(&gpu, frame.frame_cmd, &s);
 		gpu.cmd_end_rendering(&gpu, frame.frame_cmd);
+		gpu.cmd_transition_for_present(&gpu, frame.frame_cmd, frame.backbuffer);
 		gpu.cmd_submit(&gpu, frame.frame_cmd);
-		gpu.end_frame(&gpu);
+		gpu.end_frame(&gpu, &frame);
 		double t_now = platform_get_time();
 		delta = t_now - t_prev;
 		if (delta < TARGET_FRAMETIME) {
 			platform_sleep(TARGET_FRAMETIME - delta);
 			LOG_DEBUG("frame took %f. sleeping for %f ms", delta,
 					  TARGET_FRAMETIME - delta);
+			LOG_DEBUG("==============================================");
 		}
 		t_now = platform_get_time();
 		t_prev = t_now;
