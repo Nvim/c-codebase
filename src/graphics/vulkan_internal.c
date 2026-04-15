@@ -334,6 +334,8 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 		return false;
 	};
 
+	state->frame_in_progress = true;
+
 	gpu_image sc_image;
 	{ // Acquire a swapchain image
 		LOG_DEBUG("vk_begin_frame: acquiring swapchain image");
