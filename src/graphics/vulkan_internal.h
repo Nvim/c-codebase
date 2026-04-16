@@ -151,6 +151,7 @@ typedef struct {
 } vk_frame;
 
 typedef struct vk_api_state {
+	arena_t* arena; // All heap allocations are made here
 	// Initialization stuff:
 	vulkan_init_info pf_init_info;
 	VkInstance instance;
@@ -178,6 +179,10 @@ typedef struct vk_api_state {
 	// Resource pools:
 	vk_image_pool image_pool;
 	vk_cmdbuf_pool cmd_pool;
+
+	// TEMP:
+	VkPipeline pipeline;
+	VkPipelineLayout pipeline_layout;
 } vk_api_state;
 
 vk_render_sync* vk_get_current_sync(vk_api_state* state);

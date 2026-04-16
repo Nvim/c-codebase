@@ -30,6 +30,8 @@ fs_file_read_result fs_read_all_file(arena_t* arena, path pth) {
 		if (r.ok) {
 			result.ok = true;
 			result.bytes = bytes;
+			result.str = (string){.str = (char*)u8_array_begin(bytes),
+								  .len = u8_array_size(bytes)};
 		} else {
 			LOG_ERR("fs_read_all_file: couldn't read from file");
 		}
@@ -60,6 +62,10 @@ fs_file_read_result fs_read_file(arena_t* arena, path pth, size_t size) {
 	if (r.ok) {
 		result.ok = true;
 		result.bytes = bytes;
+		result.str = (string){
+			.str = (char*)u8_array_begin(bytes),
+			.len = u8_array_size(bytes),
+		};
 	} else {
 		LOG_ERR("fs_read_file: couldn't read from file");
 	}

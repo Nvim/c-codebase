@@ -19,7 +19,7 @@ target_sources(vma PRIVATE vma.cpp)
 
 target_include_directories(graphics PRIVATE ${PROJECT_SOURCE_DIR}/include)
 
-target_link_libraries(graphics PUBLIC compile_flags core allocators containers strings Vulkan::Vulkan)
+target_link_libraries(graphics PUBLIC compile_flags core allocators containers strings filesystem Vulkan::Vulkan)
 target_link_libraries(graphics PRIVATE vma)
 
 target_sources(graphics PUBLIC vulkan.c vulkan_internal.c)

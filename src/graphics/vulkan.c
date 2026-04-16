@@ -8,7 +8,9 @@
 
 #include <containers/array.h>
 #include <core/core.h>
+#include <filesystem/filesystem.h>
 #include <graphics/graphics.h>
+#include <strings/path.h>
 
 #include <string.h>
 #include <vma/vk_mem_alloc.h>
@@ -218,6 +220,172 @@ static bool validate_gpu_config(gpu_api_config* config) {
 	return true;
 }
 
+static void create_temp_shader(vk_api_state* state) {
+	scratch_arena scratch = {0};
+	ASSERT(arena_get_scratch(state->arena, &scratch));
+	path vs_path, fs_path;
+	ASSERT(path_create(state->arena, scratch.arena,
+					   str("src/shaders/quad.vert.spirv"), &vs_path));
+	ASSERT(path_create(state->arena, scratch.arena,
+					   str("src/shaders/quad.frag.spirv"), &fs_path));
+
+	VkShaderModule vs_module = {0};
+	{
+		fs_file_read_result res = fs_read_all_file(state->arena, vs_path);
+		ASSERT(res.ok);
+
+		uint8_t* u8_bytes = u8_array_begin(res.bytes);
+		uint64_t u8_size = u8_array_size(res.bytes);
+		ASSERT(((uintptr_t)u8_bytes & 3) == 0 &&
+			   "SPIR-V buffer must be 4-byte aligned");
+
+		VkShaderModuleCreateInfo vs_info = {0};
+		{
+			vs_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+			vs_info.pCode = (uint32_t*)u8_bytes;
+			vs_info.codeSize = u8_size;
+		};
+
+		vkCreateShaderModule(state->device, &vs_info, NULL, &vs_module);
+	}
+
+	VkShaderModule fs_module = {0};
+	{
+		fs_file_read_result res = fs_read_all_file(state->arena, fs_path);
+		ASSERT(res.ok);
+
+		uint8_t* u8_bytes = u8_array_begin(res.bytes);
+		uint64_t u8_size = u8_array_size(res.bytes);
+		ASSERT(((uintptr_t)u8_bytes & 3) == 0 &&
+			   "SPIR-V buffer must be 4-byte aligned");
+
+		VkShaderModuleCreateInfo fs_info = {0};
+		{
+			fs_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+			fs_info.pCode = (uint32_t*)u8_bytes;
+			fs_info.codeSize = u8_size;
+		};
+
+		vkCreateShaderModule(state->device, &fs_info, NULL, &fs_module);
+	}
+
+	{ // pipeline
+		VkPipelineViewportStateCreateInfo viewport_ci = {0};
+		{
+			viewport_ci.sType =
+				VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+			viewport_ci.pNext = NULL;
+			viewport_ci.viewportCount = 1;
+			viewport_ci.scissorCount = 1;
+		}
+		VkPipelineColorBlendAttachmentState blend_state = {
+			.colorWriteMask = 0xF,
+		};
+		VkPipelineColorBlendStateCreateInfo blend_ci = {0};
+		{
+			blend_ci.sType =
+				VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+			blend_ci.pNext = NULL;
+			blend_ci.attachmentCount = 1;
+			blend_ci.pAttachments = &blend_state;
+		}
+		VkPipelineShaderStageCreateInfo shader_stages[2] = {
+			{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+			 .stage = VK_SHADER_STAGE_VERTEX_BIT,
+			 .module = vs_module,
+			 .pName = "main"},
+			{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+			 .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+			 .module = fs_module,
+			 .pName = "main"}};
+
+		// No need for vertex input:
+		VkPipelineVertexInputStateCreateInfo vert_input_ci = {
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+
+		VkPipelineRenderingCreateInfo _renderInfo = {0};
+		{
+			_renderInfo.sType =
+				VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+			_renderInfo.colorAttachmentCount = 1;
+			_renderInfo.pColorAttachmentFormats = &state->swapchain.img_format;
+		};
+
+		VkPipelineRasterizationStateCreateInfo raster_ci = {0};
+		{
+			raster_ci.sType =
+				VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+			raster_ci.cullMode = VK_CULL_MODE_NONE;
+			raster_ci.polygonMode = VK_POLYGON_MODE_FILL;
+			raster_ci.frontFace = VK_FRONT_FACE_CLOCKWISE;
+			raster_ci.lineWidth = 1.f;
+		}
+		VkPipelineMultisampleStateCreateInfo multisampling_ci = {0};
+		{
+			multisampling_ci.sType =
+				VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+			multisampling_ci.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+		};
+		VkPipelineDepthStencilStateCreateInfo depth_ci = {0};
+		{
+			depth_ci.sType =
+				VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+			depth_ci.depthTestEnable = VK_FALSE;
+			depth_ci.stencilTestEnable = VK_FALSE;
+		}
+		VkPipelineInputAssemblyStateCreateInfo input_asm = {0};
+		{
+			input_asm.sType =
+				VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+			input_asm.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+		}
+
+		VkPipelineLayoutCreateInfo layout_ci = {0};
+		{
+			layout_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+			layout_ci.setLayoutCount = 0;
+			layout_ci.pushConstantRangeCount = 0;
+		}
+
+		VkDynamicState dyn_state[] = {VK_DYNAMIC_STATE_VIEWPORT,
+									  VK_DYNAMIC_STATE_SCISSOR};
+
+		VkPipelineDynamicStateCreateInfo dynamic_ci = {0};
+		{
+			dynamic_ci.sType =
+				VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+			dynamic_ci.pDynamicStates = &dyn_state[0];
+			dynamic_ci.dynamicStateCount = 2;
+		};
+
+		VkPipelineLayout* layout = &state->pipeline_layout;
+		vkCreatePipelineLayout(state->device, &layout_ci, NULL, layout);
+
+		VkGraphicsPipelineCreateInfo pipeline_ci = {0};
+		{
+			pipeline_ci.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+			pipeline_ci.pNext = &_renderInfo;
+
+			pipeline_ci.stageCount = 2;
+			pipeline_ci.pStages = shader_stages;
+			pipeline_ci.pVertexInputState = &vert_input_ci;
+			pipeline_ci.pInputAssemblyState = &input_asm;
+			pipeline_ci.pViewportState = &viewport_ci;
+			pipeline_ci.pRasterizationState = &raster_ci;
+			pipeline_ci.pMultisampleState = &multisampling_ci;
+			pipeline_ci.pColorBlendState = &blend_ci;
+			pipeline_ci.pDepthStencilState = &depth_ci;
+			pipeline_ci.layout = *layout;
+			pipeline_ci.pDynamicState = &dynamic_ci;
+		}
+
+		ASSERT(check_result(vkCreateGraphicsPipelines(
+			state->device, NULL, 1, &pipeline_ci, NULL, &state->pipeline)));
+		vkDestroyShaderModule(state->device, vs_module, NULL);
+		vkDestroyShaderModule(state->device, fs_module, NULL);
+	}
+}
+
 void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 					   arena_t* scratch) {
 	if (!self || !arena || !scratch || !window) {
@@ -234,6 +402,8 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		ASSERT(false);
 		return;
 	}
+
+	state->arena = arena;
 
 	// Init resource pools:
 	state->image_pool = vk_image_pool_create(arena, IMAGE_POOL_SIZE);
@@ -391,6 +561,9 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		}
 	}
 
+	// TEMP:
+	create_temp_shader(state);
+
 	{
 		self->is_init = true;
 		self->state = state;
@@ -468,7 +641,21 @@ void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer cmd,
 		}
 	}
 	vkCmdBeginRendering(cmd_buf, &rendering_info);
+	vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+					  state->pipeline);
 	cmd_data->state = CMDBUF_RENDERING;
+
+	{ // [TODO]: remove hardcoded drawing
+		VkViewport vp = {.width = state->swapchain.ci.imageExtent.width,
+						 .height = state->swapchain.ci.imageExtent.height,
+						 .minDepth = 0.f,
+						 .maxDepth = 1.f};
+		VkRect2D scissor = {.extent = state->swapchain.ci.imageExtent,
+							.offset = (VkOffset2D){.x = 0, .y = 0}};
+		vkCmdSetViewport(cmd_buf, 0, 1, &vp);
+		vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
+		vkCmdDraw(cmd_buf, 6, 1, 0, 0);
+	}
 }
 
 void vulkan_cmd_end_rendering(struct gpu_api* self, gpu_command_buffer cmd) {
@@ -687,6 +874,9 @@ void vulkan_destroy(struct gpu_api* self) {
 			vk_surface_destroy(&state->surface, state->instance);
 			vmaDestroyAllocator(state->allocator);
 			vk_sync_buffer_destroy(state->device, &state->sync_buffer);
+			vkDestroyPipelineLayout(state->device, state->pipeline_layout,
+									NULL);
+			vkDestroyPipeline(state->device, state->pipeline, NULL);
 			vkDestroyCommandPool(state->device, state->command_pool, NULL);
 			vkDestroyDevice(state->device, NULL);
 		}
