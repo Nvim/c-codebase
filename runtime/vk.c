@@ -55,18 +55,21 @@ int main(void) {
 		gpu_frame_result frame_res = gpu.begin_frame(&gpu);
 		ASSERT(frame_res.ok);
 		gpu_frame frame = frame_res.frame;
+		gpu_command_buffer cmd = frame.frame_cmd;
 
 		gpu_render_state s = {
 			.clear_color = (gpu_color){.floats = {.3f, .7f, .2f, 1.f}},
 			.color_target_count = 1,
 			.color_targets = {frame.backbuffer},
 		};
-		gpu.cmd_transition_image(&gpu, frame.frame_cmd, frame.backbuffer,
+		gpu.cmd_transition_image(&gpu, cmd, frame.backbuffer,
 								 GPU_USAGE_RENDER_TARGET);
-		gpu.cmd_begin_rendering(&gpu, frame.frame_cmd, &s);
-		gpu.cmd_end_rendering(&gpu, frame.frame_cmd);
-		gpu.cmd_transition_for_present(&gpu, frame.frame_cmd, frame.backbuffer);
-		gpu.cmd_submit(&gpu, frame.frame_cmd);
+		gpu.cmd_reset_viewport(&gpu, cmd);
+		gpu.cmd_reset_scissor(&gpu, cmd);
+		gpu.cmd_begin_rendering(&gpu, cmd, &s);
+		gpu.cmd_end_rendering(&gpu, cmd);
+		gpu.cmd_transition_for_present(&gpu, cmd, frame.backbuffer);
+		gpu.cmd_submit(&gpu, cmd);
 		gpu.end_frame(&gpu, &frame);
 		double t_now = platform_get_time();
 		delta = t_now - t_prev;

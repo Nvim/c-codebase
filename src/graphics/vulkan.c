@@ -641,19 +641,11 @@ void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer cmd,
 		}
 	}
 	vkCmdBeginRendering(cmd_buf, &rendering_info);
-	vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-					  state->pipeline);
 	cmd_data->state = CMDBUF_RENDERING;
 
 	{ // [TODO]: remove hardcoded drawing
-		VkViewport vp = {.width = state->swapchain.ci.imageExtent.width,
-						 .height = state->swapchain.ci.imageExtent.height,
-						 .minDepth = 0.f,
-						 .maxDepth = 1.f};
-		VkRect2D scissor = {.extent = state->swapchain.ci.imageExtent,
-							.offset = (VkOffset2D){.x = 0, .y = 0}};
-		vkCmdSetViewport(cmd_buf, 0, 1, &vp);
-		vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
+		vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+						  state->pipeline);
 		vkCmdDraw(cmd_buf, 6, 1, 0, 0);
 	}
 }
@@ -725,9 +717,9 @@ bool vulkan_cmd_transition_image(gpu_api* self, gpu_command_buffer cmd_handle,
 	return true;
 }
 
-bool vk_cmd_transition_for_present(struct gpu_api* self,
-								   gpu_command_buffer cmd_handle,
-								   gpu_image img_handle) {
+bool vulkan_cmd_transition_for_present(struct gpu_api* self,
+									   gpu_command_buffer cmd_handle,
+									   gpu_image img_handle) {
 	vk_api_state* state = self->state;
 	vk_cmdbuf_data* cmd_data =
 		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd_handle));
@@ -858,6 +850,60 @@ void vulkan_end_frame(gpu_api* self, gpu_frame* f) {
 	state->frame_in_progress = false;
 }
 
+void vulkan_cmd_set_viewport(struct gpu_api* self, gpu_command_buffer cmd,
+							 gpu_image_extent extent) {
+	vk_api_state* state = self->state;
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
+
+	ASSERT(cmd_data->state == CMDBUF_RECORDING);
+
+	VkViewport vp = {.width = extent.width,
+					 .height = extent.height,
+					 .minDepth = 0.f,
+					 .maxDepth = 1.f};
+	vkCmdSetViewport(cmd_data->command_buffer, 0, 1, &vp);
+}
+
+void vulkan_cmd_set_scissor(struct gpu_api* self, gpu_command_buffer cmd,
+							gpu_scissor scissor) {
+	vk_api_state* state = self->state;
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
+
+	ASSERT(cmd_data->state == CMDBUF_RECORDING);
+	VkRect2D vk_sc = {
+		.extent = gpu_to_vk_image_extent(scissor.extent),
+		.offset = (VkOffset2D){.x = scissor.offset.x, .y = scissor.offset.y}};
+	vkCmdSetScissor(cmd_data->command_buffer, 0, 1, &vk_sc);
+}
+
+void vulkan_cmd_reset_viewport(struct gpu_api* self, gpu_command_buffer cmd) {
+	vk_api_state* state = self->state;
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
+
+	ASSERT(cmd_data->state == CMDBUF_RECORDING);
+
+	VkExtent2D extent = state->swapchain.ci.imageExtent;
+	VkViewport vp = {.width = extent.width,
+					 .height = extent.height,
+					 .minDepth = 0.f,
+					 .maxDepth = 1.f};
+	vkCmdSetViewport(cmd_data->command_buffer, 0, 1, &vp);
+}
+
+void vulkan_cmd_reset_scissor(struct gpu_api* self, gpu_command_buffer cmd) {
+	vk_api_state* state = self->state;
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
+
+	ASSERT(cmd_data->state == CMDBUF_RECORDING);
+	VkRect2D s = {.extent = state->swapchain.ci.imageExtent,
+				  .offset = (VkOffset2D){.x = 0, .y = 0}};
+	vkCmdSetScissor(cmd_data->command_buffer, 0, 1, &s);
+}
+
 void vulkan_destroy(struct gpu_api* self) {
 	if (!self) {
 		LOG_ERR("vulkan_destroy: invalid instance");
@@ -903,7 +949,11 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->cmd_begin_rendering = vulkan_cmd_begin_rendering;
 		out->cmd_end_rendering = vulkan_cmd_end_rendering;
 		out->cmd_transition_image = vulkan_cmd_transition_image;
-		out->cmd_transition_for_present = vk_cmd_transition_for_present;
+		out->cmd_transition_for_present = vulkan_cmd_transition_for_present;
+		out->cmd_set_viewport = vulkan_cmd_set_viewport;
+		out->cmd_set_scissor = vulkan_cmd_set_scissor;
+		out->cmd_reset_viewport = vulkan_cmd_reset_viewport;
+		out->cmd_reset_scissor = vulkan_cmd_reset_scissor;
 		out->cmd_submit = vulkan_submit;
 		out->end_frame = vulkan_end_frame;
 		out->destroy = vulkan_destroy;

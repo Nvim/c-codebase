@@ -25,6 +25,14 @@ typedef struct {
 	uint32_t height;
 } gpu_image_extent;
 
+typedef struct {
+	gpu_image_extent extent;
+	struct {
+		uint32_t x;
+		uint32_t y;
+	} offset;
+} gpu_scissor;
+
 typedef union {
 	struct {
 		float r;
@@ -122,7 +130,6 @@ typedef struct gpu_api_config {
 	uint32_t frames_in_flight;
 	gpu_image_format target_image_format;
 	// TODO: depth format
-	// TODO: alpha blending
 	// TODO: vsync mode
 } gpu_api_config;
 
@@ -157,8 +164,8 @@ typedef struct gpu_api {
 	void* state;						 // Allocated on arena by `initialize`
 
 	/**
-	 * @brief Initialize GPU API. Make sure `type`, `name` and `config` are set
-	 * before calling. ([TODO]: refactor this it sucks)
+	 * @brief Initialize GPU API. Make sure `type`, `name` and `config` are
+	 * set before calling. ([TODO]: refactor this it sucks)
 	 *
 	 * @param arena Allocations for all resources
 	 * @param scratch Temporary
@@ -167,8 +174,8 @@ typedef struct gpu_api {
 					   arena_t* scratch);
 
 	/**
-	 * @brief Release and invalidate everything. Don't call while a frame is in
-	 * flight.
+	 * @brief Release and invalidate everything. Don't call while a frame is
+	 * in flight.
 	 */
 	void (*destroy)(struct gpu_api*);
 
@@ -191,8 +198,8 @@ typedef struct gpu_api {
 	void (*cmd_end_rendering)(struct gpu_api*, gpu_command_buffer);
 
 	/**
-	 * @brief Specify a new usage for image. Image has to have been created with
-	 * support the new usage.
+	 * @brief Specify a new usage for image. Image has to have been created
+	 * with support the new usage.
 	 *
 	 */
 	bool (*cmd_transition_image)(struct gpu_api*, gpu_command_buffer, gpu_image,
@@ -201,20 +208,30 @@ typedef struct gpu_api {
 	// present is a special layout. image must be a frame's backbuffer
 
 	/**
-	 * @brief Same as cmd_transition_image, but presenting is a special layout
-	 * that doesn't apply to all images. Given image must be a frame's
-	 * backbuffer.
+	 * @brief Same as cmd_transition_image, but presenting is a special
+	 * layout that doesn't apply to all images. Given image must be a
+	 * frame's backbuffer.
 	 *
-	 * @return false if image or command buffer aren't valid, true otherwise.
+	 * @return false if image or command buffer aren't valid, true
+	 * otherwise.
 	 */
 	bool (*cmd_transition_for_present)(struct gpu_api*, gpu_command_buffer,
 									   gpu_image);
 
 	/**
-	 * @brief End command buffer recording, and submit it to GPU for execution.
+	 * @brief End command buffer recording, and submit it to GPU for
+	 * execution.
 	 *
 	 */
 	void (*cmd_submit)(struct gpu_api*, gpu_command_buffer);
+
+	void (*cmd_set_viewport)(struct gpu_api*, gpu_command_buffer,
+							 gpu_image_extent extent);
+	void (*cmd_set_scissor)(struct gpu_api*, gpu_command_buffer,
+							gpu_scissor scissor);
+
+	void (*cmd_reset_viewport)(struct gpu_api*, gpu_command_buffer);
+	void (*cmd_reset_scissor)(struct gpu_api*, gpu_command_buffer);
 
 	/**
 	 * @brief End the current frame. Must be called before requesting a new
@@ -223,6 +240,9 @@ typedef struct gpu_api {
 	 *
 	 */
 	void (*end_frame)(struct gpu_api*, gpu_frame*);
+
+	gpu_image_extent (*get_image_extent)(struct gpu_api*, gpu_image);
+	gpu_image_format (*get_image_format)(struct gpu_api*, gpu_image);
 } gpu_api;
 
 LIB_EXPORT bool gpu_create_api(gpu_api_config config, gpu_api* out);

@@ -405,6 +405,10 @@ gpu_image_extent vk_to_gpu_image_extent(VkExtent2D e) {
 	return (gpu_image_extent){.width = e.width, .height = e.height};
 }
 
+VkExtent2D gpu_to_vk_image_extent(gpu_image_extent e) {
+	return (VkExtent2D){.width = e.width, .height = e.height};
+}
+
 // gpu_rendertarget vk_to_gpu_rendertarget(gpu_image* t) {
 // 	return (gpu_rendertarget){.extent = vk_to_gpu_image_extent(t->extent),
 // 							  .format = vk_to_gpu_image_format(t->format),

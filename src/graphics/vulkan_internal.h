@@ -312,6 +312,7 @@ VkFormat gpu_to_vk_image_format(gpu_image_format f);
 gpu_image_format vk_to_gpu_image_format(VkFormat f);
 
 gpu_image_extent vk_to_gpu_image_extent(VkExtent2D e);
+VkExtent2D gpu_to_vk_image_extent(gpu_image_extent e);
 
 // gpu_rendertarget vk_to_gpu_rendertarget(gpu_image* t);
 
