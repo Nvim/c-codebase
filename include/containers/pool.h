@@ -22,7 +22,9 @@ typedef struct {
 	uint32_t handle;
 } pool_handle;
 
-#define POOL_INVALID_HANDLE 0
+#define POOL_INVALID_IDX 0
+#define POOL_INVALID_HANDLE                                                    \
+	(pool_handle) { .handle = POOL_INVALID_IDX }
 
 /**
  * @brief Create a new pool of a given size.
