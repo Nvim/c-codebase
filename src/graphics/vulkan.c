@@ -608,7 +608,7 @@ gpu_frame_result vulkan_begin_frame(struct gpu_api* self) {
 void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer cmd,
 								gpu_render_state* s) {
 	vk_api_state* state = self->state;
-	vk_cmdbuf_pool_handle vk_handle = {.raw_handle.handle = cmd.handle};
+	vk_cmdbuf_pool_handle vk_handle = to_vk_cmdbuf(cmd);
 	vk_cmdbuf_data* cmd_data = vk_cmdbuf_pool_get(state->cmd_pool, vk_handle);
 	ASSERT(cmd_data->state == CMDBUF_RECORDING);
 	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
@@ -652,7 +652,7 @@ void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer cmd,
 
 void vulkan_cmd_end_rendering(struct gpu_api* self, gpu_command_buffer cmd) {
 	vk_api_state* state = self->state;
-	vk_cmdbuf_pool_handle vk_handle = {.raw_handle.handle = cmd.handle};
+	vk_cmdbuf_pool_handle vk_handle = to_vk_cmdbuf(cmd);
 	vk_cmdbuf_data* cmd_data = vk_cmdbuf_pool_get(state->cmd_pool, vk_handle);
 	ASSERT(cmd_data->state == CMDBUF_RENDERING);
 

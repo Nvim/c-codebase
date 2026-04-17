@@ -191,7 +191,7 @@ vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 		}
 		vk_image_pool_handle vk_handle = vk_image_pool_new(image_pool, &data);
 		ASSERT(vk_image_pool_is_handle_valid(image_pool, vk_handle));
-		handle.handle = vk_handle.raw_handle.handle;
+		handle.handle = vk_handle.raw_handle;
 	};
 
 	ret.image = handle;

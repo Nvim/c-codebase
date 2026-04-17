@@ -3,6 +3,7 @@
 
 #include <allocators/arena.h>
 #include <common.h>
+#include <containers/pool.h>
 #include <visibility.h>
 
 #include <stdbool.h>
@@ -74,9 +75,9 @@ typedef enum {
 } gpu_shader_type;
 
 // clang-format off
-typedef struct { uint32_t handle; } gpu_image;
-typedef struct { uint32_t handle; } gpu_buffer;
-typedef struct { uint32_t handle; } gpu_command_buffer;
+typedef struct { pool_handle handle; } gpu_image;
+typedef struct { pool_handle handle; } gpu_buffer;
+typedef struct { pool_handle handle; } gpu_command_buffer;
 // clang-format on
 
 // typedef struct gpu_rendertarget {
@@ -122,6 +123,11 @@ typedef struct gpu_rendering_state {
 	gpu_image color_targets[GPU_MAX_RENDERTARGETS];
 	gpu_color clear_color;
 } gpu_render_state;
+
+// typedef struct {
+// 	path vs;
+// 	path fs;
+// } gpu_pipeline_ci;
 
 /* ========================================================================== */
 typedef struct gpu_api_config {
