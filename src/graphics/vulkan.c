@@ -574,6 +574,33 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			  state->queue_family_idx);
 }
 
+void vulkan_destroy(struct gpu_api* self) {
+	if (!self) {
+		LOG_ERR("vulkan_destroy: invalid instance");
+		return;
+	}
+	if (!self->is_init || !self->state) { return; }
+
+	vk_api_state* state = self->state;
+
+	{
+		if (state->device) {
+			check_result(vkDeviceWaitIdle(state->device));
+			vk_swapchain_destroy(&state->swapchain, state->device);
+			vk_surface_destroy(&state->surface, state->instance);
+			vmaDestroyAllocator(state->allocator);
+			vk_sync_buffer_destroy(state->device, &state->sync_buffer);
+			vkDestroyPipelineLayout(state->device, state->pipeline_layout,
+									NULL);
+			vkDestroyPipeline(state->device, state->pipeline, NULL);
+			vkDestroyCommandPool(state->device, state->command_pool, NULL);
+			vkDestroyDevice(state->device, NULL);
+		}
+		vkDestroyInstance(state->instance, NULL);
+	}
+	LOG_DEBUG("vulkan_destroy: destroyed vulkan api");
+}
+
 gpu_frame_result vulkan_begin_frame(struct gpu_api* self) {
 	gpu_frame_result ret = {0};
 
@@ -904,31 +931,31 @@ void vulkan_cmd_reset_scissor(struct gpu_api* self, gpu_command_buffer cmd) {
 	vkCmdSetScissor(cmd_data->command_buffer, 0, 1, &s);
 }
 
-void vulkan_destroy(struct gpu_api* self) {
-	if (!self) {
-		LOG_ERR("vulkan_destroy: invalid instance");
-		return;
-	}
-	if (!self->is_init || !self->state) { return; }
-
+gpu_image_extent vulkan_get_image_extent(struct gpu_api* self,
+										 gpu_image gpu_img) {
 	vk_api_state* state = self->state;
+	vk_image_data* data =
+		vk_image_pool_get(state->image_pool, to_vk_img(gpu_img));
+	ASSERT(data);
+	return vk_to_gpu_image_extent(data->extent);
+}
 
-	{
-		if (state->device) {
-			check_result(vkDeviceWaitIdle(state->device));
-			vk_swapchain_destroy(&state->swapchain, state->device);
-			vk_surface_destroy(&state->surface, state->instance);
-			vmaDestroyAllocator(state->allocator);
-			vk_sync_buffer_destroy(state->device, &state->sync_buffer);
-			vkDestroyPipelineLayout(state->device, state->pipeline_layout,
-									NULL);
-			vkDestroyPipeline(state->device, state->pipeline, NULL);
-			vkDestroyCommandPool(state->device, state->command_pool, NULL);
-			vkDestroyDevice(state->device, NULL);
-		}
-		vkDestroyInstance(state->instance, NULL);
-	}
-	LOG_DEBUG("vulkan_destroy: destroyed vulkan api");
+gpu_image_format vulkan_get_image_format(struct gpu_api* self,
+										 gpu_image gpu_img) {
+	vk_api_state* state = self->state;
+	vk_image_data* data =
+		vk_image_pool_get(state->image_pool, to_vk_img(gpu_img));
+	ASSERT(data);
+	return vk_to_gpu_image_format(data->format);
+}
+
+gpu_shader vulkan_create_shader(UNUSED struct gpu_api* self, UNUSED gpu_shader_ci* ci) {
+	// TODO
+	return (gpu_shader){.handle=POOL_INVALID_IDX};
+}
+
+void vulkan_destroy_shader(UNUSED struct gpu_api* self,UNUSED gpu_shader handle) {
+	// TODO
 }
 
 bool gpu_create_api(gpu_api_config config, gpu_api* out) {
@@ -945,18 +972,22 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->name = config.app_name;
 		out->config = config;
 		out->initialize = vulkan_initialize;
+		out->destroy = vulkan_destroy;
 		out->begin_frame = vulkan_begin_frame;
 		out->cmd_begin_rendering = vulkan_cmd_begin_rendering;
 		out->cmd_end_rendering = vulkan_cmd_end_rendering;
 		out->cmd_transition_image = vulkan_cmd_transition_image;
 		out->cmd_transition_for_present = vulkan_cmd_transition_for_present;
+		out->cmd_submit = vulkan_submit;
 		out->cmd_set_viewport = vulkan_cmd_set_viewport;
 		out->cmd_set_scissor = vulkan_cmd_set_scissor;
 		out->cmd_reset_viewport = vulkan_cmd_reset_viewport;
 		out->cmd_reset_scissor = vulkan_cmd_reset_scissor;
-		out->cmd_submit = vulkan_submit;
 		out->end_frame = vulkan_end_frame;
-		out->destroy = vulkan_destroy;
+		out->get_image_extent = vulkan_get_image_extent;
+		out->get_image_format = vulkan_get_image_format;
+		out->create_shader = vulkan_create_shader;
+		out->destroy_shader = vulkan_destroy_shader;
 	}
 
 	return true;

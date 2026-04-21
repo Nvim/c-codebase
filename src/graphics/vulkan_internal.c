@@ -401,6 +401,59 @@ void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
 	vkCmdPipelineBarrier2(cmd_buf, &dep_info);
 }
 
+vk_image_pool_handle vk_create_image(VmaAllocator allocator,
+									 vk_image_pool image_pool,
+									 VkExtent2D extent, VkFormat format,
+									 VkImageUsageFlags usage, uint32_t levels,
+									 uint32_t queue_family_idx) {
+
+	VkImageCreateInfo img_info = {0};
+	{
+		img_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		img_info.imageType = VK_IMAGE_TYPE_2D;
+		img_info.usage = usage;
+		img_info.format = format;
+		img_info.extent = (VkExtent3D){
+			.width = extent.width,
+			.height = extent.height,
+			.depth = 1,
+		};
+		img_info.arrayLayers = 1;
+		img_info.mipLevels = levels;
+		img_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+		img_info.samples = VK_SAMPLE_COUNT_1_BIT;
+		img_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		img_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		img_info.queueFamilyIndexCount = 1;
+		img_info.pQueueFamilyIndices = &queue_family_idx;
+	}
+
+	VkImage img;
+	VmaAllocationCreateInfo alloc_info = {0};
+	{ alloc_info.usage = VMA_MEMORY_USAGE_AUTO; }
+	VmaAllocation alloc;
+
+	if (!check_result(vmaCreateImage(allocator, &img_info, &alloc_info, &img,
+									 &alloc, NULL))) {
+		return VK_IMGPOOL_INVALID;
+	}
+
+	VkImageView view = NULL; // TODO
+
+	vk_image_data data = {0};
+	{
+		data.image = img;
+		data.image_view = view;
+		data.alloc = alloc;
+		data.format = format;
+		data.extent = extent;
+		data.usage_flags = usage;
+		data.gpu_usage = 0; // TODO
+	}
+
+	return vk_image_pool_new(image_pool, &data);
+}
+
 gpu_image_extent vk_to_gpu_image_extent(VkExtent2D e) {
 	return (gpu_image_extent){.width = e.width, .height = e.height};
 }

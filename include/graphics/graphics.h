@@ -4,6 +4,7 @@
 #include <allocators/arena.h>
 #include <common.h>
 #include <containers/pool.h>
+#include <strings/path.h>
 #include <visibility.h>
 
 #include <stdbool.h>
@@ -74,17 +75,17 @@ typedef enum {
 	GPU_SHADER_COMPUTE,
 } gpu_shader_type;
 
+typedef struct gpu_shader_ci {
+	gpu_shader_type type;
+	string code;
+} gpu_shader_ci;
+
 // clang-format off
 typedef struct { pool_handle handle; } gpu_image;
 typedef struct { pool_handle handle; } gpu_buffer;
 typedef struct { pool_handle handle; } gpu_command_buffer;
+typedef struct { pool_handle handle; } gpu_shader;
 // clang-format on
-
-// typedef struct gpu_rendertarget {
-// 	gpu_image image;
-// 	gpu_image_extent extent;
-// 	gpu_image_format format;
-// } gpu_rendertarget;
 
 typedef struct gpu_frame {
 	// gpu_rendertarget backbuffer;
@@ -249,9 +250,42 @@ typedef struct gpu_api {
 
 	gpu_image_extent (*get_image_extent)(struct gpu_api*, gpu_image);
 	gpu_image_format (*get_image_format)(struct gpu_api*, gpu_image);
+
+	gpu_shader (*create_shader)(struct gpu_api*, gpu_shader_ci*);
+	void (*destroy_shader)(struct gpu_api*, gpu_shader);
 } gpu_api;
 
 LIB_EXPORT bool gpu_create_api(gpu_api_config config, gpu_api* out);
+
+typedef enum gpu_primitive_type {
+	GPU_PRIMITIVE_TYPE_TRIANGLELIST,
+	GPU_PRIMITIVE_TYPE_TRIANGLESTRIP,
+	GPU_PRIMITIVE_TYPE_LINELIST,
+	GPU_PRIMITIVE_TYPE_LINESTRIP,
+	GPU_PRIMITIVE_TYPE_POINTLIST
+} gpu_primitive_type;
+
+typedef enum gpu_compare_op {
+	GPU_COMPARE_OP_LESS,
+	GPU_COMPARE_OP_LESS_EQUAL,
+	GPU_COMPARE_OP_GREATER,
+	GPU_COMPARE_OP_GREATER_EQUAL,
+} gpu_compare_op;
+
+typedef struct gpu_pipeline {
+	int a;
+} gpu_pipeline;
+
+void add_color_target(gpu_pipeline pipeline, gpu_image_format format,
+					  bool blend);
+void set_vertex_shader(gpu_pipeline pipeline, gpu_shader vs);
+void set_fragment_shader(gpu_pipeline pipeline, gpu_shader fs);
+void set_primitive_type(gpu_pipeline pipeline, gpu_primitive_type type);
+void enable_depth_write(gpu_pipeline pipeline, gpu_image_format format);
+void enable_depth_test(gpu_pipeline pipeline);
+void enable_stencil_test(gpu_pipeline pipeline);
+void set_compare_op(gpu_pipeline pipeline, gpu_compare_op op);
+
 /* ========================================================================== */
 
 #endif // !GRAPHICS_H

@@ -38,6 +38,7 @@ typedef struct vk_image_data {
 
 STATIC_ASSERT(sizeof(vk_image_data) == 48, "pretty tight");
 POOL_DEFINE_TYPE(vk_image_data, vk_image_pool)
+#define VK_IMGPOOL_INVALID (vk_image_pool_handle){.raw_handle = 0}
 
 typedef enum vk_cmdbuf_state {
 	CMDBUF_NOT_BEGAN, // -> VkBeginCommandBuffer not called yet
@@ -55,6 +56,7 @@ typedef struct vk_cmdbuf_data {
 } vk_cmdbuf_data;
 
 POOL_DEFINE_TYPE(vk_cmdbuf_data, vk_cmdbuf_pool)
+#define VK_CMDPOOL_INVALID (vk_image_pool_handle){.raw_handle = 0}
 
 /* ============================================================================
  * Types
