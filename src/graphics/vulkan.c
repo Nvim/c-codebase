@@ -21,6 +21,7 @@ ARRAY_DEFINE_TYPE(VkExtensionProperties, vk_ext_props_array)
 
 #define IMAGE_POOL_SIZE 1024
 #define CMDBUF_POOL_SIZE 1024
+#define SHADER_POOL_SIZE 1024
 
 static bool _is_vk_13(VkPhysicalDeviceProperties2 props) {
 	return props.properties.apiVersion >= VK_API_VERSION_1_3;
@@ -408,8 +409,10 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	// Init resource pools:
 	state->image_pool = vk_image_pool_create(arena, IMAGE_POOL_SIZE);
 	state->cmd_pool = vk_cmdbuf_pool_create(arena, CMDBUF_POOL_SIZE);
+	state->shader_pool = vk_shader_pool_create(arena, SHADER_POOL_SIZE);
 
-	ASSERT(state->image_pool.raw && state->cmd_pool.raw);
+	ASSERT(state->image_pool.raw && state->cmd_pool.raw &&
+		   state->shader_pool.raw);
 
 	{
 		vulkan_init_info vk_pf_info = {0};
@@ -949,13 +952,69 @@ gpu_image_format vulkan_get_image_format(struct gpu_api* self,
 	return vk_to_gpu_image_format(data->format);
 }
 
-gpu_shader vulkan_create_shader(UNUSED struct gpu_api* self, UNUSED gpu_shader_ci* ci) {
-	// TODO
-	return (gpu_shader){.handle=POOL_INVALID_IDX};
+gpu_shader vulkan_create_shader(struct gpu_api* self, gpu_shader_ci* ci) {
+
+	gpu_shader ret = {.handle = POOL_INVALID_IDX};
+	if (!self || !self->state || !self->is_init || !ci) {
+		LOG_ERR("vulkan_create_shader: invalid parameters");
+		return ret;
+	}
+
+	vk_api_state* state = self->state;
+
+	uint64_t code_size = u8_array_size(ci->code);
+	if (code_size == 0 || code_size % 4 != 0) {
+		LOG_ERR("vulkan_create_shader: invalid shader code buffer");
+		return ret;
+	}
+
+	uint8_t* bytes = u8_array_begin(ci->code);
+	ASSERT(((uintptr_t)bytes & 3) == 0); // alignment
+
+	VkShaderModule module = {0};
+	{
+		VkShaderModuleCreateInfo vk_ci = {0};
+		{
+			vk_ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+			vk_ci.pCode = (uint32_t*)bytes;
+			vk_ci.codeSize = code_size;
+		};
+
+		if (!check_result(
+				vkCreateShaderModule(state->device, &vk_ci, NULL, &module))) {
+			LOG_ERR("vulkan_create_shader: couldn't create shader");
+			return ret;
+		}
+
+		// [TODO]: debug name
+	}
+
+	vk_shader_module data = {0};
+	{
+		data.module = module;
+		data.stage = gpu_to_vk_shader_stage(ci->type);
+	}
+	vk_shader_pool_handle handle =
+		vk_shader_pool_new(state->shader_pool, &data);
+	ASSERT(vk_shader_pool_is_handle_valid(state->shader_pool, handle));
+
+	ret.handle = handle.raw_handle;
+	return ret;
 }
 
-void vulkan_destroy_shader(UNUSED struct gpu_api* self,UNUSED gpu_shader handle) {
-	// TODO
+void vulkan_destroy_shader(struct gpu_api* self, gpu_shader handle) {
+	vk_api_state* state = self->state;
+	vk_shader_module* data =
+		vk_shader_pool_get(state->shader_pool, to_vk_shader(handle));
+
+	if (!data || !data->module) {
+		LOG_ERR("vulkan_destroy_shader: invalid shader handle");
+		return;
+	}
+
+	// [NOTE]: Shader module and pool handle lifecycle are ALWAYS coupled
+	vkDestroyShaderModule(state->device, data->module, NULL);
+	vk_shader_pool_release(state->shader_pool, to_vk_shader(handle));
 }
 
 bool gpu_create_api(gpu_api_config config, gpu_api* out) {

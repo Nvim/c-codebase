@@ -21,6 +21,8 @@ ARRAY_DEFINE_TYPE(VkSemaphore, vk_sem_array)
 /* ===========================================================================
  * Resource pools
  * ========================================================================== */
+
+/* == Image == */
 typedef enum {
 	IMAGE_FLAGS_SWAPCHAIN = BIT(1),
 } vk_image_flags;
@@ -40,6 +42,7 @@ STATIC_ASSERT(sizeof(vk_image_data) == 48, "pretty tight");
 POOL_DEFINE_TYPE(vk_image_data, vk_image_pool)
 #define VK_IMGPOOL_INVALID (vk_image_pool_handle){.raw_handle = 0}
 
+/* == Command Buffer == */
 typedef enum vk_cmdbuf_state {
 	CMDBUF_NOT_BEGAN, // -> VkBeginCommandBuffer not called yet
 	CMDBUF_RECORDING,
@@ -56,7 +59,16 @@ typedef struct vk_cmdbuf_data {
 } vk_cmdbuf_data;
 
 POOL_DEFINE_TYPE(vk_cmdbuf_data, vk_cmdbuf_pool)
-#define VK_CMDPOOL_INVALID (vk_image_pool_handle){.raw_handle = 0}
+#define VK_CMDPOOL_INVALID (vk_cmdbuf_pool_handle){.raw_handle = 0}
+
+/* == Shader Modules == */
+typedef struct vk_shader_module {
+	VkShaderModule module;
+	VkShaderStageFlags stage;
+} vk_shader_module;
+
+POOL_DEFINE_TYPE(vk_shader_module, vk_shader_pool)
+#define VK_SHADERPOOL_INVALID (vk_shader_pool_handle){.raw_handle = 0}
 
 /* ============================================================================
  * Types
@@ -181,6 +193,7 @@ typedef struct vk_api_state {
 	// Resource pools:
 	vk_image_pool image_pool;
 	vk_cmdbuf_pool cmd_pool;
+	vk_shader_pool shader_pool;
 
 	// TEMP:
 	VkPipeline pipeline;
@@ -308,6 +321,10 @@ static inline vk_cmdbuf_pool_handle to_vk_cmdbuf(gpu_command_buffer handle) {
 	return (vk_cmdbuf_pool_handle){.raw_handle = handle.handle};
 }
 
+static inline vk_shader_pool_handle to_vk_shader(gpu_shader handle) {
+	return (vk_shader_pool_handle){.raw_handle = handle.handle};
+}
+
 VkImageSubresourceRange vk_base_subresource_range(void);
 
 VkFormat gpu_to_vk_image_format(gpu_image_format f);
@@ -319,5 +336,7 @@ VkExtent2D gpu_to_vk_image_extent(gpu_image_extent e);
 // gpu_rendertarget vk_to_gpu_rendertarget(gpu_image* t);
 
 gpu_frame vk_to_gpu_frame(vk_frame* f);
+
+VkShaderStageFlags gpu_to_vk_shader_stage(gpu_shader_type t);
 
 #endif // !VULKAN_UTIL_H

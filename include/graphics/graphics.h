@@ -77,7 +77,8 @@ typedef enum {
 
 typedef struct gpu_shader_ci {
 	gpu_shader_type type;
-	string code;
+	u8_array code;
+	string debug_name;
 } gpu_shader_ci;
 
 // clang-format off
