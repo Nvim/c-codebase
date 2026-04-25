@@ -86,6 +86,7 @@ typedef struct { pool_handle handle; } gpu_image;
 typedef struct { pool_handle handle; } gpu_buffer;
 typedef struct { pool_handle handle; } gpu_command_buffer;
 typedef struct { pool_handle handle; } gpu_shader;
+typedef struct { pool_handle handle; } gpu_pipeline;
 // clang-format on
 
 typedef struct gpu_frame {
@@ -110,26 +111,106 @@ typedef enum {
 	GPU_ATTACHMENT_DEPTH,
 } gpu_attachment_type;
 
-typedef struct gpu_attachment {
-	gpu_attachment_type type;
-	// gpu_rendertarget* target;
+typedef struct gpu_color_target {
+	// [NOTE]: format is stored into image, no duplication
 	gpu_image target;
 	gpu_target_load_op load_op;
 	gpu_target_store_op store_op;
-} gpu_attachment;
+	gpu_color clear_color;
+	// [TODO]: mip levels, MSAA resolve
+} gpu_color_target;
+
+typedef struct gpu_color_target_info {
+	gpu_image_format format;
+	bool blend;
+} gpu_color_target_info;
+
+typedef struct gpu_depth_target {
+	gpu_image target;
+	gpu_target_load_op load_op;
+	gpu_target_store_op store_op;
+	float clear_value;
+} gpu_depth_target;
 
 #define GPU_MAX_RENDERTARGETS 8
-typedef struct gpu_rendering_state {
+typedef struct gpu_render_state {
 	uint32_t color_target_count;
-	// gpu_rendertarget color_targets[GPU_MAX_RENDERTARGETS];
-	gpu_image color_targets[GPU_MAX_RENDERTARGETS];
-	gpu_color clear_color;
+	gpu_color_target color_targets[GPU_MAX_RENDERTARGETS];
+
+	// [NOTE]: Depth target may be omitted depending on pipeline setup
+	gpu_depth_target* depth_target;
 } gpu_render_state;
 
-// typedef struct {
-// 	path vs;
-// 	path fs;
-// } gpu_pipeline_ci;
+typedef enum gpu_primitive_type {
+	GPU_PRIMITIVE_TYPE_TRIANGLELIST,
+	GPU_PRIMITIVE_TYPE_TRIANGLESTRIP,
+	GPU_PRIMITIVE_TYPE_TRIANGLEFAN,
+	GPU_PRIMITIVE_TYPE_LINELIST,
+	GPU_PRIMITIVE_TYPE_LINESTRIP,
+	GPU_PRIMITIVE_TYPE_POINTLIST
+} gpu_primitive_type;
+
+typedef enum gpu_compare_op {
+	GPU_COMPARE_OP_LESS,
+	GPU_COMPARE_OP_LESS_EQUAL,
+	GPU_COMPARE_OP_GREATER,
+	GPU_COMPARE_OP_GREATER_EQUAL,
+	GPU_COMPARE_OP_ALWAYS,
+	GPU_COMPARE_OP_NEVER,
+} gpu_compare_op;
+
+typedef enum gpu_cull_mode {
+	GPU_CULL_MODE_NONE,
+	GPU_CULL_MODE_FRONT,
+	GPU_CULL_MODE_BACK,
+} gpu_cull_mode;
+
+typedef enum gpu_polygon_mode {
+	GPU_POLYGON_FILL,
+	GPU_POLYGON_LINE,
+	GPU_POLYGON_POINT,
+} gpu_polygon_mode;
+
+typedef enum gpu_winding {
+	GPU_WINDING_CLOCKWISE,
+	GPU_WINDING_COUNTER_CLOCKWISE,
+} gpu_winding;
+
+typedef struct {
+	gpu_shader vertex_shader;
+	gpu_shader fragment_shader;
+
+	gpu_color_target_info color_targets[GPU_MAX_RENDERTARGETS];
+	uint32_t color_target_count;
+
+	struct {
+		gpu_primitive_type primitive_type;
+		gpu_cull_mode cull_mode;
+		gpu_winding winding_order;
+		gpu_polygon_mode polygon_mode;
+	} rasterizer;
+
+	/**
+	 * [NOTE]: if `depth_test` or `depth_write` is enabled, then
+	 * `gpu_render_state.depth_target` must be a valid target
+	 */
+	struct {
+		bool depth_test;
+		bool depth_write;
+		gpu_compare_op depth_compare_op;
+		gpu_image_format depth_target_format;
+	} depth;
+
+	struct {
+		bool stencil_test;
+		gpu_compare_op stencil_compare_op;
+		// [TODO]: Front & back distinction
+		// [TODO]: Stencil target
+	} stencil;
+
+	// [TODO]: multisampling
+	// [TODO]: maybe vertex (only bindless buffer device address for now)
+} gpu_pipeline_ci;
 
 /* ========================================================================== */
 typedef struct gpu_api_config {
@@ -187,6 +268,7 @@ typedef struct gpu_api {
 	 */
 	void (*destroy)(struct gpu_api*);
 
+	/*== Frame Flow ==*/
 	/**
 	 * @brief Begin a new frame. Previous frame must have been ended.
 	 *
@@ -249,43 +331,35 @@ typedef struct gpu_api {
 	 */
 	void (*end_frame)(struct gpu_api*, gpu_frame*);
 
-	gpu_image_extent (*get_image_extent)(struct gpu_api*, gpu_image);
-	gpu_image_format (*get_image_format)(struct gpu_api*, gpu_image);
-
+	/*== Resource Management ==*/
 	gpu_shader (*create_shader)(struct gpu_api*, gpu_shader_ci*);
 	void (*destroy_shader)(struct gpu_api*, gpu_shader);
+	gpu_pipeline (*create_pipeline)(struct gpu_api*, gpu_pipeline_ci*);
+	void (*destroy_pipeline)(struct gpu_api*, gpu_pipeline);
+
+	/*== Getters ==*/
+	gpu_image_extent (*get_image_extent)(struct gpu_api*, gpu_image);
+	gpu_image_format (*get_image_format)(struct gpu_api*, gpu_image);
 } gpu_api;
 
 LIB_EXPORT bool gpu_create_api(gpu_api_config config, gpu_api* out);
 
-typedef enum gpu_primitive_type {
-	GPU_PRIMITIVE_TYPE_TRIANGLELIST,
-	GPU_PRIMITIVE_TYPE_TRIANGLESTRIP,
-	GPU_PRIMITIVE_TYPE_LINELIST,
-	GPU_PRIMITIVE_TYPE_LINESTRIP,
-	GPU_PRIMITIVE_TYPE_POINTLIST
-} gpu_primitive_type;
+typedef struct gpu_pipeline_builder {
+	gpu_pipeline_ci ci;
+} gpu_pipeline_builder;
 
-typedef enum gpu_compare_op {
-	GPU_COMPARE_OP_LESS,
-	GPU_COMPARE_OP_LESS_EQUAL,
-	GPU_COMPARE_OP_GREATER,
-	GPU_COMPARE_OP_GREATER_EQUAL,
-} gpu_compare_op;
-
-typedef struct gpu_pipeline {
-	int a;
-} gpu_pipeline;
-
-void add_color_target(gpu_pipeline pipeline, gpu_image_format format,
+gpu_pipeline build(gpu_api* gpu, gpu_pipeline_builder builder);
+void set_vertex_shader(gpu_pipeline_builder builder, gpu_shader vs);
+void set_fragment_shader(gpu_pipeline_builder builder, gpu_shader fs);
+void set_primitive_type(gpu_pipeline_builder builder, gpu_primitive_type type);
+void add_color_target(gpu_pipeline_builder builder, gpu_image_format format,
 					  bool blend);
-void set_vertex_shader(gpu_pipeline pipeline, gpu_shader vs);
-void set_fragment_shader(gpu_pipeline pipeline, gpu_shader fs);
-void set_primitive_type(gpu_pipeline pipeline, gpu_primitive_type type);
-void enable_depth_write(gpu_pipeline pipeline, gpu_image_format format);
-void enable_depth_test(gpu_pipeline pipeline);
-void enable_stencil_test(gpu_pipeline pipeline);
-void set_compare_op(gpu_pipeline pipeline, gpu_compare_op op);
+// Optional:
+void enable_depth_write(gpu_pipeline_builder builder);
+void enable_depth_test(gpu_pipeline_builder builder);
+void set_depth_format(gpu_pipeline_builder builder, gpu_image_format format);
+void set_depth_compare_op(gpu_pipeline_builder builder, gpu_compare_op op);
+// [TODO]: Stencil, Blending, MSAA
 
 /* ========================================================================== */
 

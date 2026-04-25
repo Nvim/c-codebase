@@ -57,10 +57,15 @@ int main(void) {
 		gpu_frame frame = frame_res.frame;
 		gpu_command_buffer cmd = frame.frame_cmd;
 
-		gpu_render_state s = {
+		gpu_color_target color_target = {
 			.clear_color = (gpu_color){.floats = {.3f, .7f, .2f, 1.f}},
+			.load_op = GPU_LOAD_OP_CLEAR,
+			.store_op = GPU_STORE_OP_STORE,
+			.target = frame.backbuffer,
+		};
+		gpu_render_state s = {
 			.color_target_count = 1,
-			.color_targets = {frame.backbuffer},
+			.color_targets = {color_target},
 		};
 		gpu.cmd_transition_image(&gpu, cmd, frame.backbuffer,
 								 GPU_USAGE_RENDER_TARGET);

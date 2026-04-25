@@ -644,7 +644,8 @@ void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer cmd,
 	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
 
 	vk_image_data* img_data = vk_image_pool_get(
-		state->image_pool, (vk_image_pool_handle){s->color_targets[0].handle});
+		state->image_pool,
+		(vk_image_pool_handle){s->color_targets[0].target.handle});
 
 	VkRenderingInfo rendering_info = {0};
 	{
