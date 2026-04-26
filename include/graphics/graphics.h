@@ -20,6 +20,7 @@ typedef enum gpu_image_format {
 	IMAGE_FORMAT_RGB_SNORM,
 	IMAGE_FORMAT_RGB_SRGB,
 	// TODO: add 16 & 32 bit HDR and depth formats
+	IMAGE_FORMAT_D16,
 } gpu_image_format;
 
 typedef struct {
@@ -348,17 +349,21 @@ typedef struct gpu_pipeline_builder {
 	gpu_pipeline_ci ci;
 } gpu_pipeline_builder;
 
-gpu_pipeline build(gpu_api* gpu, gpu_pipeline_builder builder);
-void set_vertex_shader(gpu_pipeline_builder builder, gpu_shader vs);
-void set_fragment_shader(gpu_pipeline_builder builder, gpu_shader fs);
-void set_primitive_type(gpu_pipeline_builder builder, gpu_primitive_type type);
-void add_color_target(gpu_pipeline_builder builder, gpu_image_format format,
+void gpu_pipeline_builder_create(gpu_pipeline_builder* out);
+gpu_pipeline gpu_pipeline_build(gpu_api* gpu, gpu_pipeline_builder* builder);
+void set_vertex_shader(gpu_pipeline_builder* builder, gpu_shader vs);
+void set_fragment_shader(gpu_pipeline_builder* builder, gpu_shader fs);
+void add_color_target(gpu_pipeline_builder* builder, gpu_image_format format,
 					  bool blend);
 // Optional:
-void enable_depth_write(gpu_pipeline_builder builder);
-void enable_depth_test(gpu_pipeline_builder builder);
-void set_depth_format(gpu_pipeline_builder builder, gpu_image_format format);
-void set_depth_compare_op(gpu_pipeline_builder builder, gpu_compare_op op);
+void enable_depth_write(gpu_pipeline_builder* builder);
+void enable_depth_test(gpu_pipeline_builder* builder);
+void set_depth_format(gpu_pipeline_builder* builder, gpu_image_format format);
+void set_depth_compare_op(gpu_pipeline_builder* builder, gpu_compare_op op);
+void set_primitive_type(gpu_pipeline_builder* builder, gpu_primitive_type type);
+void set_cull_mode(gpu_pipeline_builder* builder, gpu_cull_mode mode);
+void set_polygon_mode(gpu_pipeline_builder* builder, gpu_polygon_mode mode);
+void set_winding_order(gpu_pipeline_builder* builder, gpu_winding winding);
 // [TODO]: Stencil, Blending, MSAA
 
 /* ========================================================================== */

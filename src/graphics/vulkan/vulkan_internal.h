@@ -62,13 +62,23 @@ POOL_DEFINE_TYPE(vk_cmdbuf_data, vk_cmdbuf_pool)
 #define VK_CMDPOOL_INVALID (vk_cmdbuf_pool_handle){.raw_handle = 0}
 
 /* == Shader Modules == */
-typedef struct vk_shader_module {
+typedef struct vk_shader_data {
 	VkShaderModule module;
 	VkShaderStageFlags stage;
-} vk_shader_module;
+} vk_shader_data;
 
-POOL_DEFINE_TYPE(vk_shader_module, vk_shader_pool)
+POOL_DEFINE_TYPE(vk_shader_data, vk_shader_pool)
 #define VK_SHADERPOOL_INVALID (vk_shader_pool_handle){.raw_handle = 0}
+
+/* == Pipeline == */
+typedef struct vk_pipeline_data {
+	VkPipeline pipeline;
+	VkPipelineLayout layout;
+	VkGraphicsPipelineCreateInfo ci;
+} vk_pipeline_data;
+
+POOL_DEFINE_TYPE(vk_pipeline_data, vk_pipeline_pool)
+#define VK_PIPELINEPOOL_INVALID (vk_pipeline_pool_handle){.raw_handle = 0}
 
 /* ============================================================================
  * Types

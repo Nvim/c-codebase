@@ -990,7 +990,7 @@ gpu_shader vulkan_create_shader(struct gpu_api* self, gpu_shader_ci* ci) {
 		// [TODO]: debug name
 	}
 
-	vk_shader_module data = {0};
+	vk_shader_data data = {0};
 	{
 		data.module = module;
 		data.stage = gpu_to_vk_shader_stage(ci->type);
@@ -1005,7 +1005,7 @@ gpu_shader vulkan_create_shader(struct gpu_api* self, gpu_shader_ci* ci) {
 
 void vulkan_destroy_shader(struct gpu_api* self, gpu_shader handle) {
 	vk_api_state* state = self->state;
-	vk_shader_module* data =
+	vk_shader_data* data =
 		vk_shader_pool_get(state->shader_pool, to_vk_shader(handle));
 
 	if (!data || !data->module) {

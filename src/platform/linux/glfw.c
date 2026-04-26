@@ -9,7 +9,7 @@
 #include "input.h"
 
 #include <core/core.h>
-#include <graphics/vulkan_init_info.h>
+#include <graphics/vulkan/vulkan_init_info.h>
 #include <platform/platform.h>
 
 #include <GLFW/glfw3.h>
