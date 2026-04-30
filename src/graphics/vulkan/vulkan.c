@@ -22,6 +22,7 @@ ARRAY_DEFINE_TYPE(VkExtensionProperties, vk_ext_props_array)
 #define IMAGE_POOL_SIZE 1024
 #define CMDBUF_POOL_SIZE 1024
 #define SHADER_POOL_SIZE 1024
+#define PIPELINE_POOL_SIZE 512
 
 static bool _is_vk_13(VkPhysicalDeviceProperties2 props) {
 	return props.properties.apiVersion >= VK_API_VERSION_1_3;
@@ -347,6 +348,8 @@ static void create_temp_shader(vk_api_state* state) {
 			layout_ci.setLayoutCount = 0;
 			layout_ci.pushConstantRangeCount = 0;
 		}
+		VkPipelineLayout* layout = &state->pipeline_layout;
+		vkCreatePipelineLayout(state->device, &layout_ci, NULL, layout);
 
 		VkDynamicState dyn_state[] = {VK_DYNAMIC_STATE_VIEWPORT,
 									  VK_DYNAMIC_STATE_SCISSOR};
@@ -358,9 +361,6 @@ static void create_temp_shader(vk_api_state* state) {
 			dynamic_ci.pDynamicStates = &dyn_state[0];
 			dynamic_ci.dynamicStateCount = 2;
 		};
-
-		VkPipelineLayout* layout = &state->pipeline_layout;
-		vkCreatePipelineLayout(state->device, &layout_ci, NULL, layout);
 
 		VkGraphicsPipelineCreateInfo pipeline_ci = {0};
 		{
@@ -410,6 +410,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	state->image_pool = vk_image_pool_create(arena, IMAGE_POOL_SIZE);
 	state->cmd_pool = vk_cmdbuf_pool_create(arena, CMDBUF_POOL_SIZE);
 	state->shader_pool = vk_shader_pool_create(arena, SHADER_POOL_SIZE);
+	state->pipeline_pool = vk_pipeline_pool_create(arena, PIPELINE_POOL_SIZE);
 
 	ASSERT(state->image_pool.raw && state->cmd_pool.raw &&
 		   state->shader_pool.raw);
@@ -1018,6 +1019,65 @@ void vulkan_destroy_shader(struct gpu_api* self, gpu_shader handle) {
 	vk_shader_pool_release(state->shader_pool, to_vk_shader(handle));
 }
 
+gpu_pipeline vulkan_create_pipeline(struct gpu_api* self, gpu_pipeline_ci* ci) {
+	vk_api_state* state = self->state;
+
+	gpu_pipeline ret = {.handle = POOL_INVALID_HANDLE};
+	vk_pipeline_data data = {0};
+
+	scratch_arena scratch;
+	ASSERT(arena_get_scratch(NULL, &scratch));
+
+	if (!gpu_to_vk_pipeline_ci(scratch.arena, ci, &data.ci, state)) {
+		return ret;
+	}
+
+	// [TODO]: layout config
+	VkPipelineLayoutCreateInfo layout_ci = {0};
+	{
+		layout_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+		layout_ci.setLayoutCount = 0;
+		layout_ci.pushConstantRangeCount = 0;
+	}
+	if (!check_result(vkCreatePipelineLayout(state->device, &layout_ci, NULL,
+											 &data.layout))) {
+		LOG_ERR("vulkan_create_pipeline: couldn't create pipeline layout");
+		return ret;
+	}
+	data.ci.layout = data.layout;
+
+	if (!check_result(vkCreateGraphicsPipelines(
+			state->device, NULL, 1, &data.ci, NULL, &data.pipeline))) {
+		LOG_ERR("vulkan_create_pipeline: couldn't create pipeline");
+		vkDestroyPipelineLayout(state->device, data.layout, NULL);
+		return ret;
+	}
+
+	arena_clear_scratch(scratch);
+
+	vk_pipeline_pool_handle h =
+		vk_pipeline_pool_new(state->pipeline_pool, &data);
+	ret.handle = vk_pipeline_pool_unwrap(h);
+
+	return ret;
+}
+
+void vulkan_destroy_pipeline(struct gpu_api* self, gpu_pipeline handle) {
+	vk_api_state* state = self->state;
+	vk_pipeline_data* data =
+		vk_pipeline_pool_get(state->pipeline_pool, to_vk_pipeline(handle));
+
+	if (!data || !data->pipeline) {
+		LOG_ERR("vulkan_destroy_pipeline: invalid pipeline handle");
+		return;
+	}
+
+	// [NOTE]: Pipeline and pool handle lifecycle are ALWAYS coupled
+	vkDestroyPipelineLayout(state->device, data->layout, NULL);
+	vkDestroyPipeline(state->device, data->pipeline, NULL);
+	vk_pipeline_pool_release(state->pipeline_pool, to_vk_pipeline(handle));
+}
+
 bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 	if (!out) {
 		LOG_ERR("gpu_create_api: invalid parameters");
@@ -1048,9 +1108,15 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->get_image_format = vulkan_get_image_format;
 		out->create_shader = vulkan_create_shader;
 		out->destroy_shader = vulkan_destroy_shader;
+		out->create_pipeline = vulkan_create_pipeline;
+		out->destroy_pipeline = vulkan_destroy_pipeline;
 	}
 
 	return true;
+}
+
+gpu_pipeline gpu_pipeline_build(gpu_api* gpu, gpu_pipeline_builder* builder) {
+	return vulkan_create_pipeline(gpu, &builder->ci);
 }
 
 #endif // !GRAPHICS_VULKAN_H

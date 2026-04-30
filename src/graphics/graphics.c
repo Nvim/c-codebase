@@ -16,7 +16,7 @@ void set_vertex_shader(gpu_pipeline_builder* builder, gpu_shader vs) {
 }
 
 void set_fragment_shader(gpu_pipeline_builder* builder, gpu_shader fs) {
-	builder->ci.vertex_shader = fs;
+	builder->ci.fragment_shader = fs;
 }
 
 void add_color_target(gpu_pipeline_builder* builder, gpu_image_format format,

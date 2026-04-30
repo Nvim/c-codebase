@@ -204,6 +204,7 @@ typedef struct vk_api_state {
 	vk_image_pool image_pool;
 	vk_cmdbuf_pool cmd_pool;
 	vk_shader_pool shader_pool;
+	vk_pipeline_pool pipeline_pool;
 
 	// TEMP:
 	VkPipeline pipeline;
@@ -316,6 +317,10 @@ void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
  * Utils & conversion
  * ========================================================================== */
 
+bool gpu_to_vk_pipeline_ci(arena_t* arena, gpu_pipeline_ci* ci,
+						   VkGraphicsPipelineCreateInfo* out,
+						   vk_api_state* state);
+
 // [TODO]: Could be nicer idk
 static inline bool check_result(VkResult result) {
 	bool ret = result == VK_SUCCESS;
@@ -333,6 +338,10 @@ static inline vk_cmdbuf_pool_handle to_vk_cmdbuf(gpu_command_buffer handle) {
 
 static inline vk_shader_pool_handle to_vk_shader(gpu_shader handle) {
 	return (vk_shader_pool_handle){.raw_handle = handle.handle};
+}
+
+static inline vk_pipeline_pool_handle to_vk_pipeline(gpu_pipeline handle) {
+	return (vk_pipeline_pool_handle){.raw_handle = handle.handle};
 }
 
 VkImageSubresourceRange vk_base_subresource_range(void);

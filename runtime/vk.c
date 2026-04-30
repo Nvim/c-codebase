@@ -1,5 +1,6 @@
 #include <core/core.h>
 #include <core/log.h>
+#include <filesystem/filesystem.h>
 #include <platform/platform.h>
 
 #include <graphics/graphics.h>
@@ -47,9 +48,53 @@ int main(void) {
 	double t_prev = platform_get_time();
 	double delta = 0.0f;
 
-	// uint32_t frame_count = 0;
+	gpu_shader vs = {0}, fs = {0};
+	{
+		path vs_path;
+		ASSERT(path_create(scratch.arena, scratch.arena,
+						   str("src/shaders/quad.vert.spirv"), &vs_path));
+		fs_file_read_result res = fs_read_all_file(scratch.arena, vs_path);
+		ASSERT(res.ok);
+		gpu_shader_ci vs_ci = {0};
+		vs_ci.type = GPU_SHADER_VERTEX;
+		vs_ci.code = res.bytes;
+		vs_ci.debug_name = str("quad_vs");
+		vs = gpu.create_shader(&gpu, &vs_ci);
+	}
+	{
+		path fs_path;
+		ASSERT(path_create(scratch.arena, scratch.arena,
+						   str("src/shaders/quad.frag.spirv"), &fs_path));
+		fs_file_read_result res = fs_read_all_file(scratch.arena, fs_path);
+		ASSERT(res.ok);
+		gpu_shader_ci fs_ci = {0};
+		fs_ci.type = GPU_SHADER_VERTEX;
+		fs_ci.code = res.bytes;
+		fs_ci.debug_name = str("quad_fs");
+		fs = gpu.create_shader(&gpu, &fs_ci);
+	}
+	arena_clear_scratch(scratch);
+
+	ASSERT(check_handle(vs.handle));
+	ASSERT(check_handle(fs.handle));
+
+	gpu_pipeline_builder builder = {0};
+	gpu_pipeline_builder_create(&builder);
+
+	set_vertex_shader(&builder, vs);
+	set_fragment_shader(&builder, fs);
+	add_color_target(&builder, gpu.config.target_image_format, false);
+
+	gpu_pipeline pipeline = gpu.create_pipeline(&gpu, &builder.ci);
+	gpu.destroy_shader(&gpu, vs);
+	gpu.destroy_shader(&gpu, fs);
+
+	ASSERT(check_handle(pipeline.handle));
+	gpu.destroy_pipeline(&gpu, pipeline);
+
+	uint32_t frame_count = 0;
 	while (!_quit) {
-		// if(frame_count++ > 12) { break; }
+		if (frame_count++ > 12) { break; }
 		platform_poll();
 		if (platform_window_should_close(win)) { break; }
 		gpu_frame_result frame_res = gpu.begin_frame(&gpu);

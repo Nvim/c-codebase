@@ -1,6 +1,7 @@
 #include "vulkan_internal.h"
 
 #include <graphics/graphics.h>
+#include <string.h>
 
 bool vk_surface_create(vk_surface* out, VkPhysicalDevice device,
 					   VkSurfaceKHR surface) {
@@ -401,6 +402,207 @@ void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
 	vkCmdPipelineBarrier2(cmd_buf, &dep_info);
 }
 
+static VkPrimitiveTopology gpu_to_vk_primitive_type(gpu_primitive_type t) {
+	switch (t) {
+	case GPU_PRIMITIVE_TYPE_TRIANGLELIST:
+		return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	case GPU_PRIMITIVE_TYPE_TRIANGLESTRIP:
+		return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+	case GPU_PRIMITIVE_TYPE_TRIANGLEFAN:
+		return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
+	case GPU_PRIMITIVE_TYPE_LINELIST: return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+	case GPU_PRIMITIVE_TYPE_LINESTRIP: return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+	case GPU_PRIMITIVE_TYPE_POINTLIST: return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+	}
+}
+
+static VkCompareOp gpu_to_vk_compare_op(gpu_compare_op op) {
+	switch (op) {
+	case GPU_COMPARE_OP_LESS: return VK_COMPARE_OP_LESS;
+	case GPU_COMPARE_OP_LESS_EQUAL: return VK_COMPARE_OP_LESS_OR_EQUAL;
+	case GPU_COMPARE_OP_GREATER: return VK_COMPARE_OP_GREATER;
+	case GPU_COMPARE_OP_GREATER_EQUAL: return VK_COMPARE_OP_GREATER_OR_EQUAL;
+	case GPU_COMPARE_OP_ALWAYS: return VK_COMPARE_OP_ALWAYS;
+	case GPU_COMPARE_OP_NEVER: return VK_COMPARE_OP_NEVER;
+	}
+}
+
+static VkCullModeFlagBits gpu_to_vk_cull_mode(gpu_cull_mode m) {
+	switch (m) {
+	case GPU_CULL_MODE_NONE: return VK_CULL_MODE_NONE;
+	case GPU_CULL_MODE_FRONT: return VK_CULL_MODE_FRONT_BIT;
+	case GPU_CULL_MODE_BACK: return VK_CULL_MODE_BACK_BIT;
+	}
+}
+
+static VkPolygonMode gpu_to_vk_polygon_mode(gpu_polygon_mode m) {
+	switch (m) {
+	case GPU_POLYGON_FILL: return VK_POLYGON_MODE_FILL;
+	case GPU_POLYGON_LINE: return VK_POLYGON_MODE_LINE;
+	case GPU_POLYGON_POINT: return VK_POLYGON_MODE_POINT;
+	}
+}
+
+static VkFrontFace gpu_to_vk_winding(gpu_winding w) {
+	switch (w) {
+	case GPU_WINDING_CLOCKWISE: return VK_FRONT_FACE_CLOCKWISE;
+	case GPU_WINDING_COUNTER_CLOCKWISE: return VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	}
+}
+
+bool gpu_to_vk_pipeline_ci(arena_t* arena, gpu_pipeline_ci* ci,
+						   VkGraphicsPipelineCreateInfo* out,
+						   vk_api_state* state) {
+
+	memset(out, 0, sizeof(*out));
+	vk_shader_data* vs =
+		vk_shader_pool_get(state->shader_pool, to_vk_shader(ci->vertex_shader));
+	vk_shader_data* fs = vk_shader_pool_get(state->shader_pool,
+											to_vk_shader(ci->fragment_shader));
+
+	if (!vs || !vs->module || !fs || !fs->module) {
+		LOG_ERR("gpu_to_vulkan_pipeline: invalid shader handles");
+		return false;
+	}
+
+	VkPipelineViewportStateCreateInfo* viewport_ci =
+		arena_push_z(arena, VkPipelineViewportStateCreateInfo);
+	{
+		viewport_ci->sType =
+			VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+		viewport_ci->viewportCount = 1;
+		viewport_ci->scissorCount = 1;
+	}
+
+	// [TODO]: Don't hardcode blending
+	VkPipelineColorBlendAttachmentState blend_state = {
+		.colorWriteMask = 0xF,
+	};
+	VkPipelineColorBlendStateCreateInfo* blend_ci =
+		arena_push_z(arena, VkPipelineColorBlendStateCreateInfo);
+	{
+		blend_ci->sType =
+			VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+		blend_ci->attachmentCount = 1;
+		blend_ci->pAttachments = &blend_state;
+	}
+
+	VkPipelineShaderStageCreateInfo* shader_stages =
+		arena_push_array_z(arena, VkPipelineShaderStageCreateInfo, 2);
+	{
+		shader_stages[0].sType =
+			VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		shader_stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+		shader_stages[0].module = vs->module;
+		shader_stages[0].pName = "main";
+
+		shader_stages[1].sType =
+			VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		shader_stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+		shader_stages[1].module = fs->module;
+		shader_stages[1].pName = "main";
+	}
+
+	// No need for vertex input:
+	VkPipelineVertexInputStateCreateInfo* vert_input_ci =
+		arena_push_z(arena, VkPipelineVertexInputStateCreateInfo);
+	{
+		vert_input_ci->sType =
+			VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	}
+
+	VkFormat* formats =
+		arena_push_array_z(arena, VkFormat, GPU_MAX_RENDERTARGETS);
+	for (uint32_t i = 0; i < ci->color_target_count; ++i) {
+		formats[i] = gpu_to_vk_image_format(ci->color_targets[i].format);
+	}
+
+	VkPipelineRenderingCreateInfo* _renderInfo =
+		arena_push_z(arena, VkPipelineRenderingCreateInfo);
+	{
+		_renderInfo->sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+		_renderInfo->colorAttachmentCount = ci->color_target_count;
+		_renderInfo->pColorAttachmentFormats = formats;
+		_renderInfo->depthAttachmentFormat =
+			gpu_to_vk_image_format(ci->depth.depth_target_format);
+	};
+
+	VkPipelineRasterizationStateCreateInfo* raster_ci =
+		arena_push_z(arena, VkPipelineRasterizationStateCreateInfo);
+	{
+		raster_ci->sType =
+			VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+		raster_ci->cullMode = gpu_to_vk_cull_mode(ci->rasterizer.cull_mode);
+		raster_ci->polygonMode =
+			gpu_to_vk_polygon_mode(ci->rasterizer.polygon_mode);
+		raster_ci->frontFace = gpu_to_vk_winding(ci->rasterizer.winding_order);
+		raster_ci->lineWidth = 1.f;
+	}
+
+	VkPipelineInputAssemblyStateCreateInfo* input_asm =
+		arena_push_z(arena, VkPipelineInputAssemblyStateCreateInfo);
+	{
+		input_asm->sType =
+			VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+		input_asm->topology =
+			gpu_to_vk_primitive_type(ci->rasterizer.primitive_type);
+	}
+
+	// [TODO]: Don't hardcode multisampling
+	VkPipelineMultisampleStateCreateInfo* multisampling_ci =
+		arena_push_z(arena, VkPipelineMultisampleStateCreateInfo);
+	{
+		multisampling_ci->sType =
+			VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+		multisampling_ci->rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	};
+
+	// [TODO]: Stencil support
+	VkPipelineDepthStencilStateCreateInfo* depth_ci =
+		arena_push_z(arena, VkPipelineDepthStencilStateCreateInfo);
+	{
+		depth_ci->sType =
+			VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+		depth_ci->depthTestEnable = ci->depth.depth_test;
+		depth_ci->depthWriteEnable = ci->depth.depth_write;
+		depth_ci->stencilTestEnable = VK_FALSE;
+		depth_ci->depthCompareOp =
+			gpu_to_vk_compare_op(ci->depth.depth_compare_op);
+	}
+
+	VkDynamicState* dyn_state = arena_push_array_z(arena, VkDynamicState, 2);
+	{
+		dyn_state[0] = VK_DYNAMIC_STATE_VIEWPORT;
+		dyn_state[1] = VK_DYNAMIC_STATE_SCISSOR;
+	}
+
+	VkPipelineDynamicStateCreateInfo* dynamic_ci =
+		arena_push_z(arena, VkPipelineDynamicStateCreateInfo);
+	{
+		dynamic_ci->sType =
+			VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+		dynamic_ci->pDynamicStates = dyn_state;
+		dynamic_ci->dynamicStateCount = 2;
+	};
+
+	{
+		out->sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+		out->pNext = _renderInfo;
+		out->stageCount = 2;
+		out->pStages = shader_stages;
+		out->pVertexInputState = vert_input_ci;
+		out->pInputAssemblyState = input_asm;
+		out->pViewportState = viewport_ci;
+		out->pRasterizationState = raster_ci;
+		out->pMultisampleState = multisampling_ci;
+		out->pColorBlendState = blend_ci;
+		out->pDepthStencilState = depth_ci;
+		out->pDynamicState = dynamic_ci;
+	}
+
+	return true;
+}
+
 vk_image_pool_handle vk_create_image(VmaAllocator allocator,
 									 vk_image_pool image_pool,
 									 VkExtent2D extent, VkFormat format,
@@ -494,7 +696,7 @@ VkFormat gpu_to_vk_image_format(gpu_image_format f) {
 	case IMAGE_FORMAT_RGB_UNORM: return VK_FORMAT_R8G8B8_UNORM;
 	case IMAGE_FORMAT_RGB_SNORM: return VK_FORMAT_R8G8B8_SNORM;
 	case IMAGE_FORMAT_RGB_SRGB: return VK_FORMAT_R8G8B8_SRGB;
-	default: ASSERT(false); return VK_FORMAT_R8G8B8_UNORM;
+	case IMAGE_FORMAT_D16: return VK_FORMAT_D16_UNORM;
 	}
 }
 
