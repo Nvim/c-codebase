@@ -65,6 +65,7 @@ POOL_DEFINE_TYPE(vk_cmdbuf_data, vk_cmdbuf_pool)
 typedef struct vk_shader_data {
 	VkShaderModule module;
 	VkShaderStageFlags stage;
+	string name;
 } vk_shader_data;
 
 POOL_DEFINE_TYPE(vk_shader_data, vk_shader_pool)
@@ -207,8 +208,8 @@ typedef struct vk_api_state {
 	vk_pipeline_pool pipeline_pool;
 
 	// TEMP:
-	VkPipeline pipeline;
-	VkPipelineLayout pipeline_layout;
+	// VkPipeline pipeline;
+	// VkPipelineLayout pipeline_layout;
 } vk_api_state;
 
 vk_render_sync* vk_get_current_sync(vk_api_state* state);
@@ -357,5 +358,15 @@ VkExtent2D gpu_to_vk_image_extent(gpu_image_extent e);
 gpu_frame vk_to_gpu_frame(vk_frame* f);
 
 VkShaderStageFlags gpu_to_vk_shader_stage(gpu_shader_type t);
+
+VkPrimitiveTopology gpu_to_vk_primitive_type(gpu_primitive_type t);
+
+VkCompareOp gpu_to_vk_compare_op(gpu_compare_op op);
+
+VkCullModeFlagBits gpu_to_vk_cull_mode(gpu_cull_mode m);
+
+VkPolygonMode gpu_to_vk_polygon_mode(gpu_polygon_mode m);
+
+VkFrontFace gpu_to_vk_winding(gpu_winding w);
 
 #endif // !VULKAN_UTIL_H

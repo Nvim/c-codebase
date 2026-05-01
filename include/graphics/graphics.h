@@ -269,6 +269,8 @@ typedef struct gpu_api {
 	 */
 	void (*destroy)(struct gpu_api*);
 
+	void (*wait_idle)(struct gpu_api*);
+
 	/*== Frame Flow ==*/
 	/**
 	 * @brief Begin a new frame. Previous frame must have been ended.
@@ -323,6 +325,9 @@ typedef struct gpu_api {
 
 	void (*cmd_reset_viewport)(struct gpu_api*, gpu_command_buffer);
 	void (*cmd_reset_scissor)(struct gpu_api*, gpu_command_buffer);
+
+	void (*cmd_bind_pipeline)(struct gpu_api*, gpu_command_buffer,
+							  gpu_pipeline);
 
 	/**
 	 * @brief End the current frame. Must be called before requesting a new
