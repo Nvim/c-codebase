@@ -329,6 +329,10 @@ typedef struct gpu_api {
 	void (*cmd_bind_pipeline)(struct gpu_api*, gpu_command_buffer,
 							  gpu_pipeline);
 
+	void (*cmd_draw)(struct gpu_api*, gpu_command_buffer, uint32_t vertex_count,
+					 uint32_t instance_count, uint32_t first_vertex,
+					 uint32_t first_instance);
+
 	/**
 	 * @brief End the current frame. Must be called before requesting a new
 	 * frame.

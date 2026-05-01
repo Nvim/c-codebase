@@ -117,6 +117,7 @@ int main(void) {
 		gpu.cmd_reset_scissor(&gpu, cmd);
 		gpu.cmd_begin_rendering(&gpu, cmd, &s);
 		gpu.cmd_bind_pipeline(&gpu, cmd, pipeline);
+		gpu.cmd_draw(&gpu, cmd, 6, 1, 0, 0);
 		gpu.cmd_end_rendering(&gpu, cmd);
 		gpu.cmd_transition_for_present(&gpu, cmd, frame.backbuffer);
 		gpu.cmd_submit(&gpu, cmd);
@@ -135,10 +136,10 @@ int main(void) {
 
 	gpu.wait_idle(&gpu);
 	gpu.destroy_pipeline(&gpu, pipeline);
-	platform_destroy_window(win);
 
 	gpu.destroy(&gpu);
+	platform_destroy_window(win);
+	platform_destroy();
 
-	// platform_destroy();
 	return 0;
 }

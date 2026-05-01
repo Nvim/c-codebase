@@ -66,7 +66,8 @@ bool platform_init(void) {
 	return _init;
 }
 
-LIB_EXPORT void platform_destroy(void) { glfwTerminate(); }
+// [NOTE] glfwTerminate crashes on Wayland
+LIB_EXPORT void platform_destroy(void) { /* glfwTerminate(); */ }
 
 window_t* platform_create_window(window_size size, char const* name) {
 	// [TODO]: Someday another API might be supported who knows
@@ -114,15 +115,12 @@ bool platform_window_should_close(window_t* window) {
 	return glfwWindowShouldClose(w->internal);
 }
 
-void platform_destroy_window(window_t* window) {
+void platform_destroy_window(UNUSED window_t* window) {
 	window_impl* w = (window_impl*)window;
 	glfwDestroyWindow(w->internal);
 }
 
 void platform_poll(void) {
-#if defined(CREATE_OPENGL_CONTEXT)
-	glfwSwapBuffers(_window);
-#endif
 	glfwPollEvents();
 }
 

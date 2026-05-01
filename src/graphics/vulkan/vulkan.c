@@ -778,9 +778,19 @@ void vulkan_cmd_bind_pipeline(struct gpu_api* self, gpu_command_buffer cmd,
 	ASSERT(data && data->pipeline);
 	vkCmdBindPipeline(cmd_data->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 					  data->pipeline);
+}
 
-	LOG_WARN("DRAW");
-	vkCmdDraw(cmd_data->command_buffer, 6, 1, 0, 0);
+void vulkan_cmd_draw(struct gpu_api* self, gpu_command_buffer cmd,
+					 uint32_t vertex_count, uint32_t instance_count,
+					 uint32_t first_vertex, uint32_t first_instance) {
+	vk_api_state* state = self->state;
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
+
+	ASSERT(cmd_data->state == CMDBUF_RENDERING);
+
+	vkCmdDraw(cmd_data->command_buffer, vertex_count, instance_count,
+			  first_vertex, first_instance);
 }
 
 gpu_image_extent vulkan_get_image_extent(struct gpu_api* self,
@@ -1065,6 +1075,7 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->cmd_reset_viewport = vulkan_cmd_reset_viewport;
 		out->cmd_reset_scissor = vulkan_cmd_reset_scissor;
 		out->cmd_bind_pipeline = vulkan_cmd_bind_pipeline;
+		out->cmd_draw = vulkan_cmd_draw;
 		out->end_frame = vulkan_end_frame;
 		out->get_image_extent = vulkan_get_image_extent;
 		out->get_image_format = vulkan_get_image_format;
