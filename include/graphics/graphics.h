@@ -84,6 +84,7 @@ typedef struct gpu_shader_ci {
 
 // clang-format off
 typedef struct { pool_handle handle; } gpu_image;
+typedef struct { pool_handle handle; } gpu_sampler;
 typedef struct { pool_handle handle; } gpu_buffer;
 typedef struct { pool_handle handle; } gpu_command_buffer;
 typedef struct { pool_handle handle; } gpu_shader;
@@ -212,6 +213,55 @@ typedef struct {
 	// [TODO]: multisampling
 	// [TODO]: maybe vertex (only bindless buffer device address for now)
 } gpu_pipeline_ci;
+
+typedef enum gpu_sampler_filter_mode {
+	GPU_SAMPLER_FILTER_NEAREST,
+	GPU_SAMPLER_FILTER_LINEAR,
+} gpu_sampler_filter_mode;
+
+typedef enum gpu_sampler_address_mode {
+	GPU_SAMPLER_ADRESS_REPEAT,
+	GPU_SAMPLER_ADRESS_REPEAT_MIRROR,
+	GPU_SAMPLER_ADRESS_CLAMP,
+} gpu_sampler_address_mode;
+
+typedef enum gpu_sampler_mipmap_mode {
+	GPU_SAMPLER_MIPMAP_NEAREST,
+	GPU_SAMPLER_MIPMAP_LINEAR,
+} gpu_sampler_mipmap_mode;
+
+/**
+ * [NOTE]: Goal here is to expose only what's necessary for GLTF.
+ * This mean hiding away some features:
+ * - lod biasing/clamping
+ * - anisotropy
+ * - compare against reference value at lookup
+ * -> might need some of them for other usages?
+ */
+typedef struct gpu_sampler_ci {
+	gpu_sampler_filter_mode min_filter;
+	gpu_sampler_filter_mode mag_filter;
+	gpu_sampler_mipmap_mode mipmap_mode;
+	gpu_sampler_address_mode address_mode_u;
+	gpu_sampler_address_mode address_mode_v;
+	gpu_sampler_address_mode address_mode_w;
+} gpu_sampler_ci;
+
+// [TODO]: Not sure about these ones yet
+typedef struct gpu_image_view gpu_image_view;
+typedef struct gpu_image_ci gpu_image_ci;
+
+/**
+ * @typedef gpu_texture
+ * @brief Texture is a non-owning view into an image, coupled with a sampler.
+ * Both are created separately and owned by API, so no resource management on
+ * texture side.
+ *
+ */
+typedef struct gpu_texture {
+	gpu_image_view* image;
+	gpu_sampler sampler;
+} gpu_texture;
 
 /* ========================================================================== */
 typedef struct gpu_api_config {
@@ -344,8 +394,21 @@ typedef struct gpu_api {
 	/*== Resource Management ==*/
 	gpu_shader (*create_shader)(struct gpu_api*, gpu_shader_ci*);
 	void (*destroy_shader)(struct gpu_api*, gpu_shader);
+
 	gpu_pipeline (*create_pipeline)(struct gpu_api*, gpu_pipeline_ci*);
 	void (*destroy_pipeline)(struct gpu_api*, gpu_pipeline);
+
+	gpu_image (*create_image)(struct gpu_api*, gpu_image_ci*);
+	gpu_image_view* (*get_image_view)(struct gpu_api*, gpu_image /* , TODO */);
+	void (*destroy_image)(struct gpu_api*, gpu_image);
+
+	gpu_sampler (*create_sampler)(struct gpu_api*, gpu_sampler_ci*);
+	void (*destroy_sampler)(struct gpu_api*, gpu_sampler);
+
+	gpu_texture (*create_texture)(struct gpu_api*, gpu_image_view*,
+								  gpu_sampler);
+	gpu_texture (*load_texture)(struct gpu_api*, path image_path,
+								gpu_sampler /* , TODO */);
 
 	/*== Getters ==*/
 	gpu_image_extent (*get_image_extent)(struct gpu_api*, gpu_image);

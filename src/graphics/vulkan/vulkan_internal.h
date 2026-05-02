@@ -29,7 +29,7 @@ typedef enum {
 
 typedef struct vk_image_data {
 	VkImage image;
-	VkImageView image_view;
+	VkImageView image_view; // Default view for all image range
 	VmaAllocation alloc;
 	VkExtent2D extent;
 	VkFormat format;
@@ -41,6 +41,11 @@ typedef struct vk_image_data {
 STATIC_ASSERT(sizeof(vk_image_data) == 48, "pretty tight");
 POOL_DEFINE_TYPE(vk_image_data, vk_image_pool)
 #define VK_IMGPOOL_INVALID (vk_image_pool_handle){.raw_handle = 0}
+
+typedef struct vk_user_image_view {
+	VkImageView* view;
+	vk_image_pool_handle image;
+} vk_user_image_view;
 
 /* == Command Buffer == */
 typedef enum vk_cmdbuf_state {

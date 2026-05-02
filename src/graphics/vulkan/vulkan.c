@@ -601,8 +601,7 @@ bool vulkan_cmd_transition_for_present(struct gpu_api* self,
 	static vk_barrier_info const to = {
 		.layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 		.stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-		.access = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
-				  VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+		.access = VK_ACCESS_2_NONE,
 	};
 	vk_image_barrier(cmd_data->command_buffer, img_data->image, from, to);
 

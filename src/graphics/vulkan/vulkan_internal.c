@@ -451,11 +451,15 @@ VkFrontFace gpu_to_vk_winding(gpu_winding w) {
 	}
 }
 
-vk_image_pool_handle vk_create_image(VmaAllocator allocator,
-									 vk_image_pool image_pool,
-									 VkExtent2D extent, VkFormat format,
-									 VkImageUsageFlags usage, uint32_t levels,
-									 uint32_t queue_family_idx) {
+/**
+ * @brief Create a single 2D image. Mip levels are supported, but not image
+ * arrays.
+ *
+ */
+vk_image_pool_handle
+vk_create_2d_image(vk_api_state* state, VmaAllocator allocator,
+				   VkExtent2D extent, VkFormat format, VkImageUsageFlags usage,
+				   uint32_t levels, uint32_t queue_family_idx) {
 
 	VkImageCreateInfo img_info = {0};
 	{
@@ -485,10 +489,25 @@ vk_image_pool_handle vk_create_image(VmaAllocator allocator,
 
 	if (!check_result(vmaCreateImage(allocator, &img_info, &alloc_info, &img,
 									 &alloc, NULL))) {
+		LOG_ERR("vk_create_2d_image: couldn't create vulkan image");
 		return VK_IMGPOOL_INVALID;
 	}
 
-	VkImageView view = NULL; // TODO
+	VkImageView view = {0};
+	VkImageViewCreateInfo view_ci = {0};
+	{
+		view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		view_ci.image = img;
+		view_ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		view_ci.subresourceRange = vk_base_subresource_range();
+		view_ci.subresourceRange.levelCount = levels;
+	}
+
+	if (!check_result(
+			vkCreateImageView(state->device, &view_ci, NULL, &view))) {
+		LOG_ERR("vk_create_2d_image: couldn't create vulkan image");
+		return VK_IMGPOOL_INVALID;
+	}
 
 	vk_image_data data = {0};
 	{
@@ -498,10 +517,10 @@ vk_image_pool_handle vk_create_image(VmaAllocator allocator,
 		data.format = format;
 		data.extent = extent;
 		data.usage_flags = usage;
-		data.gpu_usage = 0; // TODO
+		data.gpu_usage = GPU_USAGE_NONE;
 	}
 
-	return vk_image_pool_new(image_pool, &data);
+	return vk_image_pool_new(state->image_pool, &data);
 }
 
 gpu_image_extent vk_to_gpu_image_extent(VkExtent2D e) {
