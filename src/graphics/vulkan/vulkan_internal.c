@@ -1,5 +1,4 @@
 #include "vulkan_internal.h"
-#include "filesystem/filesystem.h"
 
 #include <graphics/graphics.h>
 #include <string.h>
@@ -183,12 +182,12 @@ vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 		vk_image_data data;
 		{
 			data.image = img;
-			data.image_view = img_view;
+			data.full_view = img_view;
 			data.alloc = NULL;
 			data.extent = swapchain->ci.imageExtent;
 			data.format = swapchain->img_format;
 			data.usage_flags = 0; // Swapchain images don't get any
-			data.gpu_usage = GPU_USAGE_NONE;
+			data.gpu_state = GPU_IMAGE_STATE_NONE;
 			data.vk_image_flags = IMAGE_FLAGS_SWAPCHAIN;
 		}
 		vk_image_pool_handle vk_handle = vk_image_pool_new(image_pool, &data);
@@ -512,12 +511,12 @@ vk_create_2d_image(vk_api_state* state, VmaAllocator allocator,
 	vk_image_data data = {0};
 	{
 		data.image = img;
-		data.image_view = view;
+		data.full_view = view;
 		data.alloc = alloc;
 		data.format = format;
 		data.extent = extent;
 		data.usage_flags = usage;
-		data.gpu_usage = GPU_USAGE_NONE;
+		data.gpu_state = GPU_IMAGE_STATE_NONE;
 	}
 
 	return vk_image_pool_new(state->image_pool, &data);

@@ -11,7 +11,7 @@
 
 #define CLAMP(x, min, max) ((x) < (min) ? (min) : ((x) > (max) ? (max) : (x)))
 
-#define BIT(n) 1 << n
+#define BIT(n) 1u << n
 
 static inline size_t next_power_of_two(size_t n) {
 	n--;

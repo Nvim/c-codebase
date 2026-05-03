@@ -46,22 +46,34 @@ typedef union {
 	float floats[4];
 } gpu_color;
 
-// Specify how image is used
-typedef enum {
-	GPU_USAGE_NONE = 0,
-	GPU_USAGE_GENERAL, // temporary?? Vulkan has VK_IMAGE_LAYOUT_GENERAL
+/**
+ * @typedef gpu_image_state
+ * @brief Specifies how an image is currently being used. Used for
+ * image transitions.
+ *
+ */
+typedef enum gpu_image_state {
+	GPU_IMAGE_STATE_NONE = 0,
+	GPU_IMAGE_STATE_GENERAL, // temporary?? Vulkan has VK_IMAGE_LAYOUT_GENERAL
 
-	GPU_USAGE_SHADER_READ,
-	GPU_USAGE_SHADER_WRITE,
+	GPU_IMAGE_STATE_SHADER_READ,
+	GPU_IMAGE_STATE_SHADER_WRITE,
 
-	GPU_USAGE_RENDER_TARGET,
+	GPU_IMAGE_STATE_RENDER_TARGET,
 
-	GPU_USAGE_DEPTH_READ,
-	GPU_USAGE_DEPTH_WRITE,
+	GPU_IMAGE_STATE_DEPTH_READ,
+	GPU_IMAGE_STATE_DEPTH_WRITE,
 
-	GPU_USAGE_TRANSFER_SRC,
-	GPU_USAGE_TRANSFER_DST,
-} gpu_resource_usage;
+	GPU_IMAGE_STATE_TRANSFER_SRC,
+	GPU_IMAGE_STATE_TRANSFER_DST,
+} gpu_image_state;
+
+// clang-format off
+typedef uint32_t gpu_image_usage;
+#define GPU_IMAGE_USAGE_RENDER_TARGET BIT(1)
+#define GPU_IMAGE_USAGE_DEPTH_TARGET  BIT(2)
+#define GPU_IMAGE_USAGE_SAMPLED       BIT(3)
+// clang-format on
 
 typedef enum {
 	GPU_BUFFER_USAGE_INDEX,
@@ -247,19 +259,42 @@ typedef struct gpu_sampler_ci {
 	gpu_sampler_address_mode address_mode_w;
 } gpu_sampler_ci;
 
-// [TODO]: Not sure about these ones yet
-typedef struct gpu_image_view gpu_image_view;
-typedef struct gpu_image_ci gpu_image_ci;
+typedef enum gpu_image_type {
+	GPU_IMAGE_TYPE_2D,
+	GPU_IMAGE_TYPE_2D_ARRAY,
+	GPU_IMAGE_TYPE_CUBE,
+	GPU_IMAGE_TYPE_CUBE_ARRAY,
+} gpu_image_type;
+
+typedef struct gpu_image_ci {
+	gpu_image_type type;
+	gpu_image_format format;
+	gpu_image_usage usage;
+	uint32_t array_layers;
+	uint32_t mip_levels;
+} gpu_image_ci;
+
+typedef struct gpu_image_view {
+	gpu_image image;
+	uint32_t base_layer;
+	uint32_t layer_count;
+	uint32_t base_level;
+	uint32_t level_count;
+	void* internal;
+} gpu_image_view;
+STATIC_ASSERT(sizeof(gpu_image_view) == 32, "");
 
 /**
  * @typedef gpu_texture
  * @brief Texture is a non-owning view into an image, coupled with a sampler.
  * Both are created separately and owned by API, so no resource management on
  * texture side.
+ * For now, textures will be created over an image's full view (all mip
+ * levels+array layers), I'm just future-proofing here.
  *
  */
 typedef struct gpu_texture {
-	gpu_image_view* image;
+	gpu_image_view image; // Most often image's full view
 	gpu_sampler sampler;
 } gpu_texture;
 
@@ -346,7 +381,7 @@ typedef struct gpu_api {
 	 *
 	 */
 	bool (*cmd_transition_image)(struct gpu_api*, gpu_command_buffer, gpu_image,
-								 gpu_resource_usage new_usage);
+								 gpu_image_state new_state);
 
 	// present is a special layout. image must be a frame's backbuffer
 
@@ -399,43 +434,58 @@ typedef struct gpu_api {
 	void (*destroy_pipeline)(struct gpu_api*, gpu_pipeline);
 
 	gpu_image (*create_image)(struct gpu_api*, gpu_image_ci*);
-	gpu_image_view* (*get_image_view)(struct gpu_api*, gpu_image /* , TODO */);
+	gpu_image_view (*create_image_view)(struct gpu_api*, gpu_image,
+										uint32_t base_level,
+										uint32_t level_count,
+										uint32_t base_layer,
+										uint32_t layer_count);
+	void (*destroy_image_view)(struct gpu_api*, gpu_image_view*);
 	void (*destroy_image)(struct gpu_api*, gpu_image);
 
 	gpu_sampler (*create_sampler)(struct gpu_api*, gpu_sampler_ci*);
 	void (*destroy_sampler)(struct gpu_api*, gpu_sampler);
 
-	gpu_texture (*create_texture)(struct gpu_api*, gpu_image_view*,
-								  gpu_sampler);
-	gpu_texture (*load_texture)(struct gpu_api*, path image_path,
-								gpu_sampler /* , TODO */);
+	// gpu_texture (*create_texture)(struct gpu_api*, gpu_image_view*,
+	// 							  gpu_sampler);
+	// gpu_texture (*load_texture)(struct gpu_api*, path image_path,
+	// 							gpu_sampler /* , TODO */);
 
 	/*== Getters ==*/
 	gpu_image_extent (*get_image_extent)(struct gpu_api*, gpu_image);
 	gpu_image_format (*get_image_format)(struct gpu_api*, gpu_image);
+	gpu_image_view (*get_image_full_view)(struct gpu_api*, gpu_image);
 } gpu_api;
 
 LIB_EXPORT bool gpu_create_api(gpu_api_config config, gpu_api* out);
 
+/* == Pipeline Builder == */
 typedef struct gpu_pipeline_builder {
 	gpu_pipeline_ci ci;
 } gpu_pipeline_builder;
 
-void gpu_pipeline_builder_create(gpu_pipeline_builder* out);
-gpu_pipeline gpu_pipeline_build(gpu_api* gpu, gpu_pipeline_builder* builder);
-void set_vertex_shader(gpu_pipeline_builder* builder, gpu_shader vs);
-void set_fragment_shader(gpu_pipeline_builder* builder, gpu_shader fs);
-void add_color_target(gpu_pipeline_builder* builder, gpu_image_format format,
-					  bool blend);
+LIB_EXPORT void gpu_pipeline_builder_create(gpu_pipeline_builder* out);
+LIB_EXPORT gpu_pipeline gpu_pipeline_build(gpu_api* gpu,
+										   gpu_pipeline_builder* builder);
+LIB_EXPORT void set_vertex_shader(gpu_pipeline_builder* builder, gpu_shader vs);
+LIB_EXPORT void set_fragment_shader(gpu_pipeline_builder* builder,
+									gpu_shader fs);
+LIB_EXPORT void add_color_target(gpu_pipeline_builder* builder,
+								 gpu_image_format format, bool blend);
 // Optional:
-void enable_depth_write(gpu_pipeline_builder* builder);
-void enable_depth_test(gpu_pipeline_builder* builder);
-void set_depth_format(gpu_pipeline_builder* builder, gpu_image_format format);
-void set_depth_compare_op(gpu_pipeline_builder* builder, gpu_compare_op op);
-void set_primitive_type(gpu_pipeline_builder* builder, gpu_primitive_type type);
-void set_cull_mode(gpu_pipeline_builder* builder, gpu_cull_mode mode);
-void set_polygon_mode(gpu_pipeline_builder* builder, gpu_polygon_mode mode);
-void set_winding_order(gpu_pipeline_builder* builder, gpu_winding winding);
+LIB_EXPORT void enable_depth_write(gpu_pipeline_builder* builder);
+LIB_EXPORT void enable_depth_test(gpu_pipeline_builder* builder);
+LIB_EXPORT void set_depth_format(gpu_pipeline_builder* builder,
+								 gpu_image_format format);
+LIB_EXPORT void set_depth_compare_op(gpu_pipeline_builder* builder,
+									 gpu_compare_op op);
+LIB_EXPORT void set_primitive_type(gpu_pipeline_builder* builder,
+								   gpu_primitive_type type);
+LIB_EXPORT void set_cull_mode(gpu_pipeline_builder* builder,
+							  gpu_cull_mode mode);
+LIB_EXPORT void set_polygon_mode(gpu_pipeline_builder* builder,
+								 gpu_polygon_mode mode);
+LIB_EXPORT void set_winding_order(gpu_pipeline_builder* builder,
+								  gpu_winding winding);
 // [TODO]: Stencil, Blending, MSAA
 
 /* ========================================================================== */

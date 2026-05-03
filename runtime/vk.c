@@ -112,7 +112,7 @@ int main(void) {
 			.color_targets = {color_target},
 		};
 		gpu.cmd_transition_image(&gpu, cmd, frame.backbuffer,
-								 GPU_USAGE_RENDER_TARGET);
+								 GPU_IMAGE_STATE_RENDER_TARGET);
 		gpu.cmd_reset_viewport(&gpu, cmd);
 		gpu.cmd_reset_scissor(&gpu, cmd);
 		gpu.cmd_begin_rendering(&gpu, cmd, &s);

@@ -490,7 +490,7 @@ void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer cmd,
 		{
 			color_attachment.sType =
 				VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-			color_attachment.imageView = img_data->image_view;
+			color_attachment.imageView = img_data->full_view;
 			color_attachment.clearValue = color;
 			color_attachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 			color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -523,7 +523,7 @@ void vulkan_cmd_end_rendering(struct gpu_api* self, gpu_command_buffer cmd) {
 
 bool vulkan_cmd_transition_image(gpu_api* self, gpu_command_buffer cmd_handle,
 								 gpu_image img_handle,
-								 gpu_resource_usage new_usage) {
+								 gpu_image_state new_state) {
 	vk_api_state* state = self->state;
 	vk_cmdbuf_data* cmd_data =
 		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd_handle));
@@ -536,22 +536,22 @@ bool vulkan_cmd_transition_image(gpu_api* self, gpu_command_buffer cmd_handle,
 		return false;
 	}
 
-	gpu_resource_usage cur_usage = img_data->gpu_usage;
-	if (new_usage == cur_usage) {
+	gpu_image_state cur_state = img_data->gpu_state;
+	if (new_state == cur_state) {
 		LOG_DEBUG("vk_transition_image: transition to same usage");
 		return true;
 	}
 
-	if (new_usage == GPU_USAGE_NONE) {
+	if (new_state == GPU_IMAGE_STATE_NONE) {
 		LOG_ERR("vk_transition_image: invalid transition");
 		return false;
 	}
 
 	if (img_data->vk_image_flags & IMAGE_FLAGS_SWAPCHAIN) {
 		// [TODO]: maybe other invariants?
-		switch (new_usage) {
-		case GPU_USAGE_DEPTH_READ:
-		case GPU_USAGE_DEPTH_WRITE:
+		switch (new_state) {
+		case GPU_IMAGE_STATE_DEPTH_READ:
+		case GPU_IMAGE_STATE_DEPTH_WRITE:
 			LOG_ERR(
 				"vk_transition_image: invalid transition for swapchain image");
 			return false;
@@ -559,7 +559,7 @@ bool vulkan_cmd_transition_image(gpu_api* self, gpu_command_buffer cmd_handle,
 		}
 	} else {
 		// Check that image supports new layout
-		VkImageUsageFlags required = gpu_usage_to_vk_usage_flags[new_usage];
+		VkImageUsageFlags required = gpu_state_to_vk_state_flags[new_state];
 		if ((img_data->vk_image_flags & required) != required) {
 			breakpoint();
 			LOG_ERR("vk_transition_image: transition to unsupported usage");
@@ -568,11 +568,11 @@ bool vulkan_cmd_transition_image(gpu_api* self, gpu_command_buffer cmd_handle,
 	}
 
 	vk_image_barrier(cmd_data->command_buffer, img_data->image,
-					 gpu_usage_to_vk_barrier[img_data->gpu_usage],
-					 gpu_usage_to_vk_barrier[new_usage]);
+					 gpu_state_to_vk_barrier[img_data->gpu_state],
+					 gpu_state_to_vk_barrier[new_state]);
 
 	// [TODO]: sync nightmare i won't think about it for now
-	img_data->gpu_usage = new_usage;
+	img_data->gpu_state = new_state;
 
 	return true;
 }
@@ -597,7 +597,7 @@ bool vulkan_cmd_transition_for_present(struct gpu_api* self,
 		return false;
 	}
 
-	vk_barrier_info from = gpu_usage_to_vk_barrier[img_data->gpu_usage];
+	vk_barrier_info from = gpu_state_to_vk_barrier[img_data->gpu_state];
 	static vk_barrier_info const to = {
 		.layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 		.stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -606,7 +606,7 @@ bool vulkan_cmd_transition_for_present(struct gpu_api* self,
 	vk_image_barrier(cmd_data->command_buffer, img_data->image, from, to);
 
 	// Reset usage for next frame
-	img_data->gpu_usage = GPU_USAGE_NONE;
+	img_data->gpu_state = GPU_IMAGE_STATE_NONE;
 
 	return true;
 }
@@ -692,7 +692,7 @@ void vulkan_end_frame(gpu_api* self, gpu_frame* f) {
 		vk_image_data* sc_img =
 			vk_image_pool_get(state->image_pool, to_vk_img(f->backbuffer));
 		ASSERT(sc_img->vk_image_flags & IMAGE_FLAGS_SWAPCHAIN);
-		ASSERT(sc_img->gpu_usage == GPU_USAGE_NONE);
+		ASSERT(sc_img->gpu_state == GPU_IMAGE_STATE_NONE);
 	}
 #endif
 
