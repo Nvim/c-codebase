@@ -91,15 +91,40 @@ int main(void) {
 	gpu.destroy_shader(&gpu, vs);
 	gpu.destroy_shader(&gpu, fs);
 
+	{ // [TODO]: temp
+		gpu_image_ci img_ci = {0};
+		img_ci.dimensions = (gpu_image_extent){.width = 2, .height = 2};
+		img_ci.format = IMAGE_FORMAT_RGBA_UNORM;
+		img_ci.type = GPU_IMAGE_TYPE_2D;
+		img_ci.usage = GPU_IMAGE_USAGE_SAMPLED;
+		img_ci.array_layers = 1;
+		img_ci.mip_levels = 1;
+		gpu_image img = gpu.create_image(&gpu, &img_ci);
+		ASSERT(check_handle(img.handle));
+
+		gpu_image_view full_view = gpu.get_image_full_view(&gpu, img);
+		ASSERT(check_handle(full_view.handle));
+
+		gpu.destroy_image(&gpu, img);
+	}
+
 	uint32_t frame_count = 0;
 	while (!_quit) {
 		if (frame_count++ > 12) { break; }
+
 		platform_poll();
 		if (platform_window_should_close(win)) { break; }
+
 		gpu_frame_result frame_res = gpu.begin_frame(&gpu);
 		ASSERT(frame_res.ok);
 		gpu_frame frame = frame_res.frame;
 		gpu_command_buffer cmd = frame.frame_cmd;
+
+		{ // [TODO]: temp
+			UNUSED gpu_image_view v =
+				gpu.get_image_full_view(&gpu, frame.backbuffer);
+			ASSERT(!check_handle(v.handle)); // Should fail
+		}
 
 		gpu_color_target color_target = {
 			.clear_color = (gpu_color){.floats = {.3f, .7f, .2f, 1.f}},

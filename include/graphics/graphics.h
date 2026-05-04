@@ -96,6 +96,7 @@ typedef struct gpu_shader_ci {
 
 // clang-format off
 typedef struct { pool_handle handle; } gpu_image;
+typedef struct { pool_handle handle; } gpu_image_view;
 typedef struct { pool_handle handle; } gpu_sampler;
 typedef struct { pool_handle handle; } gpu_buffer;
 typedef struct { pool_handle handle; } gpu_command_buffer;
@@ -269,20 +270,28 @@ typedef enum gpu_image_type {
 typedef struct gpu_image_ci {
 	gpu_image_type type;
 	gpu_image_format format;
+	gpu_image_extent dimensions;
 	gpu_image_usage usage;
 	uint32_t array_layers;
 	uint32_t mip_levels;
 } gpu_image_ci;
 
-typedef struct gpu_image_view {
+typedef struct gpu_image_view_ci {
 	gpu_image image;
 	uint32_t base_layer;
 	uint32_t layer_count;
 	uint32_t base_level;
 	uint32_t level_count;
-	void* internal;
-} gpu_image_view;
-STATIC_ASSERT(sizeof(gpu_image_view) == 32, "");
+} gpu_image_view_ci;
+
+typedef struct gpu_image_view_info_result {
+	bool ok;
+	gpu_image image;
+	uint32_t base_layer;
+	uint32_t layer_count;
+	uint32_t base_level;
+	uint32_t level_count;
+} gpu_image_view_info_result;
 
 /**
  * @typedef gpu_texture
@@ -434,13 +443,9 @@ typedef struct gpu_api {
 	void (*destroy_pipeline)(struct gpu_api*, gpu_pipeline);
 
 	gpu_image (*create_image)(struct gpu_api*, gpu_image_ci*);
-	gpu_image_view (*create_image_view)(struct gpu_api*, gpu_image,
-										uint32_t base_level,
-										uint32_t level_count,
-										uint32_t base_layer,
-										uint32_t layer_count);
-	void (*destroy_image_view)(struct gpu_api*, gpu_image_view*);
 	void (*destroy_image)(struct gpu_api*, gpu_image);
+	gpu_image_view (*create_image_view)(struct gpu_api*, gpu_image_view_ci*);
+	void (*destroy_image_view)(struct gpu_api*, gpu_image_view);
 
 	gpu_sampler (*create_sampler)(struct gpu_api*, gpu_sampler_ci*);
 	void (*destroy_sampler)(struct gpu_api*, gpu_sampler);
@@ -454,6 +459,7 @@ typedef struct gpu_api {
 	gpu_image_extent (*get_image_extent)(struct gpu_api*, gpu_image);
 	gpu_image_format (*get_image_format)(struct gpu_api*, gpu_image);
 	gpu_image_view (*get_image_full_view)(struct gpu_api*, gpu_image);
+	gpu_image_view_info_result (*get_image_view_info)(struct gpu_api*, gpu_image_view);
 } gpu_api;
 
 LIB_EXPORT bool gpu_create_api(gpu_api_config config, gpu_api* out);

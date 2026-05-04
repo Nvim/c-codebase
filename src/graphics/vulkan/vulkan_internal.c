@@ -402,6 +402,105 @@ void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
 	vkCmdPipelineBarrier2(cmd_buf, &dep_info);
 }
 
+vk_image_pool_handle vk_create_2d_image(vk_api_state* state, VkExtent2D extent,
+										VkFormat format,
+										VkImageUsageFlags usage,
+										uint32_t levels, uint32_t layers,
+										uint32_t queue_family_idx) {
+
+	VkImageCreateInfo img_info = {0};
+	{
+		img_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		img_info.imageType = VK_IMAGE_TYPE_2D;
+		img_info.usage = usage;
+		img_info.format = format;
+		img_info.extent = (VkExtent3D){
+			.width = extent.width,
+			.height = extent.height,
+			.depth = 1,
+		};
+		img_info.arrayLayers = layers;
+		img_info.mipLevels = levels;
+		img_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+		img_info.samples = VK_SAMPLE_COUNT_1_BIT;
+		img_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		img_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		img_info.queueFamilyIndexCount = 1;
+		img_info.pQueueFamilyIndices = &queue_family_idx;
+	}
+
+	VkImage img;
+	VmaAllocationCreateInfo alloc_info = {0};
+	{ // TODO
+		alloc_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+	}
+	VmaAllocation alloc;
+
+	if (!check_result(vmaCreateImage(state->allocator, &img_info, &alloc_info,
+									 &img, &alloc, NULL))) {
+		LOG_ERR("vk_create_2d_image: couldn't create vulkan image");
+		return VK_IMGPOOL_INVALID;
+	}
+
+	VkImageSubresourceRange full_range =
+		vk_full_subresource_range(usage, layers, levels);
+
+	VkImageView view = {0};
+	VkImageViewCreateInfo view_ci = {0};
+	{
+		view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		view_ci.image = img;
+		view_ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		view_ci.subresourceRange = full_range;
+		view_ci.subresourceRange.levelCount = levels;
+	}
+
+	if (!check_result(
+			vkCreateImageView(state->device, &view_ci, NULL, &view))) {
+		LOG_ERR("vk_create_2d_image: couldn't create vulkan image view");
+		return VK_IMGPOOL_INVALID;
+	}
+
+	vk_image_data data = {0};
+	{
+		data.image = img;
+		data.full_view = view;
+		data.alloc = alloc;
+		data.format = format;
+		data.extent = extent;
+		data.usage_flags = usage;
+		data.gpu_state = GPU_IMAGE_STATE_NONE;
+		data.layer_count = 1;
+		data.level_count = levels;
+	}
+
+	return vk_image_pool_new(state->image_pool, &data);
+}
+
+vk_image_view_pool_handle
+vk_create_full_image_view_handle(vk_api_state* state, vk_image_pool_handle h) {
+	vk_image_data* img_data = vk_image_pool_get(state->image_pool, h);
+	vk_image_view view_data = {0};
+	{
+		view_data.image = h;
+		view_data.view = img_data->full_view;
+		view_data.base_layer = 0;
+		view_data.base_level = 0;
+		view_data.layer_count = img_data->layer_count;
+		view_data.layer_count = img_data->level_count;
+	}
+
+	vk_image_view_pool_handle ret =
+		vk_image_view_pool_new(state->image_view_pool, &view_data);
+
+	if (vk_image_view_pool_is_handle_valid(state->image_view_pool, ret)) {
+		img_data->full_view_handle =
+			(gpu_image_view){.handle = vk_image_view_pool_unwrap(ret)};
+	}
+
+	return ret;
+}
+
 VkPrimitiveTopology gpu_to_vk_primitive_type(gpu_primitive_type t) {
 	switch (t) {
 	case GPU_PRIMITIVE_TYPE_TRIANGLELIST:
@@ -450,78 +549,6 @@ VkFrontFace gpu_to_vk_winding(gpu_winding w) {
 	}
 }
 
-/**
- * @brief Create a single 2D image. Mip levels are supported, but not image
- * arrays.
- *
- */
-vk_image_pool_handle
-vk_create_2d_image(vk_api_state* state, VmaAllocator allocator,
-				   VkExtent2D extent, VkFormat format, VkImageUsageFlags usage,
-				   uint32_t levels, uint32_t queue_family_idx) {
-
-	VkImageCreateInfo img_info = {0};
-	{
-		img_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-		img_info.imageType = VK_IMAGE_TYPE_2D;
-		img_info.usage = usage;
-		img_info.format = format;
-		img_info.extent = (VkExtent3D){
-			.width = extent.width,
-			.height = extent.height,
-			.depth = 1,
-		};
-		img_info.arrayLayers = 1;
-		img_info.mipLevels = levels;
-		img_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-		img_info.samples = VK_SAMPLE_COUNT_1_BIT;
-		img_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		img_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-		img_info.queueFamilyIndexCount = 1;
-		img_info.pQueueFamilyIndices = &queue_family_idx;
-	}
-
-	VkImage img;
-	VmaAllocationCreateInfo alloc_info = {0};
-	{ alloc_info.usage = VMA_MEMORY_USAGE_AUTO; }
-	VmaAllocation alloc;
-
-	if (!check_result(vmaCreateImage(allocator, &img_info, &alloc_info, &img,
-									 &alloc, NULL))) {
-		LOG_ERR("vk_create_2d_image: couldn't create vulkan image");
-		return VK_IMGPOOL_INVALID;
-	}
-
-	VkImageView view = {0};
-	VkImageViewCreateInfo view_ci = {0};
-	{
-		view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		view_ci.image = img;
-		view_ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		view_ci.subresourceRange = vk_base_subresource_range();
-		view_ci.subresourceRange.levelCount = levels;
-	}
-
-	if (!check_result(
-			vkCreateImageView(state->device, &view_ci, NULL, &view))) {
-		LOG_ERR("vk_create_2d_image: couldn't create vulkan image");
-		return VK_IMGPOOL_INVALID;
-	}
-
-	vk_image_data data = {0};
-	{
-		data.image = img;
-		data.full_view = view;
-		data.alloc = alloc;
-		data.format = format;
-		data.extent = extent;
-		data.usage_flags = usage;
-		data.gpu_state = GPU_IMAGE_STATE_NONE;
-	}
-
-	return vk_image_pool_new(state->image_pool, &data);
-}
-
 gpu_image_extent vk_to_gpu_image_extent(VkExtent2D e) {
 	return (gpu_image_extent){.width = e.width, .height = e.height};
 }
@@ -542,6 +569,48 @@ gpu_frame vk_to_gpu_frame(vk_frame* f) {
 		.backbuffer = f->rendertarget,
 		.frame_cmd = (gpu_command_buffer){
 			.handle = f->frame_sync->command_buffer.raw_handle.handle}};
+}
+
+VkImageSubresourceRange vk_full_subresource_range(VkImageUsageFlagBits usage,
+												  uint32_t layers,
+												  uint32_t levels) {
+	VkImageAspectFlags aspect = 0;
+	if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+		aspect = VK_IMAGE_ASPECT_DEPTH_BIT & VK_IMAGE_ASPECT_STENCIL_BIT;
+	} else {
+		aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+	}
+	VkImageSubresourceRange range = {0};
+	{
+		range.aspectMask = aspect;
+		range.baseArrayLayer = 0;
+		range.baseMipLevel = 0;
+		range.layerCount = layers;
+		range.levelCount = levels;
+	}
+	return range;
+}
+
+VkImageSubresourceRange vk_custom_subresource_range(VkImageUsageFlagBits usage,
+													uint32_t layers,
+													uint32_t levels,
+													uint32_t base_level,
+													uint32_t base_layer) {
+	VkImageAspectFlags aspect = 0;
+	if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+		aspect = VK_IMAGE_ASPECT_DEPTH_BIT & VK_IMAGE_ASPECT_STENCIL_BIT;
+	} else {
+		aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+	}
+	VkImageSubresourceRange range = {0};
+	{
+		range.aspectMask = aspect;
+		range.baseArrayLayer = base_layer;
+		range.baseMipLevel = base_level;
+		range.layerCount = layers;
+		range.levelCount = levels;
+	}
+	return range;
 }
 
 VkImageSubresourceRange vk_base_subresource_range(void) {

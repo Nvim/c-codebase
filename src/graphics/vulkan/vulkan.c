@@ -3,6 +3,7 @@
 
 #include <vulkan/vulkan.h>
 
+#include "../graphics_internal.h"
 #include "vulkan_init_info.h"
 #include "vulkan_internal.h"
 
@@ -243,6 +244,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 
 	// Init resource pools:
 	state->image_pool = vk_image_pool_create(arena, IMAGE_POOL_SIZE);
+	state->image_view_pool = vk_image_view_pool_create(arena, IMAGE_POOL_SIZE);
 	state->cmd_pool = vk_cmdbuf_pool_create(arena, CMDBUF_POOL_SIZE);
 	state->shader_pool = vk_shader_pool_create(arena, SHADER_POOL_SIZE);
 	state->pipeline_pool = vk_pipeline_pool_create(arena, PIPELINE_POOL_SIZE);
@@ -810,6 +812,71 @@ gpu_image_format vulkan_get_image_format(struct gpu_api* self,
 	return vk_to_gpu_image_format(data->format);
 }
 
+gpu_image_view vulkan_get_image_full_view(struct gpu_api* self,
+										  gpu_image handle) {
+	vk_api_state* state = self->state;
+	gpu_image_view ret = {.handle = POOL_INVALID_HANDLE};
+
+	if (!self || !self->is_init) {
+		LOG_ERR("vulkan_create_image: invalid parameters");
+		return ret;
+	}
+
+	vk_image_data* vk_img =
+		vk_image_pool_get(state->image_pool, to_vk_img(handle));
+	if (!vk_img) {
+		LOG_ERR("vulkan_get_image_full_view: invalid image handle");
+		return ret;
+	}
+
+	if (vk_img->vk_image_flags & IMAGE_FLAGS_SWAPCHAIN) {
+		// Swapchain image doesn't have its view in the cache
+		LOG_ERR("vulkan_get_image_full_view: swapchain image isn't supported "
+				"yet :/");
+		return ret;
+	}
+
+	// View isn't in pool
+	if (!vk_image_view_pool_is_handle_valid(
+			state->image_view_pool,
+			to_vk_image_view(vk_img->full_view_handle))) {
+		LOG_ERR("vulkan_get_image_full_view: image doesn't have full view");
+		return ret;
+	}
+
+	ret = vk_img->full_view_handle;
+	return ret;
+}
+
+gpu_image_view_info_result
+vulkan_get_image_view_info(struct gpu_api* self, gpu_image_view view_handle) {
+	vk_api_state* state = self->state;
+	gpu_image_view_info_result ret = {0};
+
+	if (!self || !self->is_init) {
+		LOG_ERR("vulkan_get_image_view_info: invalid parameters");
+		return ret;
+	}
+
+	vk_image_view* data = vk_image_view_pool_get(state->image_view_pool,
+												 to_vk_image_view(view_handle));
+
+	if (!data) {
+		LOG_ERR("vulkan_get_image_view_info: invalid view handle");
+		return ret;
+	}
+
+	{
+		ret.layer_count = data->layer_count;
+		ret.level_count = data->level_count;
+		ret.base_layer = data->base_layer;
+		ret.base_level = data->base_level;
+		ret.image.handle = vk_image_pool_unwrap(data->image);
+		ret.ok = true;
+	}
+	return ret;
+}
+
 gpu_shader vulkan_create_shader(struct gpu_api* self, gpu_shader_ci* ci) {
 
 	gpu_shader ret = {.handle = POOL_INVALID_IDX};
@@ -1047,6 +1114,195 @@ void vulkan_destroy_pipeline(struct gpu_api* self, gpu_pipeline handle) {
 	vk_pipeline_pool_release(state->pipeline_pool, to_vk_pipeline(handle));
 }
 
+gpu_image vulkan_create_image(gpu_api* self, gpu_image_ci* ci) {
+	vk_api_state* state = self->state;
+	gpu_image ret = {.handle = POOL_INVALID_HANDLE};
+
+	if (!self || !self->is_init || !ci) {
+		LOG_ERR("vulkan_create_image: invalid parameters");
+		return ret;
+	}
+
+	if (!gpu_validate_image_ci(ci)) {
+		LOG_ERR("vulkan_create_image: invalid create info");
+		return ret;
+	}
+
+	gpu_image_usage flags = ci->usage;
+	VkImageUsageFlags vk_usage_flags = 0;
+
+	if (flags & GPU_IMAGE_USAGE_RENDER_TARGET) {
+		vk_usage_flags &= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	}
+	if (flags & GPU_IMAGE_USAGE_DEPTH_TARGET) {
+		vk_usage_flags &= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+	}
+	if (flags & GPU_IMAGE_USAGE_SAMPLED) {
+		vk_usage_flags &= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+		vk_usage_flags &= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	}
+
+	vk_image_pool_handle vk_img_handle = {0};
+	if (ci->type == GPU_IMAGE_TYPE_2D || ci->type == GPU_IMAGE_TYPE_2D_ARRAY) {
+		vk_img_handle = vk_create_2d_image(
+			state, gpu_to_vk_image_extent(ci->dimensions),
+			gpu_to_vk_image_format(ci->format), vk_usage_flags, ci->mip_levels,
+			ci->array_layers, state->queue_family_idx);
+
+		if (!vk_image_pool_is_handle_valid(state->image_pool, vk_img_handle)) {
+			LOG_ERR("vulkan_create_image: couldn't create image");
+			return ret;
+		}
+	} else {
+		// [TODO]: handle cubes
+		LOG_ERR("vulkan_create_image: cube images aren't supported yet");
+		return ret;
+	}
+
+	LOG_DEBUG("vulkan_create_image: image created: %u",
+			  vk_img_handle.raw_handle.handle);
+	ret.handle = vk_image_pool_unwrap(vk_img_handle);
+
+	// Add full view to pool:
+	vk_image_view_pool_handle full_view_handle =
+		vk_create_full_image_view_handle(state, vk_img_handle);
+	if (!vk_image_view_pool_is_handle_valid(state->image_view_pool,
+											full_view_handle)) {
+		LOG_ERR("vulkan_create_image: couldn't allocate image's full view");
+		return ret;
+	}
+
+
+	return ret;
+}
+
+void vulkan_destroy_image(struct gpu_api* self, gpu_image handle) {
+	vk_api_state* state = self->state;
+
+	vk_image_data* data =
+		vk_image_pool_get(state->image_pool, to_vk_img(handle));
+	if (!data) {
+		LOG_ERR("vulkan_destroy_image: invalid image handle");
+		return;
+	}
+
+	if (data->vk_image_flags & IMAGE_FLAGS_SWAPCHAIN) {
+		LOG_ERR("vulkan_destroy_image: can't destroy swapchain image");
+		return;
+	}
+
+	vkDestroyImageView(state->device, data->full_view, NULL);
+	vk_image_view_pool_release(state->image_view_pool,
+							   to_vk_image_view(data->full_view_handle));
+
+	vmaDestroyImage(state->allocator, data->image, data->alloc);
+	vk_image_pool_release(state->image_pool, to_vk_img(handle));
+
+	// [TODO]: auto-remove these once they are stored in a proper container
+	if (data->user_view_count != 0) {
+		LOG_WARN("vulkan_destroy_image: %u views haven't been destroyed",
+				 data->user_view_count);
+	}
+}
+
+gpu_image_view vulkan_create_image_view(struct gpu_api* self,
+										gpu_image_view_ci* ci) {
+	gpu_image_view ret = {.handle = POOL_INVALID_HANDLE};
+	vk_api_state* state = (vk_api_state*)self;
+
+	if (!self || !self->is_init || !ci) {
+		LOG_ERR("vulkan_create_image_view: invalid parameters");
+		return ret;
+	}
+
+	vk_image_data* vk_img =
+		vk_image_pool_get(state->image_pool, to_vk_img(ci->image));
+	if (!vk_img) {
+		LOG_ERR("vulkan_create_image_view: invalid image");
+		return ret;
+	}
+
+	if (ci->base_layer + ci->layer_count >= vk_img->layer_count) {
+		LOG_ERR("vulkan_create_image_view: invalid layers");
+		return ret;
+	}
+
+	if (ci->base_level + ci->level_count >= vk_img->level_count) {
+		LOG_ERR("vulkan_create_image_view: invalid levels");
+		return ret;
+	}
+
+	vk_image_view_pool_handle view_handle = VK_IMGVIEWPOOL_INVALID;
+	bool cached = false;
+	// [TODO]: cache lookup
+	if (!cached) {
+		// Create the view:
+		VkImageSubresourceRange range = vk_custom_subresource_range(
+			vk_img->usage_flags, ci->layer_count, ci->level_count,
+			ci->base_level, ci->base_layer);
+
+		VkImageView view = {0};
+		VkImageViewCreateInfo view_ci = {0};
+		{
+			view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+			view_ci.image = vk_img->image;
+			view_ci.viewType = VK_IMAGE_VIEW_TYPE_2D; // [TODO]: array&cube
+			view_ci.subresourceRange = range;
+		}
+
+		if (!check_result(
+				vkCreateImageView(state->device, &view_ci, NULL, &view))) {
+			LOG_ERR(
+				"vulkan_create_image_view: couldn't create vulkan image view");
+			return ret;
+		}
+
+		// Cache it:
+		vk_image_view view_data = {0};
+		{
+			view_data.image = to_vk_img(ci->image);
+			view_data.view = view;
+			view_data.base_layer = ci->base_layer;
+			view_data.base_level = ci->base_level;
+			view_data.layer_count = ci->layer_count;
+			view_data.layer_count = ci->level_count;
+		}
+
+		view_handle =
+			vk_image_view_pool_new(state->image_view_pool, &view_data);
+		if (!vk_image_view_pool_is_handle_valid(state->image_view_pool,
+												view_handle)) {
+			LOG_ERR("vulkan_create_image_view: couldn't cache image view");
+			vkDestroyImageView(state->device, view, NULL);
+			return ret;
+		}
+	}
+
+	ret.handle = vk_image_view_pool_unwrap(view_handle);
+	return ret;
+}
+
+void vulkan_destroy_image_view(struct gpu_api* self, gpu_image_view handle) {
+	vk_api_state* state = (vk_api_state*)self;
+
+	if (!self || !self->is_init) {
+		LOG_ERR("vulkan_create_image_view: invalid parameters");
+		return;
+	}
+
+	vk_image_view* data = vk_image_view_pool_get(state->image_view_pool,
+												 to_vk_image_view(handle));
+
+	if (!data) {
+		LOG_ERR("vulkan_destroy_image_view: invalid view handle");
+		return;
+	}
+
+	vkDestroyImageView(state->device, data->view, NULL);
+	vk_image_view_pool_release(state->image_view_pool,
+							   to_vk_image_view(handle));
+}
+
 bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 	if (!out) {
 		LOG_ERR("gpu_create_api: invalid parameters");
@@ -1076,12 +1332,18 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->cmd_bind_pipeline = vulkan_cmd_bind_pipeline;
 		out->cmd_draw = vulkan_cmd_draw;
 		out->end_frame = vulkan_end_frame;
-		out->get_image_extent = vulkan_get_image_extent;
-		out->get_image_format = vulkan_get_image_format;
 		out->create_shader = vulkan_create_shader;
 		out->destroy_shader = vulkan_destroy_shader;
+		out->create_image = vulkan_create_image;
+		out->destroy_image = vulkan_destroy_image;
+		out->create_image_view = vulkan_create_image_view;
+		out->destroy_image_view = vulkan_destroy_image_view;
 		out->create_pipeline = vulkan_create_pipeline;
 		out->destroy_pipeline = vulkan_destroy_pipeline;
+		out->get_image_extent = vulkan_get_image_extent;
+		out->get_image_format = vulkan_get_image_format;
+		out->get_image_full_view = vulkan_get_image_full_view;
+		out->get_image_view_info = vulkan_get_image_view_info;
 	}
 
 	return true;

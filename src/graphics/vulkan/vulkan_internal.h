@@ -30,22 +30,42 @@ typedef enum {
 typedef struct vk_image_data {
 	VkImage image;
 	VkImageView full_view; // Default view for all image range
+	gpu_image_view full_view_handle;
 	VmaAllocation alloc;
 	VkExtent2D extent;
 	VkFormat format;
 	VkImageUsageFlags usage_flags; // Set at creation (not swapchain)
 	gpu_image_state gpu_state;
+	uint32_t layer_count;
+	uint32_t level_count;
+	uint16_t
+		user_view_count; // Number of non-default views. Doesn't count full view
 	uint8_t vk_image_flags;
 } vk_image_data;
 
-STATIC_ASSERT(sizeof(vk_image_data) == 48, "pretty tight");
+STATIC_ASSERT(sizeof(vk_image_data) == 64, "pretty tight");
 POOL_DEFINE_TYPE(vk_image_data, vk_image_pool)
 #define VK_IMGPOOL_INVALID (vk_image_pool_handle){.raw_handle = 0}
 
-typedef struct vk_user_image_view {
-	VkImageView* view;
+typedef struct vk_image_view {
+	VkImageView view;
 	vk_image_pool_handle image;
-} vk_user_image_view;
+	uint32_t base_layer;
+	uint32_t layer_count;
+	uint32_t base_level;
+	uint32_t level_count;
+} vk_image_view;
+
+/**
+ * [TODO]: Views should be cached in a more appropriate container. Using a pool
+ * to stub API for now.
+ * - Each image can have an arbitrary amount of views
+ * - Need to iterate all image's views on destruction
+ * - Need to easily lookup if a view has already been created
+ *
+ */
+POOL_DEFINE_TYPE(vk_image_view, vk_image_view_pool)
+#define VK_IMGVIEWPOOL_INVALID (vk_image_view_pool_handle){.raw_handle = 0}
 
 /* == Command Buffer == */
 typedef enum vk_cmdbuf_state {
@@ -208,6 +228,7 @@ typedef struct vk_api_state {
 
 	// Resource pools:
 	vk_image_pool image_pool;
+	vk_image_view_pool image_view_pool;
 	vk_cmdbuf_pool cmd_pool;
 	vk_shader_pool shader_pool;
 	vk_pipeline_pool pipeline_pool;
@@ -323,6 +344,25 @@ void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
  * Utils & conversion
  * ========================================================================== */
 
+/**
+ * @brief Create a single 2D image. Mip levels and image arrays are supported.
+ * The full view spanning all mips and layers will be created, but no pool
+ * handle will be created for it.
+ *
+ */
+vk_image_pool_handle vk_create_2d_image(vk_api_state* state, VkExtent2D extent,
+										VkFormat format,
+										VkImageUsageFlags usage,
+										uint32_t levels, uint32_t layers,
+										uint32_t queue_family_idx);
+
+/**
+ * @brief Allocate a view in the pool for the image's full view.
+ *
+ */
+vk_image_view_pool_handle
+vk_create_full_image_view_handle(vk_api_state* state, vk_image_pool_handle h);
+
 bool gpu_to_vk_pipeline_ci(arena_t* arena, gpu_pipeline_ci* ci,
 						   VkGraphicsPipelineCreateInfo* out,
 						   vk_api_state* state);
@@ -335,20 +375,35 @@ static inline bool check_result(VkResult result) {
 }
 
 static inline vk_image_pool_handle to_vk_img(gpu_image handle) {
-	return (vk_image_pool_handle){.raw_handle = handle.handle};
+	return vk_image_pool_wrap(handle.handle);
 }
 
 static inline vk_cmdbuf_pool_handle to_vk_cmdbuf(gpu_command_buffer handle) {
-	return (vk_cmdbuf_pool_handle){.raw_handle = handle.handle};
+	return vk_cmdbuf_pool_wrap(handle.handle);
 }
 
 static inline vk_shader_pool_handle to_vk_shader(gpu_shader handle) {
-	return (vk_shader_pool_handle){.raw_handle = handle.handle};
+	return vk_shader_pool_wrap(handle.handle);
 }
 
 static inline vk_pipeline_pool_handle to_vk_pipeline(gpu_pipeline handle) {
-	return (vk_pipeline_pool_handle){.raw_handle = handle.handle};
+	return vk_pipeline_pool_wrap(handle.handle);
 }
+
+static inline vk_image_view_pool_handle
+to_vk_image_view(gpu_image_view handle) {
+	return vk_image_view_pool_wrap(handle.handle);
+}
+
+VkImageSubresourceRange vk_full_subresource_range(VkImageUsageFlagBits usage,
+												  uint32_t layers,
+												  uint32_t levels);
+
+VkImageSubresourceRange vk_custom_subresource_range(VkImageUsageFlagBits usage,
+													uint32_t layers,
+													uint32_t levels,
+													uint32_t base_level,
+													uint32_t base_layer);
 
 VkImageSubresourceRange vk_base_subresource_range(void);
 
