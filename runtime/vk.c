@@ -102,8 +102,9 @@ int main(void) {
 		gpu_image img = gpu.create_image(&gpu, &img_ci);
 		ASSERT(check_handle(img.handle));
 
-		gpu_image_view full_view = gpu.get_image_full_view(&gpu, img);
-		ASSERT(check_handle(full_view.handle));
+		gpu_image_view full_view;
+		ASSERT(gpu.get_image_full_view(&gpu, &full_view, img));
+		ASSERT(full_view.internal != NULL);
 
 		gpu.destroy_image(&gpu, img);
 	}
@@ -121,22 +122,22 @@ int main(void) {
 		gpu_command_buffer cmd = frame.frame_cmd;
 
 		{ // [TODO]: temp
-			UNUSED gpu_image_view v =
-				gpu.get_image_full_view(&gpu, frame.backbuffer);
-			ASSERT(!check_handle(v.handle)); // Should fail
+			gpu_image_view v = {0};
+			ASSERT(gpu.get_image_full_view(&gpu, &v, frame.framebuffer));
+			ASSERT(v.internal && v.internal == frame.framebuffer_view.internal);
 		}
 
 		gpu_color_target color_target = {
 			.clear_color = (gpu_color){.floats = {.3f, .7f, .2f, 1.f}},
 			.load_op = GPU_LOAD_OP_CLEAR,
 			.store_op = GPU_STORE_OP_STORE,
-			.target = frame.backbuffer,
+			.target = frame.framebuffer,
 		};
 		gpu_render_state s = {
 			.color_target_count = 1,
 			.color_targets = {color_target},
 		};
-		gpu.cmd_transition_image(&gpu, cmd, frame.backbuffer,
+		gpu.cmd_transition_image(&gpu, cmd, frame.framebuffer,
 								 GPU_IMAGE_STATE_RENDER_TARGET);
 		gpu.cmd_reset_viewport(&gpu, cmd);
 		gpu.cmd_reset_scissor(&gpu, cmd);
@@ -144,7 +145,7 @@ int main(void) {
 		gpu.cmd_bind_pipeline(&gpu, cmd, pipeline);
 		gpu.cmd_draw(&gpu, cmd, 6, 1, 0, 0);
 		gpu.cmd_end_rendering(&gpu, cmd);
-		gpu.cmd_transition_for_present(&gpu, cmd, frame.backbuffer);
+		gpu.cmd_transition_for_present(&gpu, cmd, frame.framebuffer);
 		gpu.cmd_submit(&gpu, cmd);
 		gpu.end_frame(&gpu, &frame);
 		double t_now = platform_get_time();

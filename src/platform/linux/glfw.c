@@ -120,9 +120,7 @@ void platform_destroy_window(UNUSED window_t* window) {
 	glfwDestroyWindow(w->internal);
 }
 
-void platform_poll(void) {
-	glfwPollEvents();
-}
+void platform_poll(void) { glfwPollEvents(); }
 
 void platform_register_key_callback(input_key key, key_action action,
 									key_callback callback) {

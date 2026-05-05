@@ -30,42 +30,20 @@ typedef enum {
 typedef struct vk_image_data {
 	VkImage image;
 	VkImageView full_view; // Default view for all image range
-	gpu_image_view full_view_handle;
 	VmaAllocation alloc;
 	VkExtent2D extent;
 	VkFormat format;
 	VkImageUsageFlags usage_flags; // Set at creation (not swapchain)
+	gpu_image_type gpu_type;
 	gpu_image_state gpu_state;
 	uint32_t layer_count;
 	uint32_t level_count;
-	uint16_t
-		user_view_count; // Number of non-default views. Doesn't count full view
 	uint8_t vk_image_flags;
 } vk_image_data;
 
 STATIC_ASSERT(sizeof(vk_image_data) == 64, "pretty tight");
 POOL_DEFINE_TYPE(vk_image_data, vk_image_pool)
 #define VK_IMGPOOL_INVALID (vk_image_pool_handle){.raw_handle = 0}
-
-typedef struct vk_image_view {
-	VkImageView view;
-	vk_image_pool_handle image;
-	uint32_t base_layer;
-	uint32_t layer_count;
-	uint32_t base_level;
-	uint32_t level_count;
-} vk_image_view;
-
-/**
- * [TODO]: Views should be cached in a more appropriate container. Using a pool
- * to stub API for now.
- * - Each image can have an arbitrary amount of views
- * - Need to iterate all image's views on destruction
- * - Need to easily lookup if a view has already been created
- *
- */
-POOL_DEFINE_TYPE(vk_image_view, vk_image_view_pool)
-#define VK_IMGVIEWPOOL_INVALID (vk_image_view_pool_handle){.raw_handle = 0}
 
 /* == Command Buffer == */
 typedef enum vk_cmdbuf_state {
@@ -109,13 +87,6 @@ POOL_DEFINE_TYPE(vk_pipeline_data, vk_pipeline_pool)
 /* ============================================================================
  * Types
  * ========================================================================== */
-
-// typedef struct vk_rendertarget {
-// 	VkImage image;
-// 	VkImageView image_view;
-// 	VkExtent2D extent;
-// 	VkFormat format;
-// } vk_rendertarget;
 
 typedef struct vk_surface {
 	VkSurfaceKHR surface;
@@ -195,7 +166,8 @@ void vk_sync_buffer_destroy(VkDevice device, vk_sync_buffer* out);
 
 typedef struct {
 	uint64_t frame_idx;
-	gpu_image rendertarget;
+	vk_image_pool_handle rendertarget;
+	VkImageView rendertarget_view;
 	vk_render_sync* frame_sync;
 	VkSemaphore swapchain_semaphore;
 } vk_frame;
@@ -228,7 +200,6 @@ typedef struct vk_api_state {
 
 	// Resource pools:
 	vk_image_pool image_pool;
-	vk_image_view_pool image_view_pool;
 	vk_cmdbuf_pool cmd_pool;
 	vk_shader_pool shader_pool;
 	vk_pipeline_pool pipeline_pool;
@@ -351,7 +322,7 @@ void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
  *
  */
 vk_image_pool_handle vk_create_2d_image(vk_api_state* state, VkExtent2D extent,
-										VkFormat format,
+										VkFormat format, gpu_image_type type,
 										VkImageUsageFlags usage,
 										uint32_t levels, uint32_t layers,
 										uint32_t queue_family_idx);
@@ -360,8 +331,9 @@ vk_image_pool_handle vk_create_2d_image(vk_api_state* state, VkExtent2D extent,
  * @brief Allocate a view in the pool for the image's full view.
  *
  */
-vk_image_view_pool_handle
-vk_create_full_image_view_handle(vk_api_state* state, vk_image_pool_handle h);
+// vk_image_view_pool_handle
+// vk_create_full_image_view_handle(vk_api_state* state, vk_image_pool_handle
+// h);
 
 bool gpu_to_vk_pipeline_ci(arena_t* arena, gpu_pipeline_ci* ci,
 						   VkGraphicsPipelineCreateInfo* out,
@@ -390,10 +362,10 @@ static inline vk_pipeline_pool_handle to_vk_pipeline(gpu_pipeline handle) {
 	return vk_pipeline_pool_wrap(handle.handle);
 }
 
-static inline vk_image_view_pool_handle
-to_vk_image_view(gpu_image_view handle) {
-	return vk_image_view_pool_wrap(handle.handle);
-}
+// static inline vk_image_view_pool_handle
+// to_vk_image_view(gpu_image_view handle) {
+// 	return vk_image_view_pool_wrap(handle.handle);
+// }
 
 VkImageSubresourceRange vk_full_subresource_range(VkImageUsageFlagBits usage,
 												  uint32_t layers,
@@ -428,5 +400,7 @@ VkCullModeFlagBits gpu_to_vk_cull_mode(gpu_cull_mode m);
 VkPolygonMode gpu_to_vk_polygon_mode(gpu_polygon_mode m);
 
 VkFrontFace gpu_to_vk_winding(gpu_winding w);
+
+VkImageViewType gpu_to_vk_image_type(gpu_image_type t);
 
 #endif // !VULKAN_UTIL_H

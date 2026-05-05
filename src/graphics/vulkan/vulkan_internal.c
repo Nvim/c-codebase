@@ -337,7 +337,8 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 
 	state->frame_in_progress = true;
 
-	gpu_image sc_image;
+	vk_image_pool_handle sc_image = VK_IMGPOOL_INVALID;
+	VkImageView sc_image_view = {0};
 	{ // Acquire a swapchain image
 		LOG_DEBUG("vk_begin_frame: acquiring swapchain image");
 		vk_sc_image_acquire_result sc_ret =
@@ -359,7 +360,14 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 				return false;
 			}
 		}
-		sc_image = sc_ret.image;
+		sc_image = to_vk_img(sc_ret.image);
+
+		vk_image_data* data = vk_image_pool_get(state->image_pool, sc_image);
+		if (!data) {
+			LOG_ERR("vulkan_begin_frame: couldn't get swapchain image's data");
+			return false;
+		}
+		sc_image_view = data->full_view;
 	}
 
 	VkSemaphore sc_sem;
@@ -368,6 +376,7 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 	{
 		out->frame_idx = state->frame_idx;
 		out->rendertarget = sc_image;
+		out->rendertarget_view = sc_image_view;
 		out->frame_sync = frame_sync;
 		out->swapchain_semaphore = sc_sem;
 	}
@@ -404,6 +413,7 @@ void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
 
 vk_image_pool_handle vk_create_2d_image(vk_api_state* state, VkExtent2D extent,
 										VkFormat format,
+										gpu_image_type gpu_type,
 										VkImageUsageFlags usage,
 										uint32_t levels, uint32_t layers,
 										uint32_t queue_family_idx) {
@@ -450,7 +460,7 @@ vk_image_pool_handle vk_create_2d_image(vk_api_state* state, VkExtent2D extent,
 	{
 		view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		view_ci.image = img;
-		view_ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		view_ci.viewType = gpu_to_vk_image_type(gpu_type);
 		view_ci.subresourceRange = full_range;
 		view_ci.subresourceRange.levelCount = levels;
 	}
@@ -469,36 +479,13 @@ vk_image_pool_handle vk_create_2d_image(vk_api_state* state, VkExtent2D extent,
 		data.format = format;
 		data.extent = extent;
 		data.usage_flags = usage;
+		data.gpu_type = gpu_type;
 		data.gpu_state = GPU_IMAGE_STATE_NONE;
 		data.layer_count = 1;
 		data.level_count = levels;
 	}
 
 	return vk_image_pool_new(state->image_pool, &data);
-}
-
-vk_image_view_pool_handle
-vk_create_full_image_view_handle(vk_api_state* state, vk_image_pool_handle h) {
-	vk_image_data* img_data = vk_image_pool_get(state->image_pool, h);
-	vk_image_view view_data = {0};
-	{
-		view_data.image = h;
-		view_data.view = img_data->full_view;
-		view_data.base_layer = 0;
-		view_data.base_level = 0;
-		view_data.layer_count = img_data->layer_count;
-		view_data.layer_count = img_data->level_count;
-	}
-
-	vk_image_view_pool_handle ret =
-		vk_image_view_pool_new(state->image_view_pool, &view_data);
-
-	if (vk_image_view_pool_is_handle_valid(state->image_view_pool, ret)) {
-		img_data->full_view_handle =
-			(gpu_image_view){.handle = vk_image_view_pool_unwrap(ret)};
-	}
-
-	return ret;
 }
 
 VkPrimitiveTopology gpu_to_vk_primitive_type(gpu_primitive_type t) {
@@ -557,16 +544,11 @@ VkExtent2D gpu_to_vk_image_extent(gpu_image_extent e) {
 	return (VkExtent2D){.width = e.width, .height = e.height};
 }
 
-// gpu_rendertarget vk_to_gpu_rendertarget(gpu_image* t) {
-// 	return (gpu_rendertarget){.extent = vk_to_gpu_image_extent(t->extent),
-// 							  .format = vk_to_gpu_image_format(t->format),
-// 							  .image = t->image};
-// }
-
 gpu_frame vk_to_gpu_frame(vk_frame* f) {
 	return (gpu_frame){
 		.frame_index = f->frame_idx,
-		.backbuffer = f->rendertarget,
+		.framebuffer = {.handle = vk_image_pool_unwrap(f->rendertarget)},
+		.framebuffer_view = {.internal = f->rendertarget_view},
 		.frame_cmd = (gpu_command_buffer){
 			.handle = f->frame_sync->command_buffer.raw_handle.handle}};
 }
@@ -654,4 +636,14 @@ VkShaderStageFlags gpu_to_vk_shader_stage(gpu_shader_type t) {
 	case GPU_SHADER_COMPUTE: return VK_SHADER_STAGE_COMPUTE_BIT;
 	}
 	return 0;
+}
+
+VkImageViewType gpu_to_vk_image_type(gpu_image_type t) {
+	switch (t) {
+	case GPU_IMAGE_TYPE_2D: return VK_IMAGE_VIEW_TYPE_2D;
+	case GPU_IMAGE_TYPE_2D_ARRAY: return VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+	case GPU_IMAGE_TYPE_CUBE: return VK_IMAGE_VIEW_TYPE_CUBE;
+	case GPU_IMAGE_TYPE_CUBE_ARRAY: return VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
+	}
+	ASSERT(false);
 }
