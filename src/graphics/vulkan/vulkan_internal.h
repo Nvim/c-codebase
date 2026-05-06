@@ -21,24 +21,31 @@ ARRAY_DEFINE_TYPE(VkSemaphore, vk_sem_array)
 /* ===========================================================================
  * Resource pools
  * ========================================================================== */
+
+/* == Image == */
 typedef enum {
 	IMAGE_FLAGS_SWAPCHAIN = BIT(1),
 } vk_image_flags;
 
 typedef struct vk_image_data {
 	VkImage image;
-	VkImageView image_view;
+	VkImageView full_view; // Default view for all image range
 	VmaAllocation alloc;
 	VkExtent2D extent;
 	VkFormat format;
 	VkImageUsageFlags usage_flags; // Set at creation (not swapchain)
-	gpu_resource_usage gpu_usage;
+	gpu_image_type gpu_type;
+	gpu_image_state gpu_state;
+	uint32_t layer_count;
+	uint32_t level_count;
 	uint8_t vk_image_flags;
 } vk_image_data;
 
-STATIC_ASSERT(sizeof(vk_image_data) == 48, "pretty tight");
+STATIC_ASSERT(sizeof(vk_image_data) == 64, "pretty tight");
 POOL_DEFINE_TYPE(vk_image_data, vk_image_pool)
+#define VK_IMGPOOL_INVALID (vk_image_pool_handle){.raw_handle = 0}
 
+/* == Command Buffer == */
 typedef enum vk_cmdbuf_state {
 	CMDBUF_NOT_BEGAN, // -> VkBeginCommandBuffer not called yet
 	CMDBUF_RECORDING,
@@ -55,17 +62,31 @@ typedef struct vk_cmdbuf_data {
 } vk_cmdbuf_data;
 
 POOL_DEFINE_TYPE(vk_cmdbuf_data, vk_cmdbuf_pool)
+#define VK_CMDPOOL_INVALID (vk_cmdbuf_pool_handle){.raw_handle = 0}
+
+/* == Shader Modules == */
+typedef struct vk_shader_data {
+	VkShaderModule module;
+	VkShaderStageFlags stage;
+	string name;
+} vk_shader_data;
+
+POOL_DEFINE_TYPE(vk_shader_data, vk_shader_pool)
+#define VK_SHADERPOOL_INVALID (vk_shader_pool_handle){.raw_handle = 0}
+
+/* == Pipeline == */
+typedef struct vk_pipeline_data {
+	VkPipeline pipeline;
+	VkPipelineLayout layout;
+	VkGraphicsPipelineCreateInfo ci;
+} vk_pipeline_data;
+
+POOL_DEFINE_TYPE(vk_pipeline_data, vk_pipeline_pool)
+#define VK_PIPELINEPOOL_INVALID (vk_pipeline_pool_handle){.raw_handle = 0}
 
 /* ============================================================================
  * Types
  * ========================================================================== */
-
-// typedef struct vk_rendertarget {
-// 	VkImage image;
-// 	VkImageView image_view;
-// 	VkExtent2D extent;
-// 	VkFormat format;
-// } vk_rendertarget;
 
 typedef struct vk_surface {
 	VkSurfaceKHR surface;
@@ -145,12 +166,14 @@ void vk_sync_buffer_destroy(VkDevice device, vk_sync_buffer* out);
 
 typedef struct {
 	uint64_t frame_idx;
-	gpu_image rendertarget;
+	vk_image_pool_handle rendertarget;
+	VkImageView rendertarget_view;
 	vk_render_sync* frame_sync;
 	VkSemaphore swapchain_semaphore;
 } vk_frame;
 
 typedef struct vk_api_state {
+	arena_t* arena; // All heap allocations are made here
 	// Initialization stuff:
 	vulkan_init_info pf_init_info;
 	VkInstance instance;
@@ -162,7 +185,13 @@ typedef struct vk_api_state {
 	VkDevice device;
 	VkQueue queue;
 	VmaAllocator allocator;
-	VkCommandPool command_pool; // TODO: one pool per frame?
+	VkCommandPool command_pool; // [TODO]: one pool per frame?
+
+	VkDescriptorPool descriptor_pool;
+	// [TODO]: temp
+	VkSampler default_sampler;
+	VkDescriptorSetLayout descriptor_layout;
+	VkDescriptorSet descriptor;
 
 	// Swapchain
 	vk_surface surface;
@@ -178,6 +207,9 @@ typedef struct vk_api_state {
 	// Resource pools:
 	vk_image_pool image_pool;
 	vk_cmdbuf_pool cmd_pool;
+	vk_shader_pool shader_pool;
+	vk_pipeline_pool pipeline_pool;
+
 } vk_api_state;
 
 vk_render_sync* vk_get_current_sync(vk_api_state* state);
@@ -187,19 +219,19 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 /* ===========================================================================
  * Image Layouts, Capabilites and Barriers
  * ========================================================================== */
-static VkImageUsageFlags gpu_usage_to_vk_usage_flags[] = {
-	[GPU_USAGE_NONE] = 0,
+static VkImageUsageFlags gpu_state_to_vk_state_flags[] = {
+	[GPU_IMAGE_STATE_NONE] = 0,
 
 	// [TODO]: Not sure about how to handle GENERAL:
-	[GPU_USAGE_GENERAL] =
+	[GPU_IMAGE_STATE_GENERAL] =
 		VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-	[GPU_USAGE_SHADER_READ] = VK_IMAGE_USAGE_SAMPLED_BIT,
-	[GPU_USAGE_SHADER_WRITE] = VK_IMAGE_USAGE_STORAGE_BIT,
-	[GPU_USAGE_RENDER_TARGET] = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-	[GPU_USAGE_DEPTH_READ] = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-	[GPU_USAGE_DEPTH_WRITE] = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-	[GPU_USAGE_TRANSFER_SRC] = VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-	[GPU_USAGE_TRANSFER_DST] = VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+	[GPU_IMAGE_STATE_SHADER_READ] = VK_IMAGE_USAGE_SAMPLED_BIT,
+	[GPU_IMAGE_STATE_SHADER_WRITE] = VK_IMAGE_USAGE_STORAGE_BIT,
+	[GPU_IMAGE_STATE_RENDER_TARGET] = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+	[GPU_IMAGE_STATE_DEPTH_READ] = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+	[GPU_IMAGE_STATE_DEPTH_WRITE] = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+	[GPU_IMAGE_STATE_TRANSFER_SRC] = VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+	[GPU_IMAGE_STATE_TRANSFER_DST] = VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 };
 
 typedef struct vk_barrier_info {
@@ -217,14 +249,14 @@ typedef struct vk_barrier_info {
  * https://github.com/KhronosGroup/Vulkan-Docs/wiki/Synchronization-Examples#graphics-to-graphics-dependencies
  * https://docs.vulkan.org/tutorial/latest/Building_a_Simple_Engine/Engine_Architecture/05_rendering_pipeline.html#_image_layout_transition_barrier_configuration_and_resource_specification
  */
-static vk_barrier_info gpu_usage_to_vk_barrier[] = {
-	[GPU_USAGE_NONE] =
+static vk_barrier_info gpu_state_to_vk_barrier[] = {
+	[GPU_IMAGE_STATE_NONE] =
 		{
 			.layout = VK_IMAGE_LAYOUT_UNDEFINED,
 			.access = VK_ACCESS_2_NONE,
 			.stage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
 		},
-	[GPU_USAGE_GENERAL] =
+	[GPU_IMAGE_STATE_GENERAL] =
 		{
 			// [TODO]: won't use it for color attachment, but it technically
 			// could?
@@ -233,45 +265,45 @@ static vk_barrier_info gpu_usage_to_vk_barrier[] = {
 				VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
 			.stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
 		},
-	[GPU_USAGE_SHADER_READ] =
+	[GPU_IMAGE_STATE_SHADER_READ] =
 		{
 			.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 			.access = VK_ACCESS_2_SHADER_READ_BIT,
 			.stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
 		},
-	[GPU_USAGE_SHADER_WRITE] =
+	[GPU_IMAGE_STATE_SHADER_WRITE] =
 		{
 			.layout = VK_IMAGE_LAYOUT_GENERAL,
 			.access =
 				VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT,
 			.stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
 		},
-	[GPU_USAGE_RENDER_TARGET] =
+	[GPU_IMAGE_STATE_RENDER_TARGET] =
 		{
 			.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			.access = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
 					  VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
 			.stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
 		},
-	[GPU_USAGE_DEPTH_READ] =
+	[GPU_IMAGE_STATE_DEPTH_READ] =
 		{
 			.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
 			.access = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
 			.stage = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
 		},
-	[GPU_USAGE_DEPTH_WRITE] =
+	[GPU_IMAGE_STATE_DEPTH_WRITE] =
 		{
 			.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 			.access = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
 			.stage = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
 		},
-	[GPU_USAGE_TRANSFER_SRC] =
+	[GPU_IMAGE_STATE_TRANSFER_SRC] =
 		{
 			.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 			.access = VK_ACCESS_2_TRANSFER_READ_BIT,
 			.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
 		},
-	[GPU_USAGE_TRANSFER_DST] =
+	[GPU_IMAGE_STATE_TRANSFER_DST] =
 		{
 			.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			.access = VK_ACCESS_2_TRANSFER_WRITE_BIT,
@@ -286,6 +318,30 @@ void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
  * Utils & conversion
  * ========================================================================== */
 
+/**
+ * @brief Create a single 2D image. Mip levels and image arrays are supported.
+ * The full view spanning all mips and layers will be created, but no pool
+ * handle will be created for it.
+ *
+ */
+vk_image_pool_handle vk_create_2d_image(vk_api_state* state, VkExtent2D extent,
+										VkFormat format, gpu_image_type type,
+										VkImageUsageFlags usage,
+										uint32_t levels, uint32_t layers,
+										uint32_t queue_family_idx);
+
+/**
+ * @brief Allocate a view in the pool for the image's full view.
+ *
+ */
+// vk_image_view_pool_handle
+// vk_create_full_image_view_handle(vk_api_state* state, vk_image_pool_handle
+// h);
+
+bool gpu_to_vk_pipeline_ci(arena_t* arena, gpu_pipeline_ci* ci,
+						   VkGraphicsPipelineCreateInfo* out,
+						   vk_api_state* state);
+
 // [TODO]: Could be nicer idk
 static inline bool check_result(VkResult result) {
 	bool ret = result == VK_SUCCESS;
@@ -294,12 +350,35 @@ static inline bool check_result(VkResult result) {
 }
 
 static inline vk_image_pool_handle to_vk_img(gpu_image handle) {
-	return (vk_image_pool_handle){.raw_handle = handle.handle};
+	return vk_image_pool_wrap(handle.handle);
 }
 
 static inline vk_cmdbuf_pool_handle to_vk_cmdbuf(gpu_command_buffer handle) {
-	return (vk_cmdbuf_pool_handle){.raw_handle = handle.handle};
+	return vk_cmdbuf_pool_wrap(handle.handle);
 }
+
+static inline vk_shader_pool_handle to_vk_shader(gpu_shader handle) {
+	return vk_shader_pool_wrap(handle.handle);
+}
+
+static inline vk_pipeline_pool_handle to_vk_pipeline(gpu_pipeline handle) {
+	return vk_pipeline_pool_wrap(handle.handle);
+}
+
+// static inline vk_image_view_pool_handle
+// to_vk_image_view(gpu_image_view handle) {
+// 	return vk_image_view_pool_wrap(handle.handle);
+// }
+
+VkImageSubresourceRange vk_full_subresource_range(VkImageUsageFlagBits usage,
+												  uint32_t layers,
+												  uint32_t levels);
+
+VkImageSubresourceRange vk_custom_subresource_range(VkImageUsageFlagBits usage,
+													uint32_t layers,
+													uint32_t levels,
+													uint32_t base_level,
+													uint32_t base_layer);
 
 VkImageSubresourceRange vk_base_subresource_range(void);
 
@@ -307,9 +386,24 @@ VkFormat gpu_to_vk_image_format(gpu_image_format f);
 gpu_image_format vk_to_gpu_image_format(VkFormat f);
 
 gpu_image_extent vk_to_gpu_image_extent(VkExtent2D e);
+VkExtent2D gpu_to_vk_image_extent(gpu_image_extent e);
 
 // gpu_rendertarget vk_to_gpu_rendertarget(gpu_image* t);
 
 gpu_frame vk_to_gpu_frame(vk_frame* f);
+
+VkShaderStageFlags gpu_to_vk_shader_stage(gpu_shader_type t);
+
+VkPrimitiveTopology gpu_to_vk_primitive_type(gpu_primitive_type t);
+
+VkCompareOp gpu_to_vk_compare_op(gpu_compare_op op);
+
+VkCullModeFlagBits gpu_to_vk_cull_mode(gpu_cull_mode m);
+
+VkPolygonMode gpu_to_vk_polygon_mode(gpu_polygon_mode m);
+
+VkFrontFace gpu_to_vk_winding(gpu_winding w);
+
+VkImageViewType gpu_to_vk_image_type(gpu_image_type t);
 
 #endif // !VULKAN_UTIL_H

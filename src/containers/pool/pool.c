@@ -126,8 +126,8 @@ LIB_EXPORT pool_t* pool_create(arena_t* arena, uint32_t pool_size,
 	}
 
 	for (uint32_t i = 1; i < pool_size - 1; ++i) { freelist[i] = i + 1; }
-	freelist[0] = POOL_INVALID_HANDLE;
-	freelist[pool_size - 1] = POOL_INVALID_HANDLE;
+	freelist[0] = POOL_INVALID_IDX;
+	freelist[pool_size - 1] = POOL_INVALID_IDX;
 
 	{
 		ret->elems = elems;
@@ -145,13 +145,13 @@ LIB_EXPORT pool_t* pool_create(arena_t* arena, uint32_t pool_size,
 pool_handle pool_new(pool_t* pool, void* elem) {
 	if (!pool || !elem) {
 		LOG_ERR("pool_new: invalid parameters");
-		return (pool_handle){.handle = POOL_INVALID_HANDLE};
+		return (pool_handle){.handle = POOL_INVALID_IDX};
 	}
 
 	pool_impl* impl = (pool_impl*)pool;
-	if (!impl->free_count || impl->first_free == POOL_INVALID_HANDLE) {
+	if (!impl->free_count || impl->first_free == POOL_INVALID_IDX) {
 		LOG_ERR("pool_new: pool is full");
-		return (pool_handle){.handle = POOL_INVALID_HANDLE};
+		return (pool_handle){.handle = POOL_INVALID_IDX};
 	}
 
 	uint32_t idx = impl->first_free;
@@ -180,7 +180,7 @@ bool pool_is_handle_valid(pool_t* pool, pool_handle handle) {
 
 	if (gen == 0) { return false; }
 	if (gen > impl->recycle_counts[idx] + 1) { return false; }
-	if (idx == POOL_INVALID_HANDLE) { return false; }
+	if (idx == POOL_INVALID_IDX) { return false; }
 	if (idx >= impl->pool_elem_count) { return false; }
 	if (gen <= impl->recycle_counts[idx]) { return false; }
 
@@ -242,7 +242,7 @@ void pool_reset(pool_t* pool) {
 	for (uint32_t i = 1; i < impl->pool_elem_count - 1; ++i) {
 		impl->free_list[i] = i + 1;
 	}
-	impl->free_list[impl->pool_elem_count - 1] = POOL_INVALID_HANDLE;
+	impl->free_list[impl->pool_elem_count - 1] = POOL_INVALID_IDX;
 
 	impl->first_free = 1;
 	impl->free_count = impl->pool_elem_count;

@@ -1,6 +1,7 @@
 #include "vulkan_internal.h"
 
 #include <graphics/graphics.h>
+#include <string.h>
 
 bool vk_surface_create(vk_surface* out, VkPhysicalDevice device,
 					   VkSurfaceKHR surface) {
@@ -181,17 +182,17 @@ vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 		vk_image_data data;
 		{
 			data.image = img;
-			data.image_view = img_view;
+			data.full_view = img_view;
 			data.alloc = NULL;
 			data.extent = swapchain->ci.imageExtent;
 			data.format = swapchain->img_format;
 			data.usage_flags = 0; // Swapchain images don't get any
-			data.gpu_usage = GPU_USAGE_NONE;
+			data.gpu_state = GPU_IMAGE_STATE_NONE;
 			data.vk_image_flags = IMAGE_FLAGS_SWAPCHAIN;
 		}
 		vk_image_pool_handle vk_handle = vk_image_pool_new(image_pool, &data);
 		ASSERT(vk_image_pool_is_handle_valid(image_pool, vk_handle));
-		handle.handle = vk_handle.raw_handle.handle;
+		handle.handle = vk_handle.raw_handle;
 	};
 
 	ret.image = handle;
@@ -336,7 +337,8 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 
 	state->frame_in_progress = true;
 
-	gpu_image sc_image;
+	vk_image_pool_handle sc_image = VK_IMGPOOL_INVALID;
+	VkImageView sc_image_view = {0};
 	{ // Acquire a swapchain image
 		LOG_DEBUG("vk_begin_frame: acquiring swapchain image");
 		vk_sc_image_acquire_result sc_ret =
@@ -358,7 +360,14 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 				return false;
 			}
 		}
-		sc_image = sc_ret.image;
+		sc_image = to_vk_img(sc_ret.image);
+
+		vk_image_data* data = vk_image_pool_get(state->image_pool, sc_image);
+		if (!data) {
+			LOG_ERR("vulkan_begin_frame: couldn't get swapchain image's data");
+			return false;
+		}
+		sc_image_view = data->full_view;
 	}
 
 	VkSemaphore sc_sem;
@@ -367,6 +376,7 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 	{
 		out->frame_idx = state->frame_idx;
 		out->rendertarget = sc_image;
+		out->rendertarget_view = sc_image_view;
 		out->frame_sync = frame_sync;
 		out->swapchain_semaphore = sc_sem;
 	}
@@ -401,22 +411,190 @@ void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
 	vkCmdPipelineBarrier2(cmd_buf, &dep_info);
 }
 
+vk_image_pool_handle vk_create_2d_image(vk_api_state* state, VkExtent2D extent,
+										VkFormat format,
+										gpu_image_type gpu_type,
+										VkImageUsageFlags usage,
+										uint32_t levels, uint32_t layers,
+										uint32_t queue_family_idx) {
+
+	ASSERT(usage != 0);
+	VkImageCreateInfo img_info = {0};
+	{
+		img_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		img_info.imageType = VK_IMAGE_TYPE_2D;
+		img_info.usage = usage;
+		img_info.format = format;
+		img_info.extent = (VkExtent3D){
+			.width = extent.width,
+			.height = extent.height,
+			.depth = 1,
+		};
+		img_info.arrayLayers = layers;
+		img_info.mipLevels = levels;
+		img_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+		img_info.samples = VK_SAMPLE_COUNT_1_BIT;
+		img_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		img_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		img_info.queueFamilyIndexCount = 1;
+		img_info.pQueueFamilyIndices = &queue_family_idx;
+	}
+
+	VkImage img;
+	VmaAllocationCreateInfo alloc_info = {0};
+	{ // TODO
+		alloc_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+	}
+	VmaAllocation alloc;
+
+	if (!check_result(vmaCreateImage(state->allocator, &img_info, &alloc_info,
+									 &img, &alloc, NULL))) {
+		LOG_ERR("vk_create_2d_image: couldn't create vulkan image");
+		return VK_IMGPOOL_INVALID;
+	}
+
+	VkImageSubresourceRange full_range =
+		vk_full_subresource_range(usage, layers, levels);
+
+	VkImageView view = {0};
+	VkImageViewCreateInfo view_ci = {0};
+	{
+		view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		view_ci.image = img;
+		view_ci.format = format;
+		view_ci.viewType = gpu_to_vk_image_type(gpu_type);
+		view_ci.subresourceRange = full_range;
+		view_ci.subresourceRange.levelCount = levels;
+	}
+
+	if (!check_result(
+			vkCreateImageView(state->device, &view_ci, NULL, &view))) {
+		LOG_ERR("vk_create_2d_image: couldn't create vulkan image view");
+		return VK_IMGPOOL_INVALID;
+	}
+
+	vk_image_data data = {0};
+	{
+		data.image = img;
+		data.full_view = view;
+		data.alloc = alloc;
+		data.format = format;
+		data.extent = extent;
+		data.usage_flags = usage;
+		data.gpu_type = gpu_type;
+		data.gpu_state = GPU_IMAGE_STATE_NONE;
+		data.layer_count = 1;
+		data.level_count = levels;
+	}
+
+	return vk_image_pool_new(state->image_pool, &data);
+}
+
+VkPrimitiveTopology gpu_to_vk_primitive_type(gpu_primitive_type t) {
+	switch (t) {
+	case GPU_PRIMITIVE_TYPE_TRIANGLELIST:
+		return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	case GPU_PRIMITIVE_TYPE_TRIANGLESTRIP:
+		return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+	case GPU_PRIMITIVE_TYPE_TRIANGLEFAN:
+		return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
+	case GPU_PRIMITIVE_TYPE_LINELIST: return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+	case GPU_PRIMITIVE_TYPE_LINESTRIP: return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+	case GPU_PRIMITIVE_TYPE_POINTLIST: return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+	}
+}
+
+VkCompareOp gpu_to_vk_compare_op(gpu_compare_op op) {
+	switch (op) {
+	case GPU_COMPARE_OP_LESS: return VK_COMPARE_OP_LESS;
+	case GPU_COMPARE_OP_LESS_EQUAL: return VK_COMPARE_OP_LESS_OR_EQUAL;
+	case GPU_COMPARE_OP_GREATER: return VK_COMPARE_OP_GREATER;
+	case GPU_COMPARE_OP_GREATER_EQUAL: return VK_COMPARE_OP_GREATER_OR_EQUAL;
+	case GPU_COMPARE_OP_ALWAYS: return VK_COMPARE_OP_ALWAYS;
+	case GPU_COMPARE_OP_NEVER: return VK_COMPARE_OP_NEVER;
+	}
+}
+
+VkCullModeFlagBits gpu_to_vk_cull_mode(gpu_cull_mode m) {
+	switch (m) {
+	case GPU_CULL_MODE_NONE: return VK_CULL_MODE_NONE;
+	case GPU_CULL_MODE_FRONT: return VK_CULL_MODE_FRONT_BIT;
+	case GPU_CULL_MODE_BACK: return VK_CULL_MODE_BACK_BIT;
+	}
+}
+
+VkPolygonMode gpu_to_vk_polygon_mode(gpu_polygon_mode m) {
+	switch (m) {
+	case GPU_POLYGON_FILL: return VK_POLYGON_MODE_FILL;
+	case GPU_POLYGON_LINE: return VK_POLYGON_MODE_LINE;
+	case GPU_POLYGON_POINT: return VK_POLYGON_MODE_POINT;
+	}
+}
+
+VkFrontFace gpu_to_vk_winding(gpu_winding w) {
+	switch (w) {
+	case GPU_WINDING_CLOCKWISE: return VK_FRONT_FACE_CLOCKWISE;
+	case GPU_WINDING_COUNTER_CLOCKWISE: return VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	}
+}
+
 gpu_image_extent vk_to_gpu_image_extent(VkExtent2D e) {
 	return (gpu_image_extent){.width = e.width, .height = e.height};
 }
 
-// gpu_rendertarget vk_to_gpu_rendertarget(gpu_image* t) {
-// 	return (gpu_rendertarget){.extent = vk_to_gpu_image_extent(t->extent),
-// 							  .format = vk_to_gpu_image_format(t->format),
-// 							  .image = t->image};
-// }
+VkExtent2D gpu_to_vk_image_extent(gpu_image_extent e) {
+	return (VkExtent2D){.width = e.width, .height = e.height};
+}
 
 gpu_frame vk_to_gpu_frame(vk_frame* f) {
 	return (gpu_frame){
 		.frame_index = f->frame_idx,
-		.backbuffer = f->rendertarget,
+		.framebuffer = {.handle = vk_image_pool_unwrap(f->rendertarget)},
+		.framebuffer_view = {.internal = f->rendertarget_view},
 		.frame_cmd = (gpu_command_buffer){
 			.handle = f->frame_sync->command_buffer.raw_handle.handle}};
+}
+
+VkImageSubresourceRange vk_full_subresource_range(VkImageUsageFlagBits usage,
+												  uint32_t layers,
+												  uint32_t levels) {
+	VkImageAspectFlags aspect = 0;
+	if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+		aspect = VK_IMAGE_ASPECT_DEPTH_BIT & VK_IMAGE_ASPECT_STENCIL_BIT;
+	} else {
+		aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+	}
+	VkImageSubresourceRange range = {0};
+	{
+		range.aspectMask = aspect;
+		range.baseArrayLayer = 0;
+		range.baseMipLevel = 0;
+		range.layerCount = layers;
+		range.levelCount = levels;
+	}
+	return range;
+}
+
+VkImageSubresourceRange vk_custom_subresource_range(VkImageUsageFlagBits usage,
+													uint32_t layers,
+													uint32_t levels,
+													uint32_t base_level,
+													uint32_t base_layer) {
+	VkImageAspectFlags aspect = 0;
+	if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+		aspect = VK_IMAGE_ASPECT_DEPTH_BIT & VK_IMAGE_ASPECT_STENCIL_BIT;
+	} else {
+		aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+	}
+	VkImageSubresourceRange range = {0};
+	{
+		range.aspectMask = aspect;
+		range.baseArrayLayer = base_layer;
+		range.baseMipLevel = base_level;
+		range.layerCount = layers;
+		range.levelCount = levels;
+	}
+	return range;
 }
 
 VkImageSubresourceRange vk_base_subresource_range(void) {
@@ -437,7 +615,7 @@ VkFormat gpu_to_vk_image_format(gpu_image_format f) {
 	case IMAGE_FORMAT_RGB_UNORM: return VK_FORMAT_R8G8B8_UNORM;
 	case IMAGE_FORMAT_RGB_SNORM: return VK_FORMAT_R8G8B8_SNORM;
 	case IMAGE_FORMAT_RGB_SRGB: return VK_FORMAT_R8G8B8_SRGB;
-	default: ASSERT(false); return VK_FORMAT_R8G8B8_UNORM;
+	case IMAGE_FORMAT_D16: return VK_FORMAT_D16_UNORM;
 	}
 }
 
@@ -451,4 +629,23 @@ gpu_image_format vk_to_gpu_image_format(VkFormat f) {
 	case VK_FORMAT_R8G8B8_SRGB: return IMAGE_FORMAT_RGB_SRGB;
 	default: ASSERT(false); return IMAGE_FORMAT_RGB_UNORM;
 	}
+}
+
+VkShaderStageFlags gpu_to_vk_shader_stage(gpu_shader_type t) {
+	switch (t) {
+	case GPU_SHADER_VERTEX: return VK_SHADER_STAGE_VERTEX_BIT;
+	case GPU_SHADER_FRAGMENT: return VK_SHADER_STAGE_FRAGMENT_BIT;
+	case GPU_SHADER_COMPUTE: return VK_SHADER_STAGE_COMPUTE_BIT;
+	}
+	return 0;
+}
+
+VkImageViewType gpu_to_vk_image_type(gpu_image_type t) {
+	switch (t) {
+	case GPU_IMAGE_TYPE_2D: return VK_IMAGE_VIEW_TYPE_2D;
+	case GPU_IMAGE_TYPE_2D_ARRAY: return VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+	case GPU_IMAGE_TYPE_CUBE: return VK_IMAGE_VIEW_TYPE_CUBE;
+	case GPU_IMAGE_TYPE_CUBE_ARRAY: return VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
+	}
+	ASSERT(false);
 }

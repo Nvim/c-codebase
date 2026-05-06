@@ -9,7 +9,7 @@
 #include "input.h"
 
 #include <core/core.h>
-#include <graphics/vulkan_init_info.h>
+#include <graphics/vulkan/vulkan_init_info.h>
 #include <platform/platform.h>
 
 #include <GLFW/glfw3.h>
@@ -66,7 +66,8 @@ bool platform_init(void) {
 	return _init;
 }
 
-LIB_EXPORT void platform_destroy(void) { glfwTerminate(); }
+// [NOTE] glfwTerminate crashes on Wayland
+LIB_EXPORT void platform_destroy(void) { /* glfwTerminate(); */ }
 
 window_t* platform_create_window(window_size size, char const* name) {
 	// [TODO]: Someday another API might be supported who knows
@@ -114,17 +115,12 @@ bool platform_window_should_close(window_t* window) {
 	return glfwWindowShouldClose(w->internal);
 }
 
-void platform_destroy_window(window_t* window) {
+void platform_destroy_window(UNUSED window_t* window) {
 	window_impl* w = (window_impl*)window;
 	glfwDestroyWindow(w->internal);
 }
 
-void platform_poll(void) {
-#if defined(CREATE_OPENGL_CONTEXT)
-	glfwSwapBuffers(_window);
-#endif
-	glfwPollEvents();
-}
+void platform_poll(void) { glfwPollEvents(); }
 
 void platform_register_key_callback(input_key key, key_action action,
 									key_callback callback) {

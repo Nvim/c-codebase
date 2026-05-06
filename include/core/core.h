@@ -24,7 +24,7 @@
 	} while (0)
 #else
 #define ASSERT(c)                                                              \
-	do { (void)(c) } while (0) //
+	do { (void)(c); } while (0) //
 #endif
 
 #endif

@@ -9,6 +9,7 @@
 typedef struct fs_file_read_result {
 	bool ok;
 	u8_array bytes;
+	string str;
 } fs_file_read_result;
 
 LIB_EXPORT fs_file_read_result fs_read_all_file(arena_t* arena, path pth);

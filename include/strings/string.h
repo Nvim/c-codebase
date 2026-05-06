@@ -23,6 +23,8 @@ typedef struct u64_array u64_array;
  */
 #define str(literal) (string){(char*)literal, countof(literal) - 1}
 
+static string const STRING_EMPTY = str("");
+
 /**
  * @brief Invalid position returned by search functions.
  */

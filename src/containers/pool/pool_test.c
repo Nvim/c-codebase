@@ -36,7 +36,7 @@ void pool_test_new_and_get(void) {
 	int value = 42;
 	pool_handle h = pool_new(pool, &value);
 
-	TEST_ASSERT_NOT_EQUAL(POOL_INVALID_HANDLE, h.handle);
+	TEST_ASSERT_NOT_EQUAL(POOL_INVALID_IDX, h.handle);
 
 	int* retrieved = (int*)pool_get(pool, h);
 	TEST_ASSERT_NOT_NULL(retrieved);
