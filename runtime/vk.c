@@ -5,9 +5,15 @@
 
 #include <graphics/graphics.h>
 #include <limits.h>
+#include <string.h>
 
 static bool _quit = false;
 static double const TARGET_FRAMETIME = (1 / 60.f) * 1000.f;
+
+static uint8_t const WHITE[4] = {0xff, 0xff, 0xff, 0xff};
+static uint8_t const RED[4] = {0xff, 0x0, 0x0, 0xff};
+static uint8_t const GREEN[4] = {0x0, 0xff, 0x0, 0xff};
+static uint8_t const BLUE[4] = {0x0, 0x0, 0xff, 0xff};
 
 int main(void) {
 
@@ -91,6 +97,7 @@ int main(void) {
 	gpu.destroy_shader(&gpu, vs);
 	gpu.destroy_shader(&gpu, fs);
 
+	gpu_image test_image;
 	{ // [TODO]: temp
 		gpu_image_ci img_ci = {0};
 		img_ci.dimensions = (gpu_image_extent){.width = 2, .height = 2};
@@ -99,15 +106,27 @@ int main(void) {
 		img_ci.usage = GPU_IMAGE_USAGE_SAMPLED;
 		img_ci.array_layers = 1;
 		img_ci.mip_levels = 1;
-		gpu_image img = gpu.create_image(&gpu, &img_ci);
-		ASSERT(check_handle(img.handle));
-
-		gpu_image_view full_view;
-		ASSERT(gpu.get_image_full_view(&gpu, &full_view, img));
-		ASSERT(full_view.internal != NULL);
-
-		gpu.destroy_image(&gpu, img);
+		test_image = gpu.create_image(&gpu, &img_ci);
+		ASSERT(check_handle(test_image.handle));
 	}
+	gpu_image_view full_view;
+	ASSERT(gpu.get_image_full_view(&gpu, &full_view, test_image));
+	ASSERT(full_view.internal != NULL);
+
+	u8_array pixels = u8_array_create(arena, 16);
+	uint8_t* px = u8_array_begin(pixels);
+	{
+		memcpy(px, RED, 4);
+		memcpy(px + 4, GREEN, 4);
+		memcpy(px + 8, BLUE, 4);
+		memcpy(px + 12, WHITE, 4);
+	}
+
+	image_data const test_image_data = {
+		.height = 2,
+		.width = 2,
+		.bytes = pixels,
+	};
 
 	uint32_t frame_count = 0;
 	while (!_quit) {
@@ -120,6 +139,16 @@ int main(void) {
 		ASSERT(frame_res.ok);
 		gpu_frame frame = frame_res.frame;
 		gpu_command_buffer cmd = frame.frame_cmd;
+
+		// Copy pixel data to image on 1st frame only
+		if (frame_count == 1) {
+			gpu.cmd_transition_image(&gpu, cmd, test_image,
+									 GPU_IMAGE_STATE_TRANSFER_DST);
+			ASSERT(gpu.temp_copy_to_image(&gpu, cmd, test_image, test_image_data));
+			gpu.cmd_transition_image(&gpu, cmd, test_image,
+									 GPU_IMAGE_STATE_SHADER_READ);
+			gpu.temp_set_image_desc(&gpu, full_view);
+		}
 
 		{ // [TODO]: temp
 			gpu_image_view v = {0};
@@ -161,6 +190,7 @@ int main(void) {
 	}
 
 	gpu.wait_idle(&gpu);
+	gpu.destroy_image(&gpu, test_image);
 	gpu.destroy_pipeline(&gpu, pipeline);
 
 	gpu.destroy(&gpu);

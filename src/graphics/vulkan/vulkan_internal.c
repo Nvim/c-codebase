@@ -418,6 +418,7 @@ vk_image_pool_handle vk_create_2d_image(vk_api_state* state, VkExtent2D extent,
 										uint32_t levels, uint32_t layers,
 										uint32_t queue_family_idx) {
 
+	ASSERT(usage != 0);
 	VkImageCreateInfo img_info = {0};
 	{
 		img_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -460,6 +461,7 @@ vk_image_pool_handle vk_create_2d_image(vk_api_state* state, VkExtent2D extent,
 	{
 		view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		view_ci.image = img;
+		view_ci.format = format;
 		view_ci.viewType = gpu_to_vk_image_type(gpu_type);
 		view_ci.subresourceRange = full_range;
 		view_ci.subresourceRange.levelCount = levels;

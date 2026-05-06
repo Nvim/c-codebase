@@ -12,6 +12,12 @@
 
 typedef struct window_t window_t;
 
+typedef struct image_data {
+	uint32_t width;
+	uint32_t height;
+	u8_array bytes;
+} image_data;
+
 typedef enum gpu_image_format {
 	IMAGE_FORMAT_RGBA_UNORM,
 	IMAGE_FORMAT_RGBA_SNORM,
@@ -438,6 +444,8 @@ typedef struct gpu_api {
 	bool (*create_image_view)(struct gpu_api*, gpu_image_view* out,
 							  gpu_image_view_ci*);
 	void (*destroy_image_view)(struct gpu_api*, gpu_image_view);
+	bool (*temp_copy_to_image)(struct gpu_api*, gpu_command_buffer, gpu_image, image_data);
+	void (*temp_set_image_desc)(struct gpu_api*, gpu_image_view);
 
 	gpu_sampler (*create_sampler)(struct gpu_api*, gpu_sampler_ci*);
 	void (*destroy_sampler)(struct gpu_api*, gpu_sampler);

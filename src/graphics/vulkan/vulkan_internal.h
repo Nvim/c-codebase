@@ -185,7 +185,13 @@ typedef struct vk_api_state {
 	VkDevice device;
 	VkQueue queue;
 	VmaAllocator allocator;
-	VkCommandPool command_pool; // TODO: one pool per frame?
+	VkCommandPool command_pool; // [TODO]: one pool per frame?
+
+	VkDescriptorPool descriptor_pool;
+	// [TODO]: temp
+	VkSampler default_sampler;
+	VkDescriptorSetLayout descriptor_layout;
+	VkDescriptorSet descriptor;
 
 	// Swapchain
 	vk_surface surface;
@@ -204,9 +210,6 @@ typedef struct vk_api_state {
 	vk_shader_pool shader_pool;
 	vk_pipeline_pool pipeline_pool;
 
-	// TEMP:
-	// VkPipeline pipeline;
-	// VkPipelineLayout pipeline_layout;
 } vk_api_state;
 
 vk_render_sync* vk_get_current_sync(vk_api_state* state);
