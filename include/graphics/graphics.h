@@ -444,7 +444,8 @@ typedef struct gpu_api {
 	bool (*create_image_view)(struct gpu_api*, gpu_image_view* out,
 							  gpu_image_view_ci*);
 	void (*destroy_image_view)(struct gpu_api*, gpu_image_view);
-	bool (*temp_copy_to_image)(struct gpu_api*, gpu_command_buffer, gpu_image, image_data);
+	bool (*temp_copy_to_image)(struct gpu_api*, gpu_command_buffer, gpu_image,
+							   image_data);
 	void (*temp_set_image_desc)(struct gpu_api*, gpu_image_view);
 
 	gpu_sampler (*create_sampler)(struct gpu_api*, gpu_sampler_ci*);

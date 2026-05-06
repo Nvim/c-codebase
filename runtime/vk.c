@@ -144,7 +144,8 @@ int main(void) {
 		if (frame_count == 1) {
 			gpu.cmd_transition_image(&gpu, cmd, test_image,
 									 GPU_IMAGE_STATE_TRANSFER_DST);
-			ASSERT(gpu.temp_copy_to_image(&gpu, cmd, test_image, test_image_data));
+			ASSERT(
+				gpu.temp_copy_to_image(&gpu, cmd, test_image, test_image_data));
 			gpu.cmd_transition_image(&gpu, cmd, test_image,
 									 GPU_IMAGE_STATE_SHADER_READ);
 			gpu.temp_set_image_desc(&gpu, full_view);
