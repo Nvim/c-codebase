@@ -175,9 +175,7 @@ int main(void) {
 		gpu.cmd_bind_pipeline(&gpu, cmd, pipeline);
 		gpu.cmd_draw(&gpu, cmd, 6, 1, 0, 0);
 		gpu.cmd_end_rendering(&gpu, cmd);
-		gpu.cmd_transition_for_present(&gpu, cmd, frame.framebuffer);
-		gpu.cmd_submit(&gpu, cmd);
-		gpu.end_frame(&gpu, &frame);
+		ASSERT(gpu.end_frame(&gpu, &frame));
 		double t_now = platform_get_time();
 		delta = t_now - t_prev;
 		if (delta < TARGET_FRAMETIME) {

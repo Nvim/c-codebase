@@ -389,25 +389,14 @@ typedef struct gpu_api {
 	bool (*cmd_transition_image)(struct gpu_api*, gpu_command_buffer, gpu_image,
 								 gpu_image_state new_state);
 
-	// present is a special layout. image must be a frame's backbuffer
-
 	/**
-	 * @brief Same as cmd_transition_image, but presenting is a special
-	 * layout that doesn't apply to all images. Given image must be a
-	 * frame's backbuffer.
-	 *
-	 * @return false if image or command buffer aren't valid, true
-	 * otherwise.
-	 */
-	bool (*cmd_transition_for_present)(struct gpu_api*, gpu_command_buffer,
-									   gpu_image);
-
-	/**
-	 * @brief End command buffer recording, and submit it to GPU for
+	 * @brief End standalone command buffer, and submit it to GPU for
 	 * execution.
+	 * @param cmd The command buffer to end. Must NOT be associated with a
+	 * gpu_frame.
 	 *
 	 */
-	void (*cmd_submit)(struct gpu_api*, gpu_command_buffer);
+	void (*cmd_submit)(struct gpu_api*, gpu_command_buffer cmd);
 
 	void (*cmd_set_viewport)(struct gpu_api*, gpu_command_buffer,
 							 gpu_image_extent extent);
@@ -430,7 +419,7 @@ typedef struct gpu_api {
 	 * This will present the frame's backbuffer to the screen.
 	 *
 	 */
-	void (*end_frame)(struct gpu_api*, gpu_frame*);
+	bool (*end_frame)(struct gpu_api*, gpu_frame*);
 
 	/*== Resource Management ==*/
 	gpu_shader (*create_shader)(struct gpu_api*, gpu_shader_ci*);

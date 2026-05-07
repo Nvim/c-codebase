@@ -276,7 +276,9 @@ bool vk_render_sync_create(VkDevice device, vk_render_sync* out,
 		return false;
 	}
 
-	vk_cmdbuf_data data = {.command_buffer = command_buffer};
+	vk_cmdbuf_data data = {.command_buffer = command_buffer,
+						   .state = CMDBUF_NOT_BEGAN,
+						   .flags = CMDBUF_FLAG_FRAME};
 	vk_cmdbuf_pool_handle handle = vk_cmdbuf_pool_new(cmd_pool, &data);
 	ASSERT(vk_cmdbuf_pool_is_handle_valid(cmd_pool, handle));
 	out->command_buffer = handle;
@@ -409,6 +411,101 @@ void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
 	}
 
 	vkCmdPipelineBarrier2(cmd_buf, &dep_info);
+}
+
+bool vk_transition_to_present(vk_api_state* state, gpu_frame* frame) {
+	vk_cmdbuf_data* cmd =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(frame->frame_cmd));
+	if (!cmd || cmd->state != CMDBUF_RECORDING) {
+		LOG_ERR("vk_transition_to_present: invalid command buffer state");
+		return false;
+	}
+
+	vk_image_data* img =
+		vk_image_pool_get(state->image_pool, to_vk_img(frame->framebuffer));
+
+	vk_barrier_info from = gpu_state_to_vk_barrier[img->gpu_state];
+	static vk_barrier_info const to = {
+		.layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+		.stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.access = VK_ACCESS_2_NONE,
+	};
+	vk_image_barrier(cmd->command_buffer, img->image, from, to);
+
+	// Reset usage for next frame
+	img->gpu_state = GPU_IMAGE_STATE_NONE;
+
+	return true;
+}
+
+bool vk_submit_frame_cmd(vk_api_state* state, gpu_frame* frame) {
+	vk_cmdbuf_data* cmd =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(frame->frame_cmd));
+	if (!cmd || cmd->state != CMDBUF_RECORDING) {
+		LOG_ERR("vk_submit_frame_cmd: invalid command buffer state");
+		return false;
+	}
+
+	VkCommandBuffer cmd_buf = cmd->command_buffer;
+	VkSemaphore sc_sem;
+	if (!vk_swapchain_get_current_semaphore(&state->swapchain, &sc_sem)) {
+		LOG_ERR("vk_submit_frame_cmd: couldn't get swapchain semaphore");
+		return false;
+	}
+
+	vk_render_sync* frame_sync = vk_get_current_sync(state);
+
+	{ // Submit:
+		LOG_DEBUG("vk_submit_frame_cmd: submitting");
+		if (!check_result(vkEndCommandBuffer(cmd_buf))) {
+			LOG_ERR("vk_submit_frame_cmd: couldn't end command buffer");
+			return false;
+		}
+		cmd->state = CMDBUF_ENDED;
+		VkCommandBufferSubmitInfo cmd_info = {0};
+		{
+			cmd_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+			cmd_info.commandBuffer = cmd_buf;
+			cmd_info.deviceMask = 0;
+		}
+
+		VkSemaphoreSubmitInfo signal_sem_info = {0};
+		{
+			signal_sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+			signal_sem_info.pNext = NULL;
+			signal_sem_info.semaphore = sc_sem;
+			signal_sem_info.stageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+			signal_sem_info.deviceIndex = 0;
+			signal_sem_info.value = 1;
+		}
+
+		VkSemaphoreSubmitInfo wait_sem_info = {0};
+		{
+			wait_sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+			wait_sem_info.pNext = NULL;
+			wait_sem_info.semaphore = frame_sync->draw_sem;
+			wait_sem_info.stageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+			wait_sem_info.deviceIndex = 0;
+			wait_sem_info.value = 1;
+		}
+
+		VkSubmitInfo2 submit_info = {0};
+		{
+			submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+			submit_info.commandBufferInfoCount = 1;
+			submit_info.pCommandBufferInfos = &cmd_info;
+			submit_info.signalSemaphoreInfoCount = 1;
+			submit_info.pSignalSemaphoreInfos = &signal_sem_info;
+			submit_info.waitSemaphoreInfoCount = 1;
+			submit_info.pWaitSemaphoreInfos = &wait_sem_info;
+		}
+		if (!check_result(vkQueueSubmit2(state->queue, 1, &submit_info,
+										 frame_sync->drawn_fence))) {
+			LOG_ERR("vk_submit_frame_cmd: couldn't submit to queue");
+			return false;
+		}
+	}
+	return true;
 }
 
 vk_image_pool_handle vk_create_2d_image(vk_api_state* state, VkExtent2D extent,

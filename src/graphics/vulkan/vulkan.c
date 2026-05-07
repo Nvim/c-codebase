@@ -662,127 +662,47 @@ bool vulkan_cmd_transition_image(gpu_api* self, gpu_command_buffer cmd_handle,
 	return true;
 }
 
-bool vulkan_cmd_transition_for_present(struct gpu_api* self,
-									   gpu_command_buffer cmd_handle,
-									   gpu_image img_handle) {
-	vk_api_state* state = self->state;
-	vk_cmdbuf_data* cmd_data =
-		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd_handle));
-	vk_image_data* img_data =
-		vk_image_pool_get(state->image_pool, to_vk_img(img_handle));
-
-	vk_cmdbuf_state cmd_state = cmd_data->state;
-	if (cmd_state != CMDBUF_RECORDING && cmd_state != CMDBUF_RENDERING) {
-		LOG_ERR("vk_cmd_transition_for_present: invalid command buffer state");
-		return false;
-	}
-
-	if (!(img_data->vk_image_flags & IMAGE_FLAGS_SWAPCHAIN)) {
-		LOG_ERR("vk_cmd_transition_for_present: image isn't a swapchain image");
-		return false;
-	}
-
-	vk_barrier_info from = gpu_state_to_vk_barrier[img_data->gpu_state];
-	static vk_barrier_info const to = {
-		.layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-		.stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-		.access = VK_ACCESS_2_NONE,
-	};
-	vk_image_barrier(cmd_data->command_buffer, img_data->image, from, to);
-
-	// Reset usage for next frame
-	img_data->gpu_state = GPU_IMAGE_STATE_NONE;
-
-	return true;
-}
-
-void vulkan_submit(struct gpu_api* self, gpu_command_buffer cmd) {
+void vulkan_cmd_submit(struct gpu_api* self, gpu_command_buffer cmd) {
 	vk_api_state* state = self->state;
 
 	vk_cmdbuf_data* cmd_data =
 		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
 	ASSERT(cmd_data->state == CMDBUF_RECORDING);
-	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
+	ASSERT(cmd_data->flags && !(cmd_data->flags & CMDBUF_FLAG_FRAME));
+	UNUSED VkCommandBuffer cmd_buf = cmd_data->command_buffer;
 
-	VkSemaphore sc_sem;
-	ASSERT(vk_swapchain_get_current_semaphore(&state->swapchain, &sc_sem));
-
-	vk_render_sync frame_sync =
-		state->sync_buffer
-			.frames[state->frame_idx % self->config.frames_in_flight];
-
-	{ // Submit:
-		LOG_DEBUG("vulkan_render: submitting");
-		check_result(vkEndCommandBuffer(cmd_buf));
-		cmd_data->state = CMDBUF_ENDED;
-		VkCommandBufferSubmitInfo cmd_info = {0};
-		{
-			cmd_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-			cmd_info.commandBuffer = cmd_buf;
-			cmd_info.deviceMask = 0;
-		}
-
-		VkSemaphoreSubmitInfo signal_sem_info = {0};
-		{
-			signal_sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-			signal_sem_info.pNext = NULL;
-			signal_sem_info.semaphore = sc_sem;
-			signal_sem_info.stageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
-			signal_sem_info.deviceIndex = 0;
-			signal_sem_info.value = 1;
-		}
-
-		VkSemaphoreSubmitInfo wait_sem_info = {0};
-		{
-			wait_sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-			wait_sem_info.pNext = NULL;
-			wait_sem_info.semaphore = frame_sync.draw_sem;
-			wait_sem_info.stageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
-			wait_sem_info.deviceIndex = 0;
-			wait_sem_info.value = 1;
-		}
-
-		VkSubmitInfo2 submit_info = {0};
-		{
-			submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-			submit_info.commandBufferInfoCount = 1;
-			submit_info.pCommandBufferInfos = &cmd_info;
-			submit_info.signalSemaphoreInfoCount = 1;
-			submit_info.pSignalSemaphoreInfos = &signal_sem_info;
-			submit_info.waitSemaphoreInfoCount = 1;
-			submit_info.pWaitSemaphoreInfos = &wait_sem_info;
-		}
-		check_result(vkQueueSubmit2(state->queue, 1, &submit_info,
-									frame_sync.drawn_fence));
-	}
+	// [TODO]: implement. semaphores abstraction?
+	ASSERT(false);
 }
 
-void vulkan_end_frame(gpu_api* self, gpu_frame* f) {
+bool vulkan_end_frame(gpu_api* self, gpu_frame* f) {
 	vk_api_state* state = self->state;
 	vk_cmdbuf_pool_handle handle = vk_get_current_sync(state)->command_buffer;
-
 	vk_cmdbuf_data* cmd_data = vk_cmdbuf_pool_get(state->cmd_pool, handle);
-
-	// cmd_submit must have been called before ending frame
-	ASSERT(cmd_data->state == CMDBUF_ENDED);
 
 	if (f->frame_index != state->frame_idx) {
 		LOG_ERR("vulkan_end_frame: invalid frame index");
-		return;
+		return false;
 	}
 
-#ifdef _DEBUG
-	{
-		// Swapchain image must be PRESENT_SRC with cmd_transition_for_present
-		vk_image_data* sc_img =
-			vk_image_pool_get(state->image_pool, to_vk_img(f->framebuffer));
-		ASSERT(sc_img->vk_image_flags & IMAGE_FLAGS_SWAPCHAIN);
-		ASSERT(sc_img->gpu_state == GPU_IMAGE_STATE_NONE);
+	// Transition framebuffer layout
+	if (!vk_transition_to_present(state, f)) {
+		LOG_ERR("vulkan_end_frame: couldn't transition swapchain image");
+		return false;
 	}
-#endif
 
+	// Submit command buffer
+	if (!vk_submit_frame_cmd(state, f)) {
+		LOG_ERR("vulkan_end_frame: couldn't submit frame's command buffer");
+		return false;
+	}
+
+	// Present
 	LOG_DEBUG("vulkan_end_frame: presenting");
-	ASSERT(vk_swapchain_present(&state->swapchain, state->queue));
+	if (!vk_swapchain_present(&state->swapchain, state->queue)) {
+		LOG_ERR("vulkan_end_frame: couldn't present to swapchain");
+		return false;
+	}
 
 	// Reset frame's command buffer
 	// [TODO]: Should I reset it? Validation errors if I do
@@ -792,6 +712,7 @@ void vulkan_end_frame(gpu_api* self, gpu_frame* f) {
 	// Advance frame count
 	state->frame_idx++;
 	state->frame_in_progress = false;
+	return true;
 }
 
 void vulkan_cmd_set_viewport(struct gpu_api* self, gpu_command_buffer cmd,
@@ -1489,8 +1410,7 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->cmd_begin_rendering = vulkan_cmd_begin_rendering;
 		out->cmd_end_rendering = vulkan_cmd_end_rendering;
 		out->cmd_transition_image = vulkan_cmd_transition_image;
-		out->cmd_transition_for_present = vulkan_cmd_transition_for_present;
-		out->cmd_submit = vulkan_submit;
+		out->cmd_submit = vulkan_cmd_submit;
 		out->cmd_set_viewport = vulkan_cmd_set_viewport;
 		out->cmd_set_scissor = vulkan_cmd_set_scissor;
 		out->cmd_reset_viewport = vulkan_cmd_reset_viewport;

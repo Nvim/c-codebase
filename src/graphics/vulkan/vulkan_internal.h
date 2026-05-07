@@ -55,10 +55,14 @@ typedef enum vk_cmdbuf_state {
 	CMDBUF_INVALID,
 } vk_cmdbuf_state;
 
+typedef uint32_t vk_cmdbuf_flags;
+#define CMDBUF_FLAG_FRAME BIT(1)
+#define CMDBUF_FLAG_USER BIT(2)
+
 typedef struct vk_cmdbuf_data {
 	VkCommandBuffer command_buffer;
 	vk_cmdbuf_state state;
-
+	vk_cmdbuf_flags flags;
 } vk_cmdbuf_data;
 
 POOL_DEFINE_TYPE(vk_cmdbuf_data, vk_cmdbuf_pool)
@@ -313,6 +317,10 @@ static vk_barrier_info gpu_state_to_vk_barrier[] = {
 
 void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
 					  vk_barrier_info from, vk_barrier_info to);
+
+bool vk_transition_to_present(vk_api_state* state, gpu_frame* frame);
+
+bool vk_submit_frame_cmd(vk_api_state* state, gpu_frame* frame);
 
 /* ===========================================================================
  * Utils & conversion
