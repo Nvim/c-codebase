@@ -128,6 +128,19 @@ int main(void) {
 		.bytes = pixels,
 	};
 
+	{ // [TODO]: temp
+		gpu_command_buffer cmd = gpu.create_command_buffer(&gpu);
+		ASSERT(check_handle(cmd.handle));
+		gpu.submit_command_buffer(&gpu, cmd);
+		gpu.destroy_command_buffer(&gpu, cmd);
+	}
+
+	{ // [TODO]: temp
+		gpu_sampler_ci ci = {0};
+		gpu_sampler sampler = gpu.create_sampler(&gpu, &ci);
+		gpu.destroy_sampler(&gpu, sampler);
+	}
+
 	uint32_t frame_count = 0;
 	while (!_quit) {
 		if (frame_count++ > 12) { break; }

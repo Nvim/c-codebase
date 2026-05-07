@@ -414,4 +414,10 @@ VkFrontFace gpu_to_vk_winding(gpu_winding w);
 
 VkImageViewType gpu_to_vk_image_type(gpu_image_type t);
 
+VkFilter gpu_to_vk_filter(gpu_sampler_filter_mode f);
+
+VkSamplerMipmapMode gpu_to_vk_mipmap_mode(gpu_sampler_mipmap_mode m);
+
+VkSamplerAddressMode gpu_to_vk_address_mode(gpu_sampler_address_mode);
+
 #endif // !VULKAN_UTIL_H

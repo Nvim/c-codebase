@@ -102,12 +102,14 @@ typedef struct gpu_shader_ci {
 
 // clang-format off
 typedef struct { pool_handle handle; } gpu_image;
-typedef struct { pool_handle handle; } gpu_sampler;
 typedef struct { pool_handle handle; } gpu_buffer;
 typedef struct { pool_handle handle; } gpu_command_buffer;
 typedef struct { pool_handle handle; } gpu_shader;
 typedef struct { pool_handle handle; } gpu_pipeline;
+typedef struct { void* internal; } gpu_sampler;
 typedef struct { void* internal; } gpu_image_view;
+typedef struct { void* internal; } gpu_fence;
+typedef struct { void* internal; } gpu_semaphore;
 // clang-format on
 
 typedef struct gpu_frame {
@@ -304,6 +306,11 @@ typedef struct gpu_texture {
 	gpu_sampler sampler;
 } gpu_texture;
 
+typedef struct gpu_frame_result {
+	gpu_frame frame;
+	bool ok;
+} gpu_frame_result;
+
 /* ========================================================================== */
 typedef struct gpu_api_config {
 	gpu_api_type type;
@@ -313,11 +320,6 @@ typedef struct gpu_api_config {
 	// TODO: depth format
 	// TODO: vsync mode
 } gpu_api_config;
-
-typedef struct gpu_frame_result {
-	gpu_frame frame;
-	bool ok;
-} gpu_frame_result;
 
 /**
  * @typedef graphics_api_init_info
@@ -389,15 +391,6 @@ typedef struct gpu_api {
 	bool (*cmd_transition_image)(struct gpu_api*, gpu_command_buffer, gpu_image,
 								 gpu_image_state new_state);
 
-	/**
-	 * @brief End standalone command buffer, and submit it to GPU for
-	 * execution.
-	 * @param cmd The command buffer to end. Must NOT be associated with a
-	 * gpu_frame.
-	 *
-	 */
-	void (*cmd_submit)(struct gpu_api*, gpu_command_buffer cmd);
-
 	void (*cmd_set_viewport)(struct gpu_api*, gpu_command_buffer,
 							 gpu_image_extent extent);
 	void (*cmd_set_scissor)(struct gpu_api*, gpu_command_buffer,
@@ -439,6 +432,27 @@ typedef struct gpu_api {
 
 	gpu_sampler (*create_sampler)(struct gpu_api*, gpu_sampler_ci*);
 	void (*destroy_sampler)(struct gpu_api*, gpu_sampler);
+
+	gpu_command_buffer (*create_command_buffer)(struct gpu_api*);
+
+	/**
+	 * @brief End standalone command buffer, and submit it to GPU for
+	 * execution.
+	 * @param cmd The command buffer to end. Must NOT be associated with a
+	 * gpu_frame.
+	 *
+	 */
+	bool (*submit_command_buffer)(struct gpu_api*, gpu_command_buffer cmd);
+	bool (*submit_command_buffer_fence)(struct gpu_api*, gpu_command_buffer cmd,
+										gpu_fence* out);
+	void (*destroy_command_buffer)(struct gpu_api*, gpu_command_buffer);
+
+	gpu_fence (*create_fence)(struct gpu_api*, bool create_signalled);
+	bool (*wait_fence)(struct gpu_api*, gpu_fence, uint64_t timeout_ns);
+	void (*destroy_fence)(struct gpu_api*, gpu_fence);
+
+	gpu_semaphore (*create_semaphore)(struct gpu_api*, bool create_signalled);
+	void (*destroy_semaphore)(struct gpu_api*);
 
 	// gpu_texture (*create_texture)(struct gpu_api*, gpu_image_view*,
 	// 							  gpu_sampler);

@@ -746,3 +746,25 @@ VkImageViewType gpu_to_vk_image_type(gpu_image_type t) {
 	}
 	ASSERT(false);
 }
+
+VkFilter gpu_to_vk_filter(gpu_sampler_filter_mode f) {
+	switch (f) {
+	case GPU_SAMPLER_FILTER_NEAREST: return VK_FILTER_NEAREST;
+	case GPU_SAMPLER_FILTER_LINEAR: return VK_FILTER_LINEAR;
+	}
+}
+VkSamplerMipmapMode gpu_to_vk_mipmap_mode(gpu_sampler_mipmap_mode m) {
+	switch (m) {
+	case GPU_SAMPLER_MIPMAP_NEAREST: return VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	case GPU_SAMPLER_MIPMAP_LINEAR: return VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	}
+}
+VkSamplerAddressMode gpu_to_vk_address_mode(gpu_sampler_address_mode m) {
+	switch (m) {
+	case GPU_SAMPLER_ADRESS_REPEAT: return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	case GPU_SAMPLER_ADRESS_REPEAT_MIRROR:
+		return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+	case GPU_SAMPLER_ADRESS_CLAMP:
+		return VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
+	}
+}

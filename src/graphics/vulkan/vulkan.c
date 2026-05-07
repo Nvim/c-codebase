@@ -662,17 +662,224 @@ bool vulkan_cmd_transition_image(gpu_api* self, gpu_command_buffer cmd_handle,
 	return true;
 }
 
-void vulkan_cmd_submit(struct gpu_api* self, gpu_command_buffer cmd) {
+gpu_command_buffer vulkan_create_command_buffer(struct gpu_api* self) {
+	vk_api_state* state = self->state;
+	gpu_command_buffer ret = {.handle = POOL_INVALID_HANDLE};
+
+	VkCommandBufferAllocateInfo alloc_info = {0};
+	{
+		alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		alloc_info.commandBufferCount = 1;
+		alloc_info.commandPool = state->command_pool;
+		alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	}
+
+	VkCommandBuffer cmd_buf;
+	if (!check_result(
+			vkAllocateCommandBuffers(state->device, &alloc_info, &cmd_buf))) {
+		LOG_ERR("vulkan_create_command_buffer: couldn't create command buffer");
+		return ret;
+	}
+
+	VkCommandBufferBeginInfo begin_info = {0};
+	{
+		begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	}
+	if (!check_result(vkBeginCommandBuffer(cmd_buf, &begin_info))) {
+		LOG_ERR("vulkan_create_command_buffer: couldn't begin command buffer");
+		return ret;
+	}
+
+	vk_cmdbuf_data data = {0};
+	{
+		data.command_buffer = cmd_buf;
+		data.flags = CMDBUF_FLAG_USER;
+		data.state = CMDBUF_RECORDING;
+	}
+
+	vk_cmdbuf_pool_handle h = vk_cmdbuf_pool_new(state->cmd_pool, &data);
+	ret.handle = vk_cmdbuf_pool_unwrap(h);
+	return ret;
+}
+
+void vulkan_destroy_command_buffer(gpu_api* self, gpu_command_buffer cmd) {
 	vk_api_state* state = self->state;
 
 	vk_cmdbuf_data* cmd_data =
 		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
-	ASSERT(cmd_data->state == CMDBUF_RECORDING);
-	ASSERT(cmd_data->flags && !(cmd_data->flags & CMDBUF_FLAG_FRAME));
-	UNUSED VkCommandBuffer cmd_buf = cmd_data->command_buffer;
 
-	// [TODO]: implement. semaphores abstraction?
-	ASSERT(false);
+	if (!cmd_data) {
+		LOG_ERR("vulkan_destroy_command_buffer: invalid handle");
+		return;
+	}
+
+	if (cmd_data->state != CMDBUF_ENDED) {
+		LOG_ERR("vulkan_destroy_command_buffer: can't destroy pending command "
+				"buffer");
+		return;
+	}
+
+	if ((cmd_data->flags & CMDBUF_FLAG_FRAME)) {
+		LOG_ERR("vulkan_destroy_command_buffer: can't destroy frame command "
+				"buffer");
+		return;
+	}
+
+	vk_cmdbuf_pool_release(state->cmd_pool, to_vk_cmdbuf(cmd));
+}
+
+bool vulkan_submit_command_buffer(struct gpu_api* self,
+								  gpu_command_buffer cmd) {
+	vk_api_state* state = self->state;
+
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
+
+	if (!cmd_data || cmd_data->state != CMDBUF_RECORDING ||
+		(cmd_data->flags & CMDBUF_FLAG_FRAME)) {
+		LOG_ERR("vulkan_submit_command_buffer: invalid command buffer");
+		return false;
+	}
+	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
+
+	if (!check_result(vkEndCommandBuffer(cmd_buf))) {
+		LOG_ERR("vulkan_submit_command_buffer: couldn't end command buffer");
+		return false;
+	}
+	cmd_data->state = CMDBUF_ENDED;
+	VkCommandBufferSubmitInfo cmd_info = {0};
+	{
+		cmd_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+		cmd_info.commandBuffer = cmd_buf;
+		cmd_info.deviceMask = 0;
+	}
+
+	VkFence fence;
+	VkFenceCreateInfo fence_ci = {
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+	};
+
+	if (!check_result(vkCreateFence(state->device, &fence_ci, NULL, &fence))) {
+		LOG_ERR("vulkan_submit_command_buffer: couldn't create fence");
+		return false;
+	}
+
+	VkSubmitInfo2 submit_info = {0};
+	{
+		submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+		submit_info.commandBufferInfoCount = 1;
+		submit_info.pCommandBufferInfos = &cmd_info;
+	}
+	if (!check_result(vkQueueSubmit2(state->queue, 1, &submit_info, fence))) {
+		LOG_ERR("vulkan_submit_command_buffer: couldn't submit");
+		return false;
+	}
+
+	static uint64_t const fence_timeout = sec_to_ns(1);
+	if (!check_result(vkWaitForFences(state->device, 1, &fence, VK_TRUE,
+									  fence_timeout))) {
+		LOG_ERR("vulkan_submit_command_buffer: couldn't wait for fence");
+		return false;
+	}
+
+	vkDestroyFence(state->device, fence, NULL);
+	return true;
+}
+
+bool vulkan_submit_command_buffer_fence(struct gpu_api* self,
+										gpu_command_buffer cmd,
+										gpu_fence* out_fence) {
+	vk_api_state* state = self->state;
+
+	if (!out_fence || !out_fence->internal) {
+		LOG_ERR("vulkan_submit_command_buffer_fence: invalid fence");
+		return false;
+	}
+
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
+
+	if (!cmd_data || cmd_data->state != CMDBUF_RECORDING ||
+		!(cmd_data->flags & CMDBUF_FLAG_FRAME)) {
+		LOG_ERR("vulkan_submit_command_buffer_fence: invalid command buffer");
+		return false;
+	}
+	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
+	VkFence fence = out_fence->internal;
+
+	if (!check_result(vkEndCommandBuffer(cmd_buf))) {
+		LOG_ERR("vulkan_submit_command_buffer: couldn't end command buffer");
+		return false;
+	}
+	cmd_data->state = CMDBUF_ENDED;
+	VkCommandBufferSubmitInfo cmd_info = {0};
+	{
+		cmd_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+		cmd_info.commandBuffer = cmd_buf;
+		cmd_info.deviceMask = 0;
+	}
+
+	VkSubmitInfo2 submit_info = {0};
+	{
+		submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+		submit_info.commandBufferInfoCount = 1;
+		submit_info.pCommandBufferInfos = &cmd_info;
+	}
+	if (!check_result(vkQueueSubmit2(state->queue, 1, &submit_info, fence))) {
+		LOG_ERR("vulkan_submit_command_buffer_fence: couldn't submit");
+		return false;
+	}
+
+	return true;
+}
+
+gpu_fence vulkan_create_fence(struct gpu_api* self, bool create_signalled) {
+	vk_api_state* state = self->state;
+	gpu_fence ret = {0};
+	VkFence fence;
+
+	VkFenceCreateInfo fence_ci = {
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+		.flags = create_signalled ? VK_FENCE_CREATE_SIGNALED_BIT : 0,
+	};
+
+	if (!check_result(vkCreateFence(state->device, &fence_ci, NULL, &fence))) {
+		LOG_ERR("vulkan_temp_copy_to_image: couldn't create fence");
+		return ret;
+	}
+
+	ret.internal = fence;
+	return ret;
+}
+
+bool vulkan_wait_fence(struct gpu_api* self, gpu_fence gpu_fence,
+					   uint64_t timeout_ns) {
+	vk_api_state* state = self->state;
+	VkFence fence = gpu_fence.internal;
+
+	if (!fence) {
+		LOG_ERR("vulkan_wait_fence: invalid fence");
+		return false;
+	}
+
+	if (!check_result(
+			vkWaitForFences(state->device, 1, &fence, VK_TRUE, timeout_ns))) {
+		LOG_ERR("vulkan_wait_fence: couldn't wait for fence");
+		return false;
+	}
+
+	return true;
+}
+
+void vulkan_destroy_fence(struct gpu_api* self, gpu_fence gpu_fence) {
+	vk_api_state* state = self->state;
+	VkFence fence = gpu_fence.internal;
+	if (!fence) {
+		LOG_ERR("vulkan_destroy_fence: invalid fence");
+		return;
+	}
+	vkDestroyFence(state->device, fence, NULL);
 }
 
 bool vulkan_end_frame(gpu_api* self, gpu_frame* f) {
@@ -846,6 +1053,45 @@ bool vulkan_get_image_full_view(struct gpu_api* self, gpu_image_view* out,
 
 	out->internal = vk_img->full_view;
 	return true;
+}
+
+gpu_sampler vulkan_create_sampler(struct gpu_api* self, gpu_sampler_ci* ci) {
+	vk_api_state* state = self->state;
+	gpu_sampler ret = {0};
+
+	VkSampler s;
+	VkSamplerCreateInfo vk_ci = {0};
+	{
+		vk_ci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+		vk_ci.addressModeU = gpu_to_vk_address_mode(ci->address_mode_u);
+		vk_ci.addressModeV = gpu_to_vk_address_mode(ci->address_mode_v);
+		vk_ci.addressModeW = gpu_to_vk_address_mode(ci->address_mode_w);
+		vk_ci.mipmapMode = gpu_to_vk_mipmap_mode(ci->mipmap_mode);
+		vk_ci.minFilter = gpu_to_vk_filter(ci->min_filter);
+		vk_ci.magFilter = gpu_to_vk_filter(ci->mag_filter);
+		vk_ci.maxLod = VK_LOD_CLAMP_NONE;
+	}
+
+	if (!check_result(vkCreateSampler(state->device, &vk_ci, NULL, &s))) {
+		LOG_ERR("vulkan_create_sampler: couldn't create sampler");
+		return ret;
+	}
+
+	ret.internal = s;
+
+	return ret;
+}
+
+void vulkan_destroy_sampler(struct gpu_api* self, gpu_sampler sampler_handle) {
+	vk_api_state* state = self->state;
+	VkSampler s = sampler_handle.internal;
+
+	if (!s) {
+		LOG_ERR("vulkan_destroy_sampler: invalid sampler handle");
+		return;
+	}
+
+	vkDestroySampler(state->device, s, NULL);
 }
 
 gpu_shader vulkan_create_shader(struct gpu_api* self, gpu_shader_ci* ci) {
@@ -1233,7 +1479,7 @@ bool vulkan_temp_create_image(struct gpu_api* self,
 		alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 		alloc_info.commandBufferCount = 1;
 		alloc_info.commandPool = state->command_pool;
-		alloc_info.level = 0;
+		alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	}
 	VkCommandBuffer cmd_buf;
 	if (!check_result(
@@ -1359,7 +1605,7 @@ bool vulkan_temp_create_image(struct gpu_api* self,
 	static uint64_t const fence_timeout = sec_to_ns(1);
 	if (!check_result(vkWaitForFences(state->device, 1, &fence, VK_TRUE,
 									  fence_timeout))) {
-		LOG_ERR("vulkan_temp_copy_to_image: couldn't create fence");
+		LOG_ERR("vulkan_temp_copy_to_image: couldn't wait for fence");
 		return false;
 	}
 
@@ -1410,7 +1656,6 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->cmd_begin_rendering = vulkan_cmd_begin_rendering;
 		out->cmd_end_rendering = vulkan_cmd_end_rendering;
 		out->cmd_transition_image = vulkan_cmd_transition_image;
-		out->cmd_submit = vulkan_cmd_submit;
 		out->cmd_set_viewport = vulkan_cmd_set_viewport;
 		out->cmd_set_scissor = vulkan_cmd_set_scissor;
 		out->cmd_reset_viewport = vulkan_cmd_reset_viewport;
@@ -1431,6 +1676,17 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->get_image_extent = vulkan_get_image_extent;
 		out->get_image_format = vulkan_get_image_format;
 		out->get_image_full_view = vulkan_get_image_full_view;
+		out->create_sampler = vulkan_create_sampler;
+		out->destroy_sampler = vulkan_destroy_sampler;
+		out->create_command_buffer = vulkan_create_command_buffer;
+		out->submit_command_buffer = vulkan_submit_command_buffer;
+		out->submit_command_buffer_fence = vulkan_submit_command_buffer_fence;
+		out->destroy_command_buffer = vulkan_destroy_command_buffer;
+		out->create_fence = vulkan_create_fence;
+		out->wait_fence = vulkan_wait_fence;
+		out->destroy_fence = vulkan_destroy_fence;
+		out->create_semaphore = NULL;
+		out->destroy_semaphore = NULL;
 	}
 
 	return true;
