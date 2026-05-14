@@ -82,13 +82,6 @@ typedef uint32_t gpu_image_usage;
 // clang-format on
 
 typedef enum {
-	GPU_BUFFER_USAGE_INDEX,
-	GPU_BUFFER_USAGE_STORAGE,
-	GPU_BUFFER_USAGE_UNIFORM,
-	GPU_BUFFER_USAGE_INDIRECT,
-} gpu_buffer_usage;
-
-typedef enum {
 	GPU_SHADER_VERTEX,
 	GPU_SHADER_FRAGMENT,
 	GPU_SHADER_COMPUTE,
@@ -235,6 +228,21 @@ typedef struct {
 	// [TODO]: maybe vertex (only bindless buffer device address for now)
 } gpu_pipeline_ci;
 
+typedef enum gpu_data_format {
+	GPU_DATA_ARRAY,
+	GPU_DATA_SPAN,
+} gpu_data_format;
+
+// Used for copying data to/from staging buffers:
+typedef struct gpu_data_payload {
+	gpu_data_format data_format;
+	union {
+		array_t array;
+		span span;
+	} data;
+	size_t offset;
+} gpu_data_payload;
+
 typedef enum gpu_sampler_filter_mode {
 	GPU_SAMPLER_FILTER_NEAREST,
 	GPU_SAMPLER_FILTER_LINEAR,
@@ -306,6 +314,37 @@ typedef struct gpu_texture {
 	gpu_sampler sampler;
 } gpu_texture;
 
+typedef enum {
+	GPU_BUFFER_USAGE_INDEX,
+	GPU_BUFFER_USAGE_STORAGE,
+	GPU_BUFFER_USAGE_INDIRECT,
+	GPU_BUFFER_USAGE_STAGING_UP,
+	GPU_BUFFER_USAGE_STAGING_DOWN,
+} gpu_buffer_usage;
+
+typedef enum {
+	GPU_BUFFER_MEMORY_GPU,	  // Device only, uploads will go through staging.
+	GPU_BUFFER_MEMORY_MAPPED, // CPU-mapped, uploads are memcpy calls.
+} gpu_buffer_memory;
+
+typedef struct gpu_buffer_ci {
+	gpu_buffer_usage usage;
+	gpu_buffer_memory memory_preference;
+} gpu_buffer_ci;
+
+typedef struct gpu_buffer_copy_info {
+	size_t size;
+	gpu_buffer src;
+	size_t src_offset;
+	gpu_buffer dst;
+	size_t dst_offset;
+} gpu_buffer_copy_info;
+
+typedef struct gpu_buffer_map_result {
+	bool ok;
+	void* ptr;
+} gpu_buffer_map_result;
+
 typedef struct gpu_frame_result {
 	gpu_frame frame;
 	bool ok;
@@ -364,7 +403,7 @@ typedef struct gpu_api {
 
 	void (*wait_idle)(struct gpu_api*);
 
-	/*== Frame Flow ==*/
+	/* == Frame Flow ======================================================== */
 	/**
 	 * @brief Begin a new frame. Previous frame must have been ended.
 	 *
@@ -382,14 +421,6 @@ typedef struct gpu_api {
 	 * @brief End rendering. It must have been begun beforehand.
 	 */
 	void (*cmd_end_rendering)(struct gpu_api*, gpu_command_buffer);
-
-	/**
-	 * @brief Specify a new usage for image. Image has to have been created
-	 * with support the new usage.
-	 *
-	 */
-	bool (*cmd_transition_image)(struct gpu_api*, gpu_command_buffer, gpu_image,
-								 gpu_image_state new_state);
 
 	void (*cmd_set_viewport)(struct gpu_api*, gpu_command_buffer,
 							 gpu_image_extent extent);
@@ -414,13 +445,36 @@ typedef struct gpu_api {
 	 */
 	bool (*end_frame)(struct gpu_api*, gpu_frame*);
 
-	/*== Resource Management ==*/
+	/* == Shaders & Pipelines ================================================*/
 	gpu_shader (*create_shader)(struct gpu_api*, gpu_shader_ci*);
 	void (*destroy_shader)(struct gpu_api*, gpu_shader);
 
 	gpu_pipeline (*create_pipeline)(struct gpu_api*, gpu_pipeline_ci*);
 	void (*destroy_pipeline)(struct gpu_api*, gpu_pipeline);
 
+	/* == Buffers ============================================================*/
+	gpu_buffer (*create_buffer)(struct gpu_api*, gpu_buffer_ci*);
+	void (*destroy_buffer)(struct gpu_api*, gpu_buffer);
+	gpu_buffer_map_result (*buffer_get_mapped)(struct gpu_api*, gpu_buffer);
+
+	/**
+	 * @brief Copies data from RAM to a mapped buffer.
+	 *
+	 * @param dst Target buffer, must have GPU_BUFFER_USAGE_STAGING_UP usage.
+	 * @param data The data to copy from CPU memory
+	 */
+	bool (*copy_to_staging_buffer)(struct gpu_api*, gpu_buffer dst,
+								   gpu_data_payload data);
+
+	/**
+	 * @brief Record a buffer-to-buffer copy command.
+	 *
+	 * @param info Copy parameters. 'src' must have GPU_BUFFER_USAGE_STAGING_UP,
+	 * and buffers must be large enough.
+	 */
+	bool (*cmd_copy_to_buffer)(struct gpu_api*, gpu_buffer_copy_info info);
+
+	/* == Images =============================================================*/
 	gpu_image (*create_image)(struct gpu_api*, gpu_image_ci*);
 	void (*destroy_image)(struct gpu_api*, gpu_image);
 	bool (*create_image_view)(struct gpu_api*, gpu_image_view* out,
@@ -430,11 +484,19 @@ typedef struct gpu_api {
 							   image_data);
 	void (*temp_set_image_desc)(struct gpu_api*, gpu_image_view);
 
+	/**
+	 * @brief Specify a new usage for image. Image has to have been created
+	 * with support the new usage.
+	 *
+	 */
+	bool (*cmd_transition_image)(struct gpu_api*, gpu_command_buffer, gpu_image,
+								 gpu_image_state new_state);
 	gpu_sampler (*create_sampler)(struct gpu_api*, gpu_sampler_ci*);
 	void (*destroy_sampler)(struct gpu_api*, gpu_sampler);
 
 	gpu_command_buffer (*create_command_buffer)(struct gpu_api*);
 
+	/* == Command Buffer and Sync ============================================*/
 	/**
 	 * @brief End standalone command buffer, and submit it to GPU for
 	 * execution.
@@ -454,12 +516,7 @@ typedef struct gpu_api {
 	gpu_semaphore (*create_semaphore)(struct gpu_api*, bool create_signalled);
 	void (*destroy_semaphore)(struct gpu_api*);
 
-	// gpu_texture (*create_texture)(struct gpu_api*, gpu_image_view*,
-	// 							  gpu_sampler);
-	// gpu_texture (*load_texture)(struct gpu_api*, path image_path,
-	// 							gpu_sampler /* , TODO */);
-
-	/*== Getters ==*/
+	/* == Getters =========================================================== */
 	gpu_image_extent (*get_image_extent)(struct gpu_api*, gpu_image);
 	gpu_image_format (*get_image_format)(struct gpu_api*, gpu_image);
 	bool (*get_image_full_view)(struct gpu_api*, gpu_image_view* out,

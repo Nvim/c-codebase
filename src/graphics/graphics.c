@@ -123,3 +123,36 @@ bool gpu_validate_image_ci(gpu_image_ci* ci) {
 
 	return true;
 }
+
+static bool is_staging(gpu_buffer_usage usage) {
+	return (usage == GPU_BUFFER_USAGE_STAGING_DOWN ||
+			usage == GPU_BUFFER_USAGE_STAGING_UP);
+}
+
+bool gpu_validate_buffer_ci(gpu_buffer_ci* ci) {
+	if (!ci) {
+		LOG_ERR("gpu_validate_buffer_ci: invalid parameter");
+		return false;
+	}
+
+	if (ci->usage == GPU_BUFFER_USAGE_INDIRECT ||
+		ci->usage == GPU_BUFFER_USAGE_STAGING_DOWN) {
+		LOG_ERR("gpu_validate_buffer_ci: unsupported usage");
+		return false;
+	}
+
+	if (ci->usage == GPU_BUFFER_USAGE_INDEX &&
+		ci->memory_preference == GPU_BUFFER_MEMORY_MAPPED) {
+		LOG_WARN("gpu_validate_buffer_ci: ignoring memory preference for index "
+				 "buffer");
+		ci->memory_preference = GPU_BUFFER_MEMORY_GPU;
+	}
+
+	if (is_staging(ci->usage) &&
+		ci->memory_preference == GPU_BUFFER_MEMORY_GPU) {
+		LOG_WARN("gpu_validate_buffer_ci: ignoring memory preference for "
+				 "staging buffer");
+		ci->memory_preference = GPU_BUFFER_MEMORY_MAPPED;
+	}
+	return true;
+}

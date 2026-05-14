@@ -30,6 +30,11 @@ static inline size_t next_power_of_two(size_t n) {
  */
 #define countof(arr) (sizeof(arr) / sizeof(*(arr)))
 
+typedef struct span {
+	void* data;
+	size_t size;
+} span;
+
 /**
  * @brief: rounds value up to next alignment multiple
  * @note alignment must be a non-zero power of two.

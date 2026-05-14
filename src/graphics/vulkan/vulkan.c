@@ -1593,44 +1593,65 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->is_init = false;
 		out->name = config.app_name;
 		out->config = config;
+
 		out->initialize = vulkan_initialize;
 		out->destroy = vulkan_destroy;
 		out->wait_idle = vulkan_wait_idle;
+
+		/* == Frame Flow ==================================================== */
 		out->begin_frame = vulkan_begin_frame;
 		out->cmd_begin_rendering = vulkan_cmd_begin_rendering;
 		out->cmd_end_rendering = vulkan_cmd_end_rendering;
-		out->cmd_transition_image = vulkan_cmd_transition_image;
 		out->cmd_set_viewport = vulkan_cmd_set_viewport;
 		out->cmd_set_scissor = vulkan_cmd_set_scissor;
 		out->cmd_reset_viewport = vulkan_cmd_reset_viewport;
 		out->cmd_reset_scissor = vulkan_cmd_reset_scissor;
-		out->cmd_bind_pipeline = vulkan_cmd_bind_pipeline;
 		out->cmd_draw = vulkan_cmd_draw;
 		out->end_frame = vulkan_end_frame;
+
+		/* == Shaders & Pipelines ============================================*/
 		out->create_shader = vulkan_create_shader;
 		out->destroy_shader = vulkan_destroy_shader;
+		out->create_pipeline = vulkan_create_pipeline;
+		out->destroy_pipeline = vulkan_destroy_pipeline;
+		out->cmd_bind_pipeline = vulkan_cmd_bind_pipeline;
+
+		/* == Buffers ========================================================*/
+		out->create_buffer = NULL;
+		out->destroy_buffer = NULL;
+		out->buffer_get_mapped = NULL;
+		out->copy_to_staging_buffer = NULL;
+		out->cmd_copy_to_buffer = NULL;
+
+		/* == Images =========================================================*/
 		out->create_image = vulkan_create_image;
 		out->destroy_image = vulkan_destroy_image;
 		out->create_image_view = vulkan_create_image_view;
 		out->destroy_image_view = vulkan_destroy_image_view;
 		out->temp_copy_to_image = vulkan_temp_copy_to_image;
 		out->temp_set_image_desc = vulkan_temp_set_image_desc;
-		out->create_pipeline = vulkan_create_pipeline;
-		out->destroy_pipeline = vulkan_destroy_pipeline;
-		out->get_image_extent = vulkan_get_image_extent;
-		out->get_image_format = vulkan_get_image_format;
-		out->get_image_full_view = vulkan_get_image_full_view;
+		out->cmd_transition_image = vulkan_cmd_transition_image;
+
 		out->create_sampler = vulkan_create_sampler;
 		out->destroy_sampler = vulkan_destroy_sampler;
+
+		/* == Command Buffer and Sync ========================================*/
 		out->create_command_buffer = vulkan_create_command_buffer;
 		out->submit_command_buffer = vulkan_submit_command_buffer;
 		out->submit_command_buffer_fence = vulkan_submit_command_buffer_fence;
 		out->destroy_command_buffer = vulkan_destroy_command_buffer;
+
 		out->create_fence = vulkan_create_fence;
 		out->wait_fence = vulkan_wait_fence;
 		out->destroy_fence = vulkan_destroy_fence;
+
 		out->create_semaphore = NULL;
 		out->destroy_semaphore = NULL;
+
+		/* == Getters ======================================================= */
+		out->get_image_extent = vulkan_get_image_extent;
+		out->get_image_format = vulkan_get_image_format;
+		out->get_image_full_view = vulkan_get_image_full_view;
 	}
 
 	return true;
