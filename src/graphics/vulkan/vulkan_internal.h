@@ -214,6 +214,10 @@ typedef struct vk_api_state {
 	vk_shader_pool shader_pool;
 	vk_pipeline_pool pipeline_pool;
 
+	// [TODO]: Temp
+	VkBuffer staging_buffer;
+	VmaAllocation staging_buffer_alloc;
+	VmaAllocationInfo staging_buffer_info;
 } vk_api_state;
 
 vk_render_sync* vk_get_current_sync(vk_api_state* state);

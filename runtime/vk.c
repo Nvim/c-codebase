@@ -128,11 +128,20 @@ int main(void) {
 		.bytes = pixels,
 	};
 
-	{ // [TODO]: temp
+	{ // copy to image and wait
 		gpu_command_buffer cmd = gpu.create_command_buffer(&gpu);
 		ASSERT(check_handle(cmd.handle));
-		gpu.submit_command_buffer(&gpu, cmd);
+		gpu.cmd_transition_image(&gpu, cmd, test_image,
+								 GPU_IMAGE_STATE_TRANSFER_DST);
+		ASSERT(gpu.temp_copy_to_image(&gpu, cmd, test_image, test_image_data));
+		gpu.cmd_transition_image(&gpu, cmd, test_image,
+								 GPU_IMAGE_STATE_SHADER_READ);
+		gpu_fence fence = gpu.create_fence(&gpu, false);
+		ASSERT(gpu.submit_command_buffer_fence(&gpu, cmd, &fence));
+		ASSERT(gpu.wait_fence(&gpu, fence, sec_to_ns(1)));
+
 		gpu.destroy_command_buffer(&gpu, cmd);
+		gpu.destroy_fence(&gpu, fence);
 	}
 
 	{ // [TODO]: temp
@@ -153,14 +162,8 @@ int main(void) {
 		gpu_frame frame = frame_res.frame;
 		gpu_command_buffer cmd = frame.frame_cmd;
 
-		// Copy pixel data to image on 1st frame only
 		if (frame_count == 1) {
-			gpu.cmd_transition_image(&gpu, cmd, test_image,
-									 GPU_IMAGE_STATE_TRANSFER_DST);
-			ASSERT(
-				gpu.temp_copy_to_image(&gpu, cmd, test_image, test_image_data));
-			gpu.cmd_transition_image(&gpu, cmd, test_image,
-									 GPU_IMAGE_STATE_SHADER_READ);
+			// Set image binding on 1st frame only
 			gpu.temp_set_image_desc(&gpu, full_view);
 		}
 
