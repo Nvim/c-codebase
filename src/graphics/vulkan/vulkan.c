@@ -24,6 +24,8 @@ ARRAY_DEFINE_TYPE(VkExtensionProperties, vk_ext_props_array)
 #define CMDBUF_POOL_SIZE 1024
 #define SHADER_POOL_SIZE 1024
 #define PIPELINE_POOL_SIZE 512
+#define BUFFER_POOL_SIZE 1024
+#define HANDLE_POOL_SIZE 1024
 
 static bool _is_vk_13(VkPhysicalDeviceProperties2 props) {
 	return props.properties.apiVersion >= VK_API_VERSION_1_3;
@@ -247,6 +249,8 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	state->cmd_pool = vk_cmdbuf_pool_create(arena, CMDBUF_POOL_SIZE);
 	state->shader_pool = vk_shader_pool_create(arena, SHADER_POOL_SIZE);
 	state->pipeline_pool = vk_pipeline_pool_create(arena, PIPELINE_POOL_SIZE);
+	state->buffer_pool = vk_buffer_pool_create(arena, BUFFER_POOL_SIZE);
+	state->handle_pool = vk_handle_pool_create(arena, HANDLE_POOL_SIZE);
 
 	ASSERT(state->image_pool.raw && state->cmd_pool.raw &&
 		   state->shader_pool.raw);
@@ -819,13 +823,17 @@ bool vulkan_submit_command_buffer(struct gpu_api* self,
 
 bool vulkan_submit_command_buffer_fence(struct gpu_api* self,
 										gpu_command_buffer cmd,
-										gpu_fence* out_fence) {
+										gpu_fence fence_handle) {
 	vk_api_state* state = self->state;
 
-	if (!out_fence || !out_fence->internal) {
-		LOG_ERR("vulkan_submit_command_buffer_fence: invalid fence");
+	vk_opaque_handle* h =
+		vk_handle_pool_get(state->handle_pool, to_vk_handle(fence_handle));
+
+	if (h->type != VK_OBJECT_TYPE_FENCE || !h->handle) {
+		LOG_ERR("vulkan_submit_command_buffer_fence: invalid fence handle");
 		return false;
 	}
+	VkFence fence = h->handle;
 
 	vk_cmdbuf_data* cmd_data =
 		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
@@ -836,7 +844,6 @@ bool vulkan_submit_command_buffer_fence(struct gpu_api* self,
 		return false;
 	}
 	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
-	VkFence fence = out_fence->internal;
 
 	if (!check_result(vkEndCommandBuffer(cmd_buf))) {
 		LOG_ERR("vulkan_submit_command_buffer: couldn't end command buffer");
@@ -879,19 +886,28 @@ gpu_fence vulkan_create_fence(struct gpu_api* self, bool create_signalled) {
 		return ret;
 	}
 
-	ret.internal = fence;
+	vk_opaque_handle handle = {
+		.handle = fence,
+		.type = VK_OBJECT_TYPE_FENCE,
+	};
+	vk_handle_pool_handle vk_ret =
+		vk_handle_pool_new(state->handle_pool, &handle);
+
+	ret.handle = vk_ret.raw_handle;
 	return ret;
 }
 
 bool vulkan_wait_fence(struct gpu_api* self, gpu_fence gpu_fence,
 					   uint64_t timeout_ns) {
 	vk_api_state* state = self->state;
-	VkFence fence = gpu_fence.internal;
+	vk_opaque_handle* h =
+		vk_handle_pool_get(state->handle_pool, to_vk_handle(gpu_fence));
 
-	if (!fence) {
-		LOG_ERR("vulkan_wait_fence: invalid fence");
+	if (h->type != VK_OBJECT_TYPE_FENCE || !h->handle) {
+		LOG_ERR("vulkan_wait_fence: invalid fence handle");
 		return false;
 	}
+	VkFence fence = h->handle;
 
 	if (!check_result(
 			vkWaitForFences(state->device, 1, &fence, VK_TRUE, timeout_ns))) {
@@ -904,11 +920,14 @@ bool vulkan_wait_fence(struct gpu_api* self, gpu_fence gpu_fence,
 
 void vulkan_destroy_fence(struct gpu_api* self, gpu_fence gpu_fence) {
 	vk_api_state* state = self->state;
-	VkFence fence = gpu_fence.internal;
-	if (!fence) {
+	vk_opaque_handle* h =
+		vk_handle_pool_get(state->handle_pool, to_vk_handle(gpu_fence));
+
+	if (h->type != VK_OBJECT_TYPE_FENCE || !h->handle) {
 		LOG_ERR("vulkan_destroy_fence: invalid fence");
 		return;
 	}
+	VkFence fence = h->handle;
 	vkDestroyFence(state->device, fence, NULL);
 }
 
@@ -1107,21 +1126,28 @@ gpu_sampler vulkan_create_sampler(struct gpu_api* self, gpu_sampler_ci* ci) {
 		return ret;
 	}
 
-	ret.internal = s;
+	vk_opaque_handle handle = {
+		.handle = s,
+		.type = VK_OBJECT_TYPE_SAMPLER,
+	};
+	vk_handle_pool_handle vk_ret =
+		vk_handle_pool_new(state->handle_pool, &handle);
 
+	ret.handle = vk_ret.raw_handle;
 	return ret;
 }
 
 void vulkan_destroy_sampler(struct gpu_api* self, gpu_sampler sampler_handle) {
 	vk_api_state* state = self->state;
-	VkSampler s = sampler_handle.internal;
+	vk_opaque_handle* h =
+		vk_handle_pool_get(state->handle_pool, to_vk_handle(sampler_handle));
 
-	if (!s) {
+	if (h->type != VK_OBJECT_TYPE_SAMPLER || !h->handle) {
 		LOG_ERR("vulkan_destroy_sampler: invalid sampler handle");
 		return;
 	}
 
-	vkDestroySampler(state->device, s, NULL);
+	vkDestroySampler(state->device, h->handle, NULL);
 }
 
 gpu_shader vulkan_create_shader(struct gpu_api* self, gpu_shader_ci* ci) {

@@ -12,6 +12,18 @@
 
 typedef struct window_t window_t;
 
+// clang-format off
+typedef struct { pool_handle handle; } gpu_image;
+typedef struct { pool_handle handle; } gpu_buffer;
+typedef struct { pool_handle handle; } gpu_command_buffer;
+typedef struct { pool_handle handle; } gpu_shader;
+typedef struct { pool_handle handle; } gpu_pipeline;
+typedef struct { pool_handle handle; } gpu_sampler;
+typedef struct { void* internal; } gpu_image_view; // [TODO]
+typedef struct { pool_handle handle; } gpu_fence;
+typedef struct { pool_handle handle; } gpu_semaphore;
+// clang-format on
+
 typedef struct image_data {
 	uint32_t width;
 	uint32_t height;
@@ -92,18 +104,6 @@ typedef struct gpu_shader_ci {
 	u8_array code;
 	string debug_name;
 } gpu_shader_ci;
-
-// clang-format off
-typedef struct { pool_handle handle; } gpu_image;
-typedef struct { pool_handle handle; } gpu_buffer;
-typedef struct { pool_handle handle; } gpu_command_buffer;
-typedef struct { pool_handle handle; } gpu_shader;
-typedef struct { pool_handle handle; } gpu_pipeline;
-typedef struct { void* internal; } gpu_sampler;
-typedef struct { void* internal; } gpu_image_view;
-typedef struct { void* internal; } gpu_fence;
-typedef struct { void* internal; } gpu_semaphore;
-// clang-format on
 
 typedef struct gpu_frame {
 	gpu_image framebuffer;
@@ -421,18 +421,12 @@ typedef struct gpu_api {
 	 * @brief End rendering. It must have been begun beforehand.
 	 */
 	void (*cmd_end_rendering)(struct gpu_api*, gpu_command_buffer);
-
 	void (*cmd_set_viewport)(struct gpu_api*, gpu_command_buffer,
 							 gpu_image_extent extent);
 	void (*cmd_set_scissor)(struct gpu_api*, gpu_command_buffer,
 							gpu_scissor scissor);
-
 	void (*cmd_reset_viewport)(struct gpu_api*, gpu_command_buffer);
 	void (*cmd_reset_scissor)(struct gpu_api*, gpu_command_buffer);
-
-	void (*cmd_bind_pipeline)(struct gpu_api*, gpu_command_buffer,
-							  gpu_pipeline);
-
 	void (*cmd_draw)(struct gpu_api*, gpu_command_buffer, uint32_t vertex_count,
 					 uint32_t instance_count, uint32_t first_vertex,
 					 uint32_t first_instance);
@@ -451,6 +445,8 @@ typedef struct gpu_api {
 
 	gpu_pipeline (*create_pipeline)(struct gpu_api*, gpu_pipeline_ci*);
 	void (*destroy_pipeline)(struct gpu_api*, gpu_pipeline);
+	void (*cmd_bind_pipeline)(struct gpu_api*, gpu_command_buffer,
+							  gpu_pipeline);
 
 	/* == Buffers ============================================================*/
 	gpu_buffer (*create_buffer)(struct gpu_api*, gpu_buffer_ci*);
@@ -491,12 +487,12 @@ typedef struct gpu_api {
 	 */
 	bool (*cmd_transition_image)(struct gpu_api*, gpu_command_buffer, gpu_image,
 								 gpu_image_state new_state);
+
 	gpu_sampler (*create_sampler)(struct gpu_api*, gpu_sampler_ci*);
 	void (*destroy_sampler)(struct gpu_api*, gpu_sampler);
 
-	gpu_command_buffer (*create_command_buffer)(struct gpu_api*);
-
 	/* == Command Buffer and Sync ============================================*/
+	gpu_command_buffer (*create_command_buffer)(struct gpu_api*);
 	/**
 	 * @brief End standalone command buffer, and submit it to GPU for
 	 * execution.
@@ -506,7 +502,7 @@ typedef struct gpu_api {
 	 */
 	bool (*submit_command_buffer)(struct gpu_api*, gpu_command_buffer cmd);
 	bool (*submit_command_buffer_fence)(struct gpu_api*, gpu_command_buffer cmd,
-										gpu_fence* out);
+										gpu_fence);
 	void (*destroy_command_buffer)(struct gpu_api*, gpu_command_buffer);
 
 	gpu_fence (*create_fence)(struct gpu_api*, bool create_signalled);

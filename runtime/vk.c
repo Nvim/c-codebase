@@ -137,7 +137,7 @@ int main(void) {
 		gpu.cmd_transition_image(&gpu, cmd, test_image,
 								 GPU_IMAGE_STATE_SHADER_READ);
 		gpu_fence fence = gpu.create_fence(&gpu, false);
-		ASSERT(gpu.submit_command_buffer_fence(&gpu, cmd, &fence));
+		ASSERT(gpu.submit_command_buffer_fence(&gpu, cmd, fence));
 		ASSERT(gpu.wait_fence(&gpu, fence, sec_to_ns(1)));
 
 		gpu.destroy_command_buffer(&gpu, cmd);

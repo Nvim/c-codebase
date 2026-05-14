@@ -88,6 +88,30 @@ typedef struct vk_pipeline_data {
 POOL_DEFINE_TYPE(vk_pipeline_data, vk_pipeline_pool)
 #define VK_PIPELINEPOOL_INVALID (vk_pipeline_pool_handle){.raw_handle = 0}
 
+typedef struct vk_buffer_data {
+	VkBuffer buffer;
+	VmaAllocation alloc;
+	VmaAllocationInfo alloc_info;
+	VkBufferUsageFlagBits2 usage_flags;
+} vk_buffer_data;
+
+POOL_DEFINE_TYPE(vk_buffer_data, vk_buffer_pool)
+#define VK_BUFFERPOOL_INVALID(vk_buffer_pool_handle) {.raw_handle = 0}
+
+/**
+ * @typedef vk_opaque_handle
+ * @brief Type-erased vulkan handle, use for storing Vulkan objects of different
+ * types in a common pool.
+ *
+ */
+typedef struct vk_opaque_handle {
+	VkObjectType type;
+	void* handle;
+} vk_opaque_handle;
+
+POOL_DEFINE_TYPE(vk_opaque_handle, vk_handle_pool)
+#define VK_HANDLEPOOL_INVALID(vk_handle_pool) {.raw_handle = 0}
+
 /* ============================================================================
  * Types
  * ========================================================================== */
@@ -213,6 +237,8 @@ typedef struct vk_api_state {
 	vk_cmdbuf_pool cmd_pool;
 	vk_shader_pool shader_pool;
 	vk_pipeline_pool pipeline_pool;
+	vk_buffer_pool buffer_pool;
+	vk_handle_pool handle_pool;
 
 	// [TODO]: Temp
 	VkBuffer staging_buffer;
@@ -377,10 +403,11 @@ static inline vk_pipeline_pool_handle to_vk_pipeline(gpu_pipeline handle) {
 	return vk_pipeline_pool_wrap(handle.handle);
 }
 
-// static inline vk_image_view_pool_handle
-// to_vk_image_view(gpu_image_view handle) {
-// 	return vk_image_view_pool_wrap(handle.handle);
-// }
+static inline vk_buffer_pool_handle to_vk_buffer(gpu_buffer handle) {
+	return vk_buffer_pool_wrap(handle.handle);
+}
+
+#define to_vk_handle(h) vk_handle_pool_wrap(h.handle)
 
 VkImageSubresourceRange vk_full_subresource_range(VkImageUsageFlagBits usage,
 												  uint32_t layers,
