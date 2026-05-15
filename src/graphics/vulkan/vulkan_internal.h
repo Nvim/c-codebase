@@ -135,6 +135,9 @@ typedef struct vk_swapchain {
 	uint32_t img_index; // [NOTE]: This is reset every frame
 	VkFormat img_format;
 	VkSwapchainCreateInfoKHR ci;
+
+	vk_image_pool image_pool;
+	pool_handle_array images_pool_handles;
 } vk_swapchain;
 
 typedef enum {
@@ -150,7 +153,8 @@ typedef struct {
 
 bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
 						 vk_surface* surface, uint32_t width, uint32_t height,
-						 uint32_t min_image_count, VkFormat image_format);
+						 uint32_t min_image_count, VkFormat image_format,
+						 vk_image_pool image_pool);
 bool vk_swapchain_refresh(vk_swapchain* swapchain, VkDevice device,
 						  vk_surface* surface, uint32_t width, uint32_t height);
 bool vk_swapchain_get_current_image(vk_swapchain* swapchain, VkImage* out);
@@ -160,7 +164,6 @@ bool vk_swapchain_get_current_semaphore(vk_swapchain* swapchain,
 										VkSemaphore* out);
 vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 													  VkDevice device,
-													  vk_image_pool image_pool,
 													  VkSemaphore semaphore);
 bool vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue);
 void vk_swapchain_destroy(vk_swapchain* swapchain, VkDevice device);

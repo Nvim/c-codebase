@@ -408,7 +408,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		if (!vk_swapchain_create(&state->swapchain, arena, state->device,
 								 &state->surface, win_size.width,
 								 win_size.height, sc_img_count,
-								 state->rendertarget_format)) {
+								 state->rendertarget_format, state->image_pool)) {
 			LOG_ERR("vulkan_initialize: couldn't create swapchain");
 			return;
 		}

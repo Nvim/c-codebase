@@ -45,6 +45,8 @@ static bool _swapchain_refresh_arrays(vk_swapchain* out, VkDevice device) {
 	}
 
 	for (uint32_t i = 0; i < out->img_count; ++i) {
+
+		// Re-create view & semaphore:
 		VkImageViewCreateInfo view_ci = {
 			.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 			.image = p_images[i],
@@ -58,6 +60,18 @@ static bool _swapchain_refresh_arrays(vk_swapchain* out, VkDevice device) {
 
 		check_result(vkCreateImageView(device, &view_ci, NULL, &p_views[i]));
 		check_result(vkCreateSemaphore(device, &sem_ci, NULL, &p_sems[i]));
+
+		// Update image data in pool:
+		pool_handle handle = POOL_INVALID_HANDLE;
+		ASSERT(pool_handle_array_get(out->images_pool_handles, &handle, i));
+		vk_image_data* img_data =
+			vk_image_pool_get(out->image_pool, vk_image_pool_wrap(handle));
+		{
+			img_data->image = p_images[i];
+			img_data->full_view = p_views[i];
+			img_data->extent = out->ci.imageExtent;
+			img_data->format = out->img_format;
+		}
 	}
 
 	return true;
@@ -65,7 +79,8 @@ static bool _swapchain_refresh_arrays(vk_swapchain* out, VkDevice device) {
 
 bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
 						 vk_surface* surface, uint32_t width, uint32_t height,
-						 uint32_t min_image_count, VkFormat image_format) {
+						 uint32_t min_image_count, VkFormat image_format,
+						 vk_image_pool image_pool) {
 	VkExtent2D sc_extent = surface->capabilities.currentExtent;
 	if (sc_extent.width == 0xFFFFFFFF) {
 		sc_extent = (VkExtent2D){.width = width, .height = height};
@@ -88,6 +103,7 @@ bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
 	out->img_count = 0;
 	out->img_index = 0;
 	out->img_format = out->ci.imageFormat;
+	out->image_pool = image_pool;
 
 	if (!check_result(
 			vkCreateSwapchainKHR(device, &out->ci, NULL, &out->swapchain))) {
@@ -102,8 +118,30 @@ bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
 	out->images = vk_image_array_create(arena, out->img_count);
 	out->image_views = vk_image_view_array_create(arena, out->img_count);
 	out->present_semaphores = vk_sem_array_create(arena, out->img_count);
+	out->images_pool_handles = pool_handle_array_create(arena, out->img_count);
 	ASSERT(out->images.raw && out->image_views.raw &&
-		   out->present_semaphores.raw);
+		   out->present_semaphores.raw && out->images_pool_handles.raw);
+
+	// Create pool handles for swapchain images right now. They will be updated
+	// by calls to vk_swapchain_refresh
+	for (uint32_t i = 0; i < out->img_count; i++) {
+		vk_image_data img_data = {0};
+		{
+			img_data.image = 0;		// Populated by _swapchain_refresh_arrays
+			img_data.full_view = 0; // Populated by _swapchain_refresh_arrays
+			img_data.alloc = NULL;
+			img_data.extent = out->ci.imageExtent;
+			img_data.format = out->img_format;
+			img_data.usage_flags = 0; // Swapchain images don't get any
+			img_data.gpu_state = GPU_IMAGE_STATE_NONE;
+			img_data.vk_image_flags = IMAGE_FLAGS_SWAPCHAIN;
+		}
+
+		vk_image_pool_handle handle = vk_image_pool_new(image_pool, &img_data);
+		pool_handle* elem = NULL;
+		ASSERT(pool_handle_array_at(out->images_pool_handles, &elem, i));
+		*elem = vk_image_pool_unwrap(handle);
+	}
 
 	return _swapchain_refresh_arrays(out, device);
 }
@@ -153,7 +191,6 @@ bool vk_swapchain_get_current_semaphore(vk_swapchain* swapchain,
 
 vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 													  VkDevice device,
-													  vk_image_pool image_pool,
 													  VkSemaphore semaphore) {
 	ASSERT(swapchain->img_index == 0);
 	vk_sc_image_acquire_result ret = {0};
@@ -172,30 +209,12 @@ vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 
 	LOG_DEBUG("vk_swapchain_acquire_image: acquired image %u",
 			  swapchain->img_index);
-	gpu_image handle;
-	{
-		VkImage img;
-		VkImageView img_view;
-		ASSERT(vk_swapchain_get_current_image(swapchain, &img));
-		ASSERT(vk_swapchain_get_current_image_view(swapchain, &img_view));
 
-		vk_image_data data;
-		{
-			data.image = img;
-			data.full_view = img_view;
-			data.alloc = NULL;
-			data.extent = swapchain->ci.imageExtent;
-			data.format = swapchain->img_format;
-			data.usage_flags = 0; // Swapchain images don't get any
-			data.gpu_state = GPU_IMAGE_STATE_NONE;
-			data.vk_image_flags = IMAGE_FLAGS_SWAPCHAIN;
-		}
-		vk_image_pool_handle vk_handle = vk_image_pool_new(image_pool, &data);
-		ASSERT(vk_image_pool_is_handle_valid(image_pool, vk_handle));
-		handle.handle = vk_handle.raw_handle;
-	};
+	pool_handle img_hanlde = POOL_INVALID_HANDLE;
+	ASSERT(pool_handle_array_get(swapchain->images_pool_handles, &img_hanlde,
+								 swapchain->img_index));
 
-	ret.image = handle;
+	ret.image = (gpu_image){.handle = img_hanlde};
 	ret.status = ACQUIRE_SUCCESS;
 
 	return ret;
@@ -343,9 +362,8 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 	VkImageView sc_image_view = {0};
 	{ // Acquire a swapchain image
 		LOG_DEBUG("vk_begin_frame: acquiring swapchain image");
-		vk_sc_image_acquire_result sc_ret =
-			vk_swapchain_acquire_image(&state->swapchain, state->device,
-									   state->image_pool, frame_sync->draw_sem);
+		vk_sc_image_acquire_result sc_ret = vk_swapchain_acquire_image(
+			&state->swapchain, state->device, frame_sync->draw_sem);
 
 		if (sc_ret.status == ACQUIRE_ERROR) {
 			LOG_ERR("vk_begin_frame: couldn't acquire swapchain image");

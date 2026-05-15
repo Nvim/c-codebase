@@ -2,7 +2,9 @@
 #define POOL_H
 
 #include "core/core.h"
+
 #include <allocators/arena.h>
+#include <containers/array.h>
 
 #include <stdint.h>
 
@@ -29,6 +31,8 @@ typedef struct {
 static inline bool check_handle(pool_handle handle) {
 	return handle.handle != POOL_INVALID_IDX;
 }
+
+ARRAY_DEFINE_TYPE(pool_handle, pool_handle_array)
 
 /**
  * @brief Create a new pool of a given size.

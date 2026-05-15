@@ -152,7 +152,8 @@ int main(void) {
 
 	uint32_t frame_count = 0;
 	while (!_quit) {
-		if (frame_count++ > 12) { break; }
+		frame_count++;
+		// if (frame_count++ > 12) { break; }
 
 		platform_poll();
 		if (platform_window_should_close(win)) { break; }
