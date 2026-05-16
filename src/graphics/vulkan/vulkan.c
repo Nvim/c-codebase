@@ -405,10 +405,10 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 
 		uint32_t sc_img_count = CLAMP(buffering, sc_min, sc_max);
 
-		if (!vk_swapchain_create(&state->swapchain, arena, state->device,
-								 &state->surface, win_size.width,
-								 win_size.height, sc_img_count,
-								 state->rendertarget_format, state->image_pool)) {
+		if (!vk_swapchain_create(
+				&state->swapchain, arena, state->device, &state->surface,
+				win_size.width, win_size.height, sc_img_count,
+				state->rendertarget_format, state->image_pool)) {
 			LOG_ERR("vulkan_initialize: couldn't create swapchain");
 			return;
 		}
@@ -678,7 +678,8 @@ bool vulkan_cmd_transition_image(gpu_api* self, gpu_command_buffer cmd_handle,
 		}
 	} else {
 		// Check that image supports new layout
-		VkImageUsageFlags required = gpu_state_to_vk_state_flags[new_state];
+		VkImageUsageFlags required =
+			gpu_image_state_to_vk_state_flags[new_state];
 		if ((img_data->usage_flags & required) != required) {
 			breakpoint();
 			LOG_ERR("vk_transition_image: transition to unsupported usage");
@@ -687,8 +688,8 @@ bool vulkan_cmd_transition_image(gpu_api* self, gpu_command_buffer cmd_handle,
 	}
 
 	vk_image_barrier(cmd_data->command_buffer, img_data->image,
-					 gpu_state_to_vk_barrier[img_data->gpu_state],
-					 gpu_state_to_vk_barrier[new_state]);
+					 gpu_state_to_vk_image_barrier[img_data->gpu_state],
+					 gpu_state_to_vk_image_barrier[new_state]);
 
 	// [TODO]: sync nightmare i won't think about it for now
 	img_data->gpu_state = new_state;
@@ -1548,8 +1549,10 @@ bool vulkan_temp_copy_to_image(struct gpu_api* self, gpu_command_buffer cmd,
 		return false;
 	}
 
-	vk_barrier_info from = gpu_state_to_vk_barrier[GPU_IMAGE_STATE_NONE];
-	vk_barrier_info to = gpu_state_to_vk_barrier[GPU_IMAGE_STATE_TRANSFER_DST];
+	vk_image_barrier_info from =
+		gpu_state_to_vk_image_barrier[GPU_IMAGE_STATE_NONE];
+	vk_image_barrier_info to =
+		gpu_state_to_vk_image_barrier[GPU_IMAGE_STATE_TRANSFER_DST];
 	vk_image_barrier(cmd_buf, data->image, from, to);
 
 	ASSERT(state->staging_buffer_info.pMappedData != NULL);
@@ -1648,6 +1651,7 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->buffer_get_mapped = NULL;
 		out->copy_to_staging_buffer = NULL;
 		out->cmd_copy_to_buffer = NULL;
+		out->cmd_buffer_barrier = NULL;
 
 		/* == Images =========================================================*/
 		out->create_image = vulkan_create_image;

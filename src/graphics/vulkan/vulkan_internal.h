@@ -256,7 +256,17 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 /* ===========================================================================
  * Image Layouts, Capabilites and Barriers
  * ========================================================================== */
-static VkImageUsageFlags gpu_state_to_vk_state_flags[] = {
+static VkMemoryBarrier2 const vk_full_pipeline_barrier = {
+	.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+	.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT_KHR,
+	.srcAccessMask =
+		VK_ACCESS_2_MEMORY_READ_BIT_KHR | VK_ACCESS_2_MEMORY_WRITE_BIT_KHR,
+	.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT_KHR,
+	.dstAccessMask =
+		VK_ACCESS_2_MEMORY_READ_BIT_KHR | VK_ACCESS_2_MEMORY_WRITE_BIT_KHR,
+};
+
+static VkImageUsageFlags gpu_image_state_to_vk_state_flags[] = {
 	[GPU_IMAGE_STATE_NONE] = 0,
 
 	// [TODO]: Not sure about how to handle GENERAL:
@@ -271,11 +281,11 @@ static VkImageUsageFlags gpu_state_to_vk_state_flags[] = {
 	[GPU_IMAGE_STATE_TRANSFER_DST] = VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 };
 
-typedef struct vk_barrier_info {
+typedef struct vk_image_barrier_info {
 	VkImageLayout layout;
 	VkAccessFlags2 access;
 	VkPipelineStageFlags2 stage;
-} vk_barrier_info;
+} vk_image_barrier_info;
 
 /**
  * @brief Barrier lookup table. Not sure about some states, will mark them with
@@ -286,7 +296,7 @@ typedef struct vk_barrier_info {
  * https://github.com/KhronosGroup/Vulkan-Docs/wiki/Synchronization-Examples#graphics-to-graphics-dependencies
  * https://docs.vulkan.org/tutorial/latest/Building_a_Simple_Engine/Engine_Architecture/05_rendering_pipeline.html#_image_layout_transition_barrier_configuration_and_resource_specification
  */
-static vk_barrier_info gpu_state_to_vk_barrier[] = {
+static vk_image_barrier_info gpu_state_to_vk_image_barrier[] = {
 	[GPU_IMAGE_STATE_NONE] =
 		{
 			.layout = VK_IMAGE_LAYOUT_UNDEFINED,
@@ -349,9 +359,55 @@ static vk_barrier_info gpu_state_to_vk_barrier[] = {
 };
 
 void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
-					  vk_barrier_info from, vk_barrier_info to);
+					  vk_image_barrier_info from, vk_image_barrier_info to);
 
 bool vk_transition_to_present(vk_api_state* state, gpu_frame* frame);
+
+typedef struct vk_buffer_barrier_info {
+	VkAccessFlags2 access;
+	VkPipelineStageFlags2 stage;
+} vk_buffer_barrier_info;
+
+static vk_buffer_barrier_info gpu_buffer_access_to_vk_state_flags[] = {
+	[GPU_BUFFER_ACCESS_TRANSFER_WRITE] =
+		{
+			.access = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+			.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+		},
+	[GPU_BUFFER_ACCESS_INDEX_READ] =
+		{
+			.access = VK_ACCESS_2_INDEX_READ_BIT,
+			.stage = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT,
+		},
+	[GPU_BUFFER_ACCESS_INDIRECT_DRAW_READ] =
+		{
+			.access = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
+			.stage = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
+		},
+	[GPU_BUFFER_ACCESS_VERTEX_SHADER_READ] =
+		{
+			.access = VK_ACCESS_2_SHADER_READ_BIT,
+			.stage = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
+		},
+	[GPU_BUFFER_ACCESS_VERTEX_SHADER_WRITE] =
+		{
+			.access = VK_ACCESS_2_SHADER_WRITE_BIT,
+			.stage = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
+		},
+	[GPU_BUFFER_ACCESS_FRAGMENT_SHADER_READ] =
+		{
+			.access = VK_ACCESS_2_SHADER_READ_BIT,
+			.stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+		},
+	[GPU_BUFFER_ACCESS_FRAGMENT_SHADER_WRITE] =
+		{
+			.access = VK_ACCESS_2_SHADER_WRITE_BIT,
+			.stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+		},
+};
+
+void vk_buffer_barrier(VkCommandBuffer cmd_buf, VkBuffer image,
+					  vk_buffer_barrier_info from, vk_buffer_barrier_info to);
 
 bool vk_submit_frame_cmd(vk_api_state* state, gpu_frame* frame);
 

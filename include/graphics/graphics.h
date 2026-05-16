@@ -340,6 +340,42 @@ typedef struct gpu_buffer_copy_info {
 	size_t dst_offset;
 } gpu_buffer_copy_info;
 
+/**
+ * @typedef gpu_buffer_access
+ * @brief Specifies how a buffer is used, and at what stage of the pipeline.
+ * This is used for recording buffer memory barrier commands.
+ * On Vulkan, this maps to a VkAccessFlags2 + VkPipelineStageFlags2 combinaison.
+ *
+ */
+typedef enum gpu_buffer_access {
+
+	// Initial state. [TODO]: Do I really need this?
+	GPU_BUFFER_ACCESS_UNDEFINED,
+
+	// Buffer is written to by a staging copy operation
+	GPU_BUFFER_ACCESS_TRANSFER_WRITE,
+
+	// Buffer is read from as an index buffer
+	GPU_BUFFER_ACCESS_INDEX_READ,
+
+	// Buffer is read from as indirect draw buffer
+	GPU_BUFFER_ACCESS_INDIRECT_DRAW_READ,
+
+	// Buffer is read from by the vertex shader
+	GPU_BUFFER_ACCESS_VERTEX_SHADER_READ,
+
+	// Buffer is written to by the vertex shader
+	GPU_BUFFER_ACCESS_VERTEX_SHADER_WRITE,
+
+	// Buffer is read from by the fragment shader
+	GPU_BUFFER_ACCESS_FRAGMENT_SHADER_READ,
+
+	// Buffer is written to by the fragment shader
+	GPU_BUFFER_ACCESS_FRAGMENT_SHADER_WRITE,
+
+	// [TODO]: Compute
+} gpu_buffer_access;
+
 typedef struct gpu_buffer_map_result {
 	bool ok;
 	void* ptr;
@@ -468,7 +504,19 @@ typedef struct gpu_api {
 	 * @param info Copy parameters. 'src' must have GPU_BUFFER_USAGE_STAGING_UP,
 	 * and buffers must be large enough.
 	 */
-	bool (*cmd_copy_to_buffer)(struct gpu_api*, gpu_buffer_copy_info info);
+	bool (*cmd_copy_to_buffer)(struct gpu_api*, gpu_command_buffer,
+							   gpu_buffer_copy_info info);
+
+	/**
+	 * @brief Record a buffer memory barrier command.
+	 *
+	 * @param buffer The target of the barrier.
+	 * @param from Source buffer acces.
+	 * @param to Destination buffer access.
+	 * @return False if transition is invalid.
+	 */
+	bool (*cmd_buffer_barrier)(struct gpu_api*, gpu_command_buffer, gpu_buffer,
+							   gpu_buffer_access from, gpu_buffer_access to);
 
 	/* == Images =============================================================*/
 	gpu_image (*create_image)(struct gpu_api*, gpu_image_ci*);

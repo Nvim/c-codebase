@@ -5,6 +5,8 @@
 
 bool gpu_validate_image_ci(gpu_image_ci* ci);
 
+bool is_buffer_staging(gpu_buffer_usage usage);
+
 bool gpu_validate_buffer_ci(gpu_buffer_ci* ci);
 
 static inline bool is_2d_image(gpu_image_type t) {

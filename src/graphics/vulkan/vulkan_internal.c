@@ -1,5 +1,7 @@
 #include "vulkan_internal.h"
 
+#include "graphics_internal.h"
+
 #include <graphics/graphics.h>
 #include <string.h>
 
@@ -405,7 +407,7 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 }
 
 void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
-					  vk_barrier_info from, vk_barrier_info to) {
+					  vk_image_barrier_info from, vk_image_barrier_info to) {
 	VkImageMemoryBarrier2 barrier = {0};
 	{
 		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
@@ -442,8 +444,8 @@ bool vk_transition_to_present(vk_api_state* state, gpu_frame* frame) {
 	vk_image_data* img =
 		vk_image_pool_get(state->image_pool, to_vk_img(frame->framebuffer));
 
-	vk_barrier_info from = gpu_state_to_vk_barrier[img->gpu_state];
-	static vk_barrier_info const to = {
+	vk_image_barrier_info from = gpu_state_to_vk_image_barrier[img->gpu_state];
+	static vk_image_barrier_info const to = {
 		.layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 		.stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
 		.access = VK_ACCESS_2_NONE,
@@ -785,4 +787,61 @@ VkSamplerAddressMode gpu_to_vk_address_mode(gpu_sampler_address_mode m) {
 	case GPU_SAMPLER_ADRESS_CLAMP:
 		return VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
 	}
+}
+
+VkBufferUsageFlagBits2 gpu_to_vk_buffer_usage(gpu_buffer_usage u) {
+	VkBufferUsageFlagBits2 ret = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT;
+	switch (u) {
+	case GPU_BUFFER_USAGE_INDEX:
+		ret |= VK_BUFFER_USAGE_2_INDEX_BUFFER_BIT;
+		break;
+	case GPU_BUFFER_USAGE_STORAGE:
+		ret |= VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT;
+		ret |= VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT;
+		break;
+	case GPU_BUFFER_USAGE_INDIRECT:
+		ret |= VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT;
+		ret |= VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT;
+	case GPU_BUFFER_USAGE_STAGING_UP:
+		ret |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+		break;
+	case GPU_BUFFER_USAGE_STAGING_DOWN: break;
+	}
+	return ret;
+}
+
+VmaAllocationCreateInfo gpu_to_vk_buffer_memory(gpu_buffer_ci ci) {
+	VmaAllocationCreateInfo ret = {0};
+
+	// Index and Staging buffers have hardcoded allocation policies
+	if (ci.usage == GPU_BUFFER_USAGE_INDEX) {
+		ret.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+		return ret;
+	}
+	if (is_buffer_staging(ci.usage)) {
+		// [NOTE]: Could use HOST_ACCESS_SEQUENTIAL_WRITE_BIT instead of random?
+		ret.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+		ret.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
+					VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+		return ret;
+	}
+
+	// For Storage and Indirect buffers, we respect users choice:
+	if (ci.usage == GPU_BUFFER_USAGE_STORAGE ||
+		ci.usage == GPU_BUFFER_USAGE_INDIRECT) {
+
+		switch (ci.memory_preference) {
+
+		case GPU_BUFFER_MEMORY_GPU:
+			ret.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+			break;
+		case GPU_BUFFER_MEMORY_MAPPED:
+			ret.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+			ret.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
+						VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+			break;
+		}
+	}
+
+	return ret;
 }

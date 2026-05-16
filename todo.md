@@ -14,6 +14,7 @@
 [ ] make opaque handle for basic resources (e.g sampler,fence) better (union on `VkXXX`+debug name?)
 [ ] debug name strings for every resource
 [ ] pool cleanup (needs iterate API)
+[ ] support UMA systems (always bypass staging buffer flow)
 
 ## threading
 
@@ -56,6 +57,7 @@
 - destroy_buffer
 - get_mapped -> void* (MAPPED only)
 - cmd_upload_to_buffer(buf, info)
+- bind api: dedicated index vs regular BDA
 
 [ ] do it
 [ ] cleanup image upload flow to use user's transfer buffer
