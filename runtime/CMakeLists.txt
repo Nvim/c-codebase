@@ -7,7 +7,7 @@ target_link_libraries(main PUBLIC
 
 add_executable(vk vk.c)
 target_link_libraries(vk PRIVATE
-	# compile_flags
+	compile_flags
 	platform
 	core
 	graphics

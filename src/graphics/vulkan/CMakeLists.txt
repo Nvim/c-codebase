@@ -17,4 +17,4 @@ target_sources(vma PRIVATE vma.cpp)
 target_link_libraries(graphics PUBLIC Vulkan::Vulkan)
 target_link_libraries(graphics PRIVATE vma)
 
-target_sources(graphics PUBLIC vulkan.c vulkan_internal.c)
+target_sources(graphics PRIVATE vulkan.c vulkan_internal.c)
