@@ -810,15 +810,15 @@ VkBufferUsageFlagBits2 gpu_to_vk_buffer_usage(gpu_buffer_usage u) {
 	return ret;
 }
 
-VmaAllocationCreateInfo gpu_to_vk_buffer_memory(gpu_buffer_ci ci) {
+VmaAllocationCreateInfo gpu_to_vk_buffer_memory(gpu_buffer_ci* ci) {
 	VmaAllocationCreateInfo ret = {0};
 
 	// Index and Staging buffers have hardcoded allocation policies
-	if (ci.usage == GPU_BUFFER_USAGE_INDEX) {
+	if (ci->usage == GPU_BUFFER_USAGE_INDEX) {
 		ret.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 		return ret;
 	}
-	if (is_buffer_staging(ci.usage)) {
+	if (is_buffer_staging(ci->usage)) {
 		// [NOTE]: Could use HOST_ACCESS_SEQUENTIAL_WRITE_BIT instead of random?
 		ret.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
 		ret.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
@@ -827,10 +827,10 @@ VmaAllocationCreateInfo gpu_to_vk_buffer_memory(gpu_buffer_ci ci) {
 	}
 
 	// For Storage and Indirect buffers, we respect users choice:
-	if (ci.usage == GPU_BUFFER_USAGE_STORAGE ||
-		ci.usage == GPU_BUFFER_USAGE_INDIRECT) {
+	if (ci->usage == GPU_BUFFER_USAGE_STORAGE ||
+		ci->usage == GPU_BUFFER_USAGE_INDIRECT) {
 
-		switch (ci.memory_preference) {
+		switch (ci->memory_preference) {
 
 		case GPU_BUFFER_MEMORY_GPU:
 			ret.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;

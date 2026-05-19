@@ -15,6 +15,8 @@
 [ ] debug name strings for every resource
 [ ] pool cleanup (needs iterate API)
 [ ] support UMA systems (always bypass staging buffer flow)
+[ ] query & store hardware limits on startup
+[ ] silence validation best practices by querying swapchain supported formats
 
 ## threading
 

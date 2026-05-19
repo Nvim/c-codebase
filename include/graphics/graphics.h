@@ -330,6 +330,7 @@ typedef enum {
 typedef struct gpu_buffer_ci {
 	gpu_buffer_usage usage;
 	gpu_buffer_memory memory_preference;
+	size_t size;
 } gpu_buffer_ci;
 
 typedef struct gpu_buffer_copy_info {

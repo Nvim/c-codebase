@@ -149,6 +149,38 @@ int main(void) {
 		gpu_sampler sampler = gpu.create_sampler(&gpu, &ci);
 		gpu.destroy_sampler(&gpu, sampler);
 	}
+	{ // [TODO]: temp buffer tests
+		gpu_buffer_ci ci = {0};
+		{
+			ci.size = 4 * MEMORY_KIB;
+			ci.usage = GPU_BUFFER_USAGE_STAGING_UP;
+			ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
+		}
+		gpu_buffer buffer = gpu.create_buffer(&gpu, &ci);
+		gpu_buffer_map_result res = gpu.buffer_get_mapped(&gpu, buffer);
+		ASSERT(res.ok && res.ptr);
+		gpu.destroy_buffer(&gpu, buffer);
+
+		/* ================================================================== */
+		{
+			ci.usage = GPU_BUFFER_USAGE_STORAGE;
+			ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
+		}
+		buffer = gpu.create_buffer(&gpu, &ci);
+		res = gpu.buffer_get_mapped(&gpu, buffer);
+		ASSERT(res.ok && res.ptr);
+		gpu.destroy_buffer(&gpu, buffer);
+
+		/* ================================================================== */
+		{
+			ci.usage = GPU_BUFFER_USAGE_STORAGE;
+			ci.memory_preference = GPU_BUFFER_MEMORY_GPU;
+		}
+		buffer = gpu.create_buffer(&gpu, &ci);
+		res = gpu.buffer_get_mapped(&gpu, buffer);
+		ASSERT(!res.ok && !res.ptr);
+		gpu.destroy_buffer(&gpu, buffer);
+	}
 
 	uint32_t frame_count = 0;
 	while (!_quit) {

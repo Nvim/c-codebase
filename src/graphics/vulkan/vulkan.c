@@ -302,6 +302,9 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		state->physical_device = dev_result.device;
 		state->queue_family_idx = dev_result.queue_index;
 		state->device_props = dev_result.device_props;
+
+		vkGetPhysicalDeviceMemoryProperties2(state->physical_device,
+											 &state->memory_props);
 	}
 
 	{ // Logical Device:
@@ -333,9 +336,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			.instance = state->instance,
 		};
 
-		VmaAllocator allocator;
-		check_result(vmaCreateAllocator(&alloc_ci, &allocator));
-		state->allocator = allocator;
+		check_result(vmaCreateAllocator(&alloc_ci, &state->allocator));
 	}
 
 	// [TODO]: temporary staging buffer
@@ -1609,6 +1610,106 @@ void vulkan_temp_set_image_desc(gpu_api* self, gpu_image_view gpu_view) {
 	vkUpdateDescriptorSets(state->device, 1, &w, 0, NULL);
 }
 
+gpu_buffer vulkan_create_buffer(struct gpu_api* self, gpu_buffer_ci* ci) {
+	gpu_buffer ret = {.handle = POOL_INVALID_HANDLE};
+	if (!self || !ci || !self->is_init) {
+		LOG_ERR("vulkan_create_buffer: invalid parameters");
+		return ret;
+	}
+
+	vk_api_state* state = self->state;
+
+	if (!gpu_validate_buffer_ci(ci)) {
+		LOG_ERR("vulkan_create_buffer: invalid buffer create info");
+		return ret;
+	}
+
+	// [TODO]: query actual limits
+	if (!ci->size || ci->size > 4 * MEMORY_GIB) {
+		LOG_ERR("vulkan_create_buffer: invalid buffer size");
+		return ret;
+	}
+
+	vk_buffer_data data = {0};
+	VmaAllocationCreateInfo vma_ci = gpu_to_vk_buffer_memory(ci);
+	VkBufferCreateInfo buf_ci = {0};
+	{
+		buf_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		buf_ci.usage = gpu_to_vk_buffer_usage(ci->usage);
+		buf_ci.size = ci->size;
+		buf_ci.pQueueFamilyIndices = &state->queue_family_idx;
+		buf_ci.queueFamilyIndexCount = 1;
+		buf_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		buf_ci.flags = 0;
+	}
+
+	if (!check_result(vmaCreateBuffer(state->allocator, &buf_ci, &vma_ci,
+									  &data.buffer, &data.alloc,
+									  &data.alloc_info))) {
+		LOG_ERR("vulkan_create_buffer: couldn't create buffer");
+		return ret;
+	};
+
+	// Likely overkill check, but will remind me to do the mapping here if I
+	// every switch to my own allocator
+	if (vma_ci.flags & VMA_ALLOCATION_CREATE_MAPPED_BIT) {
+		if (!data.alloc_info.pMappedData) {
+			LOG_ERR("vulkan_create_buffer: couldn't get buffer mapping");
+			vmaDestroyBuffer(state->allocator, data.buffer, data.alloc);
+			return ret;
+		}
+	}
+
+	// Store memory property flags as VMA might not always allocate what user
+	// would prefer
+	VkMemoryType mem = state->memory_props.memoryProperties
+						   .memoryTypes[data.alloc_info.memoryType];
+	data.memory_flags = mem.propertyFlags;
+
+	vk_buffer_pool_handle vk_ret =
+		vk_buffer_pool_new(state->buffer_pool, &data);
+	ret.handle = vk_buffer_pool_unwrap(vk_ret);
+
+	return ret;
+}
+
+void vulkan_destroy_buffer(struct gpu_api* self, gpu_buffer buf) {
+	vk_api_state* state = self->state;
+
+	vk_buffer_data* data =
+		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(buf));
+
+	if (!data || !data->buffer) {
+		LOG_ERR("vulkan_destroy_buffer: invalid buffer");
+		return;
+	}
+
+	vmaDestroyBuffer(state->allocator, data->buffer, data->alloc);
+}
+
+gpu_buffer_map_result vulkan_map_buffer(struct gpu_api* self, gpu_buffer buf) {
+	gpu_buffer_map_result res = {0};
+	vk_api_state* state = self->state;
+
+	vk_buffer_data* data =
+		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(buf));
+
+	if (!data || !data->buffer) {
+		LOG_ERR("vulkan_map_buffer: invalid buffer");
+		return res;
+	}
+
+	if (!data->alloc_info.pMappedData) {
+		LOG_ERR("vulkan_map_buffer: buffer has no mapped data");
+		return res;
+	}
+
+	res.ptr = data->alloc_info.pMappedData;
+	res.ok = true;
+
+	return res;
+}
+
 bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 	if (!out) {
 		LOG_ERR("gpu_create_api: invalid parameters");
@@ -1646,9 +1747,9 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->cmd_bind_pipeline = vulkan_cmd_bind_pipeline;
 
 		/* == Buffers ========================================================*/
-		out->create_buffer = NULL;
-		out->destroy_buffer = NULL;
-		out->buffer_get_mapped = NULL;
+		out->create_buffer = vulkan_create_buffer;
+		out->destroy_buffer = vulkan_destroy_buffer;
+		out->buffer_get_mapped = vulkan_map_buffer;
 		out->copy_to_staging_buffer = NULL;
 		out->cmd_copy_to_buffer = NULL;
 		out->cmd_buffer_barrier = NULL;

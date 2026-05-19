@@ -93,6 +93,7 @@ typedef struct vk_buffer_data {
 	VmaAllocation alloc;
 	VmaAllocationInfo alloc_info;
 	VkBufferUsageFlagBits2 usage_flags;
+	VkMemoryPropertyFlags memory_flags;
 } vk_buffer_data;
 
 POOL_DEFINE_TYPE(vk_buffer_data, vk_buffer_pool)
@@ -211,6 +212,7 @@ typedef struct vk_api_state {
 	VkPhysicalDevice physical_device;
 	uint32_t queue_family_idx;
 	VkPhysicalDeviceProperties2 device_props;
+	VkPhysicalDeviceMemoryProperties2 memory_props;
 
 	// Base handles
 	VkDevice device;
@@ -407,7 +409,7 @@ static vk_buffer_barrier_info gpu_buffer_access_to_vk_state_flags[] = {
 };
 
 void vk_buffer_barrier(VkCommandBuffer cmd_buf, VkBuffer image,
-					  vk_buffer_barrier_info from, vk_buffer_barrier_info to);
+					   vk_buffer_barrier_info from, vk_buffer_barrier_info to);
 
 bool vk_submit_frame_cmd(vk_api_state* state, gpu_frame* frame);
 
@@ -509,5 +511,9 @@ VkFilter gpu_to_vk_filter(gpu_sampler_filter_mode f);
 VkSamplerMipmapMode gpu_to_vk_mipmap_mode(gpu_sampler_mipmap_mode m);
 
 VkSamplerAddressMode gpu_to_vk_address_mode(gpu_sampler_address_mode);
+
+VkBufferUsageFlagBits2 gpu_to_vk_buffer_usage(gpu_buffer_usage u);
+
+VmaAllocationCreateInfo gpu_to_vk_buffer_memory(gpu_buffer_ci* ci);
 
 #endif // !VULKAN_UTIL_H
