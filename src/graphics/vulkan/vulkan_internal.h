@@ -152,6 +152,12 @@ typedef struct {
 	gpu_image image; // Only valid if status is `ACQUIRE_SUCCESS`.
 } vk_sc_image_acquire_result;
 
+typedef enum {
+	PRESENT_ERROR,
+	PRESENT_OUT_OF_DATE,
+	PRESENT_SUCCESS,
+} vk_present_result;
+
 bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
 						 vk_surface* surface, uint32_t width, uint32_t height,
 						 uint32_t min_image_count, VkFormat image_format,
@@ -166,7 +172,7 @@ bool vk_swapchain_get_current_semaphore(vk_swapchain* swapchain,
 vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 													  VkDevice device,
 													  VkSemaphore semaphore);
-bool vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue);
+vk_present_result vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue);
 void vk_swapchain_destroy(vk_swapchain* swapchain, VkDevice device);
 
 // Used to shove every frame-buffered resource
@@ -230,6 +236,7 @@ typedef struct vk_api_state {
 	vk_surface surface;
 	VkFormat rendertarget_format;
 	vk_swapchain swapchain;
+	bool swapchain_must_refresh; // recreate at beginning of next frame
 
 	// Frame-in-flight buffering
 	uint64_t frame_idx;

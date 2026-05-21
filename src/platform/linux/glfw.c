@@ -277,6 +277,7 @@ static void framebuffer_size_callback(GLFWwindow* window, int width,
 	(void)window;
 	(void)width;
 	(void)height;
+	LOG_WARN("glfw_framebuffer_size_callback: window was resized")
 }
 
 static VkSurfaceKHR _create_vk_surface(window_t* window, VkInstance instance) {

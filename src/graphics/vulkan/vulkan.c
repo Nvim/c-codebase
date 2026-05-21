@@ -957,9 +957,18 @@ bool vulkan_end_frame(gpu_api* self, gpu_frame* f) {
 
 	// Present
 	LOG_DEBUG("vulkan_end_frame: presenting");
-	if (!vk_swapchain_present(&state->swapchain, state->queue)) {
+	vk_present_result pres_res =
+		vk_swapchain_present(&state->swapchain, state->queue);
+
+	if (pres_res == PRESENT_ERROR) {
 		LOG_ERR("vulkan_end_frame: couldn't present to swapchain");
 		return false;
+	}
+
+	if (pres_res == PRESENT_OUT_OF_DATE) {
+		LOG_INFO("vulkan_end_frame: queueing swapchain refresh for next frame");
+		state->swapchain_must_refresh = true;
+		return true;
 	}
 
 	// Reset frame's command buffer

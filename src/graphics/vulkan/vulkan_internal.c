@@ -200,11 +200,12 @@ vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 		vkAcquireNextImageKHR(device, swapchain->swapchain, UINT64_MAX,
 							  semaphore, NULL, &swapchain->img_index);
 
-	if (res == VK_ERROR_OUT_OF_DATE_KHR) {
+	if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR) {
+		LOG_WARN("vk_swapchain_acquire_image: out of date");
 		ret.status = ACQUIRE_OUT_OF_DATE;
 		return ret;
 	}
-	if (res != VK_SUCCESS && res != VK_ERROR_OUT_OF_DATE_KHR) {
+	if (res != VK_SUCCESS) {
 		ret.status = ACQUIRE_ERROR;
 		return ret;
 	}
@@ -222,7 +223,7 @@ vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 	return ret;
 }
 
-bool vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue) {
+vk_present_result vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue) {
 	VkSemaphore wait_semaphore = {0};
 	ASSERT(vk_sem_array_get(swapchain->present_semaphores, &wait_semaphore,
 							swapchain->img_index));
@@ -239,12 +240,17 @@ bool vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue) {
 		present_info.pSwapchains = &swapchain->swapchain;
 	}
 
-	// [TODO]: check this result as it can fail when out of date
-	vkQueuePresentKHR(queue, &present_info);
+	VkResult res = vkQueuePresentKHR(queue, &present_info);
+
+	if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR) {
+		LOG_WARN("vk_swapchain_present: out of date");
+		return PRESENT_OUT_OF_DATE;
+	}
+
+	if (res != VK_SUCCESS) { return PRESENT_ERROR; }
 
 	swapchain->img_index = 0;
-
-	return true;
+	return PRESENT_SUCCESS;
 }
 
 void vk_swapchain_destroy(vk_swapchain* swapchain, VkDevice device) {
@@ -343,6 +349,18 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 	if (state->frame_in_progress) {
 		LOG_ERR("vulkan_begin_frame: a frame in already in progress");
 		return false;
+	}
+
+	if (state->swapchain_must_refresh) {
+		state->swapchain_must_refresh = false;
+		LOG_INFO("vk_begin_frame: handling out of date swapchain");
+		bool ok = vk_swapchain_refresh(&state->swapchain, state->device,
+									   &state->surface, window_size.width,
+									   window_size.height);
+		if (!ok) {
+			LOG_ERR("vulkan_begin_frame: couldn't refresh swapchain");
+			return false;
+		}
 	}
 
 	vk_render_sync* frame_sync = vk_get_current_sync(state);
