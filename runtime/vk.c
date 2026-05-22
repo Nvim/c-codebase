@@ -15,6 +15,18 @@ static uint8_t const RED[4] = {0xff, 0x0, 0x0, 0xff};
 static uint8_t const GREEN[4] = {0x0, 0xff, 0x0, 0xff};
 static uint8_t const BLUE[4] = {0x0, 0x0, 0xff, 0xff};
 
+typedef struct {
+	float pos[4];
+} tmp_vertex;
+
+static tmp_vertex const bot_left = {-.75f, -.75f, 0.f, 0.f};
+static tmp_vertex const bot_right = {.75f, -.75f, 0.f, 0.f};
+static tmp_vertex const top_right = {.75f, .75f, 0.f, 0.f};
+static tmp_vertex const top_left = {-.75f, .75f, 0.f, 0.f};
+
+static tmp_vertex vertex_data[] = {bot_left, top_right, bot_right,
+								   bot_left, top_left,	top_right};
+
 int main(void) {
 
 	ASSERT(platform_init());
@@ -128,7 +140,34 @@ int main(void) {
 		.bytes = pixels,
 	};
 
-	{ // copy to image and wait
+	gpu_buffer_ci vbuf_ci = {0};
+	{
+		vbuf_ci.size = sizeof(vertex_data);
+		vbuf_ci.memory_preference = GPU_BUFFER_MEMORY_GPU;
+		vbuf_ci.usage = GPU_BUFFER_USAGE_STORAGE;
+	}
+	gpu_buffer vertex_buffer = gpu.create_buffer(&gpu, &vbuf_ci);
+	gpu_buffer_device_address_result ret =
+		gpu.buffer_get_device_address(&gpu, vertex_buffer);
+	ASSERT(ret.ok);
+	gpu_device_address vbuf_addr = ret.address;
+
+	gpu_buffer_ci staging_ci = {0};
+	{
+		staging_ci.size = 4 * MEMORY_KIB;
+		staging_ci.usage = GPU_BUFFER_USAGE_STAGING_UP;
+	}
+	gpu_buffer staging_buffer = gpu.create_buffer(&gpu, &staging_ci);
+
+	gpu_data_payload vbuf_payload = {0};
+	{
+		vbuf_payload.data_format = GPU_DATA_SPAN;
+		vbuf_payload.data.span.data = vertex_data;
+		vbuf_payload.data.span.size = sizeof(vertex_data);
+	}
+	gpu.copy_to_staging_buffer(&gpu, staging_buffer, vbuf_payload);
+
+	{ // Upload image and vertices and wait
 		gpu_command_buffer cmd = gpu.create_command_buffer(&gpu);
 		ASSERT(check_handle(cmd.handle));
 		gpu.cmd_transition_image(&gpu, cmd, test_image,
@@ -136,6 +175,15 @@ int main(void) {
 		ASSERT(gpu.temp_copy_to_image(&gpu, cmd, test_image, test_image_data));
 		gpu.cmd_transition_image(&gpu, cmd, test_image,
 								 GPU_IMAGE_STATE_SHADER_READ);
+
+		gpu_buffer_copy_info buf_copy = {0};
+		{
+			buf_copy.size = sizeof(vertex_data);
+			buf_copy.src = staging_buffer;
+			buf_copy.dst = vertex_buffer;
+		}
+		ASSERT(gpu.cmd_copy_to_buffer(&gpu, cmd, &buf_copy));
+
 		gpu_fence fence = gpu.create_fence(&gpu, false);
 		ASSERT(gpu.submit_command_buffer_fence(&gpu, cmd, fence));
 		ASSERT(gpu.wait_fence(&gpu, fence, sec_to_ns(1)));
@@ -149,6 +197,7 @@ int main(void) {
 		gpu_sampler sampler = gpu.create_sampler(&gpu, &ci);
 		gpu.destroy_sampler(&gpu, sampler);
 	}
+
 	{ // [TODO]: temp buffer tests
 		gpu_buffer_ci ci = {0};
 		{
@@ -220,7 +269,9 @@ int main(void) {
 		gpu.cmd_reset_viewport(&gpu, cmd);
 		gpu.cmd_reset_scissor(&gpu, cmd);
 		gpu.cmd_begin_rendering(&gpu, cmd, &s);
-		gpu.cmd_bind_pipeline(&gpu, cmd, pipeline);
+		gpu.cmd_bind_pipeline(
+			&gpu, cmd, pipeline,
+			&(gpu_per_frame_data){.vertex_buffer = vbuf_addr});
 		gpu.cmd_draw(&gpu, cmd, 6, 1, 0, 0);
 		gpu.cmd_end_rendering(&gpu, cmd);
 		ASSERT(gpu.end_frame(&gpu, &frame));
@@ -238,6 +289,8 @@ int main(void) {
 
 	gpu.wait_idle(&gpu);
 	gpu.destroy_image(&gpu, test_image);
+	gpu.destroy_buffer(&gpu, staging_buffer);
+	gpu.destroy_buffer(&gpu, vertex_buffer);
 	gpu.destroy_pipeline(&gpu, pipeline);
 
 	gpu.destroy(&gpu);

@@ -24,6 +24,8 @@ typedef struct { pool_handle handle; } gpu_fence;
 typedef struct { pool_handle handle; } gpu_semaphore;
 // clang-format on
 
+typedef uint64_t gpu_device_address;
+
 typedef struct image_data {
 	uint32_t width;
 	uint32_t height;
@@ -228,6 +230,15 @@ typedef struct {
 	// [TODO]: maybe vertex (only bindless buffer device address for now)
 } gpu_pipeline_ci;
 
+/**
+ * @typedef gpu_per_frame_data
+ * @brief Small data that will be bound to every graphics pipeline.
+ *
+ */
+typedef struct gpu_per_frame_data {
+	gpu_device_address vertex_buffer;
+} gpu_per_frame_data;
+
 typedef enum gpu_data_format {
 	GPU_DATA_ARRAY,
 	GPU_DATA_SPAN,
@@ -382,6 +393,11 @@ typedef struct gpu_buffer_map_result {
 	void* ptr;
 } gpu_buffer_map_result;
 
+typedef struct gpu_buffer_device_address_result {
+	bool ok;
+	gpu_device_address address;
+} gpu_buffer_device_address_result;
+
 typedef struct gpu_frame_result {
 	gpu_frame frame;
 	bool ok;
@@ -483,12 +499,13 @@ typedef struct gpu_api {
 	gpu_pipeline (*create_pipeline)(struct gpu_api*, gpu_pipeline_ci*);
 	void (*destroy_pipeline)(struct gpu_api*, gpu_pipeline);
 	void (*cmd_bind_pipeline)(struct gpu_api*, gpu_command_buffer,
-							  gpu_pipeline);
+							  gpu_pipeline, gpu_per_frame_data*);
 
 	/* == Buffers ============================================================*/
 	gpu_buffer (*create_buffer)(struct gpu_api*, gpu_buffer_ci*);
 	void (*destroy_buffer)(struct gpu_api*, gpu_buffer);
 	gpu_buffer_map_result (*buffer_get_mapped)(struct gpu_api*, gpu_buffer);
+	gpu_buffer_device_address_result (*buffer_get_device_address)(struct gpu_api*, gpu_buffer);
 
 	/**
 	 * @brief Copies data from RAM to a mapped buffer.
@@ -506,7 +523,7 @@ typedef struct gpu_api {
 	 * and buffers must be large enough.
 	 */
 	bool (*cmd_copy_to_buffer)(struct gpu_api*, gpu_command_buffer,
-							   gpu_buffer_copy_info info);
+							   gpu_buffer_copy_info* info);
 
 	/**
 	 * @brief Record a buffer memory barrier command.

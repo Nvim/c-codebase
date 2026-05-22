@@ -94,6 +94,8 @@ typedef struct vk_buffer_data {
 	VmaAllocationInfo alloc_info;
 	VkBufferUsageFlagBits2 usage_flags;
 	VkMemoryPropertyFlags memory_flags;
+	gpu_buffer_access last_access; // [NOTE]: CPU/GPU sync maybe sus
+	VkDeviceAddress device_address;
 } vk_buffer_data;
 
 POOL_DEFINE_TYPE(vk_buffer_data, vk_buffer_pool)
@@ -116,6 +118,10 @@ POOL_DEFINE_TYPE(vk_opaque_handle, vk_handle_pool)
 /* ============================================================================
  * Types
  * ========================================================================== */
+
+typedef struct {
+	VkDeviceAddress vertex_buffer;
+} vk_push_constants;
 
 typedef struct vk_surface {
 	VkSurfaceKHR surface;

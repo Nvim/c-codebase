@@ -303,6 +303,8 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		state->queue_family_idx = dev_result.queue_index;
 		state->device_props = dev_result.device_props;
 
+		state->memory_props.sType =
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
 		vkGetPhysicalDeviceMemoryProperties2(state->physical_device,
 											 &state->memory_props);
 	}
@@ -523,7 +525,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			  state->queue_family_idx);
 }
 
-void vulkan_destroy(struct gpu_api* self) {
+void vulkan_destroy(gpu_api* self) {
 	if (!self) {
 		LOG_ERR("vulkan_destroy: invalid instance");
 		return;
@@ -559,7 +561,7 @@ void vulkan_wait_idle(gpu_api* self) {
 	check_result(vkDeviceWaitIdle(state->device));
 }
 
-gpu_frame_result vulkan_begin_frame(struct gpu_api* self) {
+gpu_frame_result vulkan_begin_frame(gpu_api* self) {
 	gpu_frame_result ret = {0};
 
 	vk_api_state* state = self->state;
@@ -590,7 +592,7 @@ gpu_frame_result vulkan_begin_frame(struct gpu_api* self) {
 	return ret;
 }
 
-void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer cmd,
+void vulkan_cmd_begin_rendering(gpu_api* self, gpu_command_buffer cmd,
 								gpu_render_state* s) {
 	vk_api_state* state = self->state;
 	vk_cmdbuf_pool_handle vk_handle = to_vk_cmdbuf(cmd);
@@ -603,34 +605,31 @@ void vulkan_cmd_begin_rendering(struct gpu_api* self, gpu_command_buffer cmd,
 		(vk_image_pool_handle){s->color_targets[0].target.handle});
 
 	VkRenderingInfo rendering_info = {0};
-	{
-		VkRenderingAttachmentInfo color_attachment = {0};
+	VkRenderingAttachmentInfo color_attachment = {0};
 
-		VkClearValue color = {.color = {.float32 = {1.f, 0.f, 1.f, 1.f}}};
-		{
-			color_attachment.sType =
-				VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-			color_attachment.imageView = img_data->full_view;
-			color_attachment.clearValue = color;
-			color_attachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-			color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-			color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		}
-		VkRect2D rect = {.extent = state->swapchain.ci.imageExtent,
-						 .offset = (VkOffset2D){.x = 0, .y = 0}};
-		{
-			rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-			rendering_info.renderArea = rect;
-			rendering_info.colorAttachmentCount = 1;
-			rendering_info.pColorAttachments = &color_attachment;
-			rendering_info.layerCount = 1;
-		}
+	VkClearValue color = {.color = {.float32 = {1.f, 0.f, 1.f, 1.f}}};
+	{
+		color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+		color_attachment.imageView = img_data->full_view;
+		color_attachment.clearValue = color;
+		color_attachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+		color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	}
+	VkRect2D rect = {.extent = state->swapchain.ci.imageExtent,
+					 .offset = (VkOffset2D){.x = 0, .y = 0}};
+	{
+		rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+		rendering_info.renderArea = rect;
+		rendering_info.colorAttachmentCount = 1;
+		rendering_info.pColorAttachments = &color_attachment;
+		rendering_info.layerCount = 1;
 	}
 	vkCmdBeginRendering(cmd_buf, &rendering_info);
 	cmd_data->state = CMDBUF_RENDERING;
 }
 
-void vulkan_cmd_end_rendering(struct gpu_api* self, gpu_command_buffer cmd) {
+void vulkan_cmd_end_rendering(gpu_api* self, gpu_command_buffer cmd) {
 	vk_api_state* state = self->state;
 	vk_cmdbuf_pool_handle vk_handle = to_vk_cmdbuf(cmd);
 	vk_cmdbuf_data* cmd_data = vk_cmdbuf_pool_get(state->cmd_pool, vk_handle);
@@ -698,7 +697,7 @@ bool vulkan_cmd_transition_image(gpu_api* self, gpu_command_buffer cmd_handle,
 	return true;
 }
 
-gpu_command_buffer vulkan_create_command_buffer(struct gpu_api* self) {
+gpu_command_buffer vulkan_create_command_buffer(gpu_api* self) {
 	vk_api_state* state = self->state;
 	gpu_command_buffer ret = {.handle = POOL_INVALID_HANDLE};
 
@@ -765,8 +764,7 @@ void vulkan_destroy_command_buffer(gpu_api* self, gpu_command_buffer cmd) {
 	vk_cmdbuf_pool_release(state->cmd_pool, to_vk_cmdbuf(cmd));
 }
 
-bool vulkan_submit_command_buffer(struct gpu_api* self,
-								  gpu_command_buffer cmd) {
+bool vulkan_submit_command_buffer(gpu_api* self, gpu_command_buffer cmd) {
 	vk_api_state* state = self->state;
 
 	vk_cmdbuf_data* cmd_data =
@@ -823,8 +821,7 @@ bool vulkan_submit_command_buffer(struct gpu_api* self,
 	return true;
 }
 
-bool vulkan_submit_command_buffer_fence(struct gpu_api* self,
-										gpu_command_buffer cmd,
+bool vulkan_submit_command_buffer_fence(gpu_api* self, gpu_command_buffer cmd,
 										gpu_fence fence_handle) {
 	vk_api_state* state = self->state;
 
@@ -873,7 +870,7 @@ bool vulkan_submit_command_buffer_fence(struct gpu_api* self,
 	return true;
 }
 
-gpu_fence vulkan_create_fence(struct gpu_api* self, bool create_signalled) {
+gpu_fence vulkan_create_fence(gpu_api* self, bool create_signalled) {
 	vk_api_state* state = self->state;
 	gpu_fence ret = {0};
 	VkFence fence;
@@ -899,7 +896,7 @@ gpu_fence vulkan_create_fence(struct gpu_api* self, bool create_signalled) {
 	return ret;
 }
 
-bool vulkan_wait_fence(struct gpu_api* self, gpu_fence gpu_fence,
+bool vulkan_wait_fence(gpu_api* self, gpu_fence gpu_fence,
 					   uint64_t timeout_ns) {
 	vk_api_state* state = self->state;
 	vk_opaque_handle* h =
@@ -920,7 +917,7 @@ bool vulkan_wait_fence(struct gpu_api* self, gpu_fence gpu_fence,
 	return true;
 }
 
-void vulkan_destroy_fence(struct gpu_api* self, gpu_fence gpu_fence) {
+void vulkan_destroy_fence(gpu_api* self, gpu_fence gpu_fence) {
 	vk_api_state* state = self->state;
 	vk_opaque_handle* h =
 		vk_handle_pool_get(state->handle_pool, to_vk_handle(gpu_fence));
@@ -982,7 +979,7 @@ bool vulkan_end_frame(gpu_api* self, gpu_frame* f) {
 	return true;
 }
 
-void vulkan_cmd_set_viewport(struct gpu_api* self, gpu_command_buffer cmd,
+void vulkan_cmd_set_viewport(gpu_api* self, gpu_command_buffer cmd,
 							 gpu_image_extent extent) {
 	vk_api_state* state = self->state;
 	vk_cmdbuf_data* cmd_data =
@@ -997,7 +994,7 @@ void vulkan_cmd_set_viewport(struct gpu_api* self, gpu_command_buffer cmd,
 	vkCmdSetViewport(cmd_data->command_buffer, 0, 1, &vp);
 }
 
-void vulkan_cmd_set_scissor(struct gpu_api* self, gpu_command_buffer cmd,
+void vulkan_cmd_set_scissor(gpu_api* self, gpu_command_buffer cmd,
 							gpu_scissor scissor) {
 	vk_api_state* state = self->state;
 	vk_cmdbuf_data* cmd_data =
@@ -1010,7 +1007,7 @@ void vulkan_cmd_set_scissor(struct gpu_api* self, gpu_command_buffer cmd,
 	vkCmdSetScissor(cmd_data->command_buffer, 0, 1, &vk_sc);
 }
 
-void vulkan_cmd_reset_viewport(struct gpu_api* self, gpu_command_buffer cmd) {
+void vulkan_cmd_reset_viewport(gpu_api* self, gpu_command_buffer cmd) {
 	vk_api_state* state = self->state;
 	vk_cmdbuf_data* cmd_data =
 		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
@@ -1025,7 +1022,7 @@ void vulkan_cmd_reset_viewport(struct gpu_api* self, gpu_command_buffer cmd) {
 	vkCmdSetViewport(cmd_data->command_buffer, 0, 1, &vp);
 }
 
-void vulkan_cmd_reset_scissor(struct gpu_api* self, gpu_command_buffer cmd) {
+void vulkan_cmd_reset_scissor(gpu_api* self, gpu_command_buffer cmd) {
 	vk_api_state* state = self->state;
 	vk_cmdbuf_data* cmd_data =
 		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
@@ -1036,26 +1033,37 @@ void vulkan_cmd_reset_scissor(struct gpu_api* self, gpu_command_buffer cmd) {
 	vkCmdSetScissor(cmd_data->command_buffer, 0, 1, &s);
 }
 
-void vulkan_cmd_bind_pipeline(struct gpu_api* self, gpu_command_buffer cmd,
-							  gpu_pipeline pipeline) {
+void vulkan_cmd_bind_pipeline(gpu_api* self, gpu_command_buffer cmd,
+							  gpu_pipeline pipeline,
+							  gpu_per_frame_data* frame_data) {
 	vk_api_state* state = self->state;
 	vk_cmdbuf_data* cmd_data =
 		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
 
 	ASSERT(cmd_data->state == CMDBUF_RECORDING ||
 		   cmd_data->state == CMDBUF_RENDERING);
+	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
 
 	vk_pipeline_data* data =
 		vk_pipeline_pool_get(state->pipeline_pool, to_vk_pipeline(pipeline));
 	ASSERT(data && data->pipeline);
-	vkCmdBindPipeline(cmd_data->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-					  data->pipeline);
-	vkCmdBindDescriptorSets(cmd_data->command_buffer,
-							VK_PIPELINE_BIND_POINT_GRAPHICS, data->layout, 0, 1,
-							&state->descriptor, 0, 0);
+	vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, data->pipeline);
+	vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+							data->layout, 0, 1, &state->descriptor, 0, 0);
+
+	vk_push_constants pc = {.vertex_buffer = frame_data->vertex_buffer};
+	VkPushConstantsInfo pc_info = {0};
+	{
+		pc_info.sType = VK_STRUCTURE_TYPE_PUSH_CONSTANTS_INFO;
+		pc_info.size = sizeof(vk_push_constants);
+		pc_info.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+		pc_info.layout = data->layout;
+		pc_info.pValues = &pc;
+	}
+	vkCmdPushConstants2(cmd_buf, &pc_info);
 }
 
-void vulkan_cmd_draw(struct gpu_api* self, gpu_command_buffer cmd,
+void vulkan_cmd_draw(gpu_api* self, gpu_command_buffer cmd,
 					 uint32_t vertex_count, uint32_t instance_count,
 					 uint32_t first_vertex, uint32_t first_instance) {
 	vk_api_state* state = self->state;
@@ -1068,8 +1076,7 @@ void vulkan_cmd_draw(struct gpu_api* self, gpu_command_buffer cmd,
 			  first_vertex, first_instance);
 }
 
-gpu_image_extent vulkan_get_image_extent(struct gpu_api* self,
-										 gpu_image gpu_img) {
+gpu_image_extent vulkan_get_image_extent(gpu_api* self, gpu_image gpu_img) {
 	vk_api_state* state = self->state;
 	vk_image_data* data =
 		vk_image_pool_get(state->image_pool, to_vk_img(gpu_img));
@@ -1077,8 +1084,7 @@ gpu_image_extent vulkan_get_image_extent(struct gpu_api* self,
 	return vk_to_gpu_image_extent(data->extent);
 }
 
-gpu_image_format vulkan_get_image_format(struct gpu_api* self,
-										 gpu_image gpu_img) {
+gpu_image_format vulkan_get_image_format(gpu_api* self, gpu_image gpu_img) {
 	vk_api_state* state = self->state;
 	vk_image_data* data =
 		vk_image_pool_get(state->image_pool, to_vk_img(gpu_img));
@@ -1086,7 +1092,7 @@ gpu_image_format vulkan_get_image_format(struct gpu_api* self,
 	return vk_to_gpu_image_format(data->format);
 }
 
-bool vulkan_get_image_full_view(struct gpu_api* self, gpu_image_view* out,
+bool vulkan_get_image_full_view(gpu_api* self, gpu_image_view* out,
 								gpu_image handle) {
 	vk_api_state* state = self->state;
 
@@ -1115,7 +1121,7 @@ bool vulkan_get_image_full_view(struct gpu_api* self, gpu_image_view* out,
 	return true;
 }
 
-gpu_sampler vulkan_create_sampler(struct gpu_api* self, gpu_sampler_ci* ci) {
+gpu_sampler vulkan_create_sampler(gpu_api* self, gpu_sampler_ci* ci) {
 	vk_api_state* state = self->state;
 	gpu_sampler ret = {0};
 
@@ -1148,7 +1154,7 @@ gpu_sampler vulkan_create_sampler(struct gpu_api* self, gpu_sampler_ci* ci) {
 	return ret;
 }
 
-void vulkan_destroy_sampler(struct gpu_api* self, gpu_sampler sampler_handle) {
+void vulkan_destroy_sampler(gpu_api* self, gpu_sampler sampler_handle) {
 	vk_api_state* state = self->state;
 	vk_opaque_handle* h =
 		vk_handle_pool_get(state->handle_pool, to_vk_handle(sampler_handle));
@@ -1161,7 +1167,7 @@ void vulkan_destroy_sampler(struct gpu_api* self, gpu_sampler sampler_handle) {
 	vkDestroySampler(state->device, h->handle, NULL);
 }
 
-gpu_shader vulkan_create_shader(struct gpu_api* self, gpu_shader_ci* ci) {
+gpu_shader vulkan_create_shader(gpu_api* self, gpu_shader_ci* ci) {
 
 	gpu_shader ret = {.handle = POOL_INVALID_IDX};
 	if (!self || !self->state || !self->is_init || !ci) {
@@ -1211,7 +1217,7 @@ gpu_shader vulkan_create_shader(struct gpu_api* self, gpu_shader_ci* ci) {
 	return ret;
 }
 
-void vulkan_destroy_shader(struct gpu_api* self, gpu_shader handle) {
+void vulkan_destroy_shader(gpu_api* self, gpu_shader handle) {
 	vk_api_state* state = self->state;
 	vk_shader_data* data =
 		vk_shader_pool_get(state->shader_pool, to_vk_shader(handle));
@@ -1226,19 +1232,26 @@ void vulkan_destroy_shader(struct gpu_api* self, gpu_shader handle) {
 	vk_shader_pool_release(state->shader_pool, to_vk_shader(handle));
 }
 
-gpu_pipeline vulkan_create_pipeline(struct gpu_api* self, gpu_pipeline_ci* ci) {
+gpu_pipeline vulkan_create_pipeline(gpu_api* self, gpu_pipeline_ci* ci) {
 	vk_api_state* state = self->state;
 
 	gpu_pipeline ret = {.handle = POOL_INVALID_HANDLE};
 	vk_pipeline_data data = {0};
 
 	// [TODO]: layout config
+	VkPushConstantRange pc_range = {0};
+	{
+		pc_range.offset = 0;
+		pc_range.size = sizeof(vk_push_constants);
+		pc_range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	}
 	VkPipelineLayoutCreateInfo layout_ci = {0};
 	{
 		layout_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 		layout_ci.setLayoutCount = 1;
 		layout_ci.pSetLayouts = &state->descriptor_layout;
-		layout_ci.pushConstantRangeCount = 0;
+		layout_ci.pushConstantRangeCount = 1;
+		layout_ci.pPushConstantRanges = &pc_range;
 	}
 	if (!check_result(vkCreatePipelineLayout(state->device, &layout_ci, NULL,
 											 &data.layout))) {
@@ -1367,13 +1380,13 @@ gpu_pipeline vulkan_create_pipeline(struct gpu_api* self, gpu_pipeline_ci* ci) {
 			data.ci.layout = data.layout;
 			data.ci.pDynamicState = &dynamic_ci;
 		}
-	}
 
-	if (!check_result(vkCreateGraphicsPipelines(
-			state->device, NULL, 1, &data.ci, NULL, &data.pipeline))) {
-		LOG_ERR("vulkan_create_pipeline: couldn't create pipeline");
-		vkDestroyPipelineLayout(state->device, data.layout, NULL);
-		return ret;
+		if (!check_result(vkCreateGraphicsPipelines(
+				state->device, NULL, 1, &data.ci, NULL, &data.pipeline))) {
+			LOG_ERR("vulkan_create_pipeline: couldn't create pipeline");
+			vkDestroyPipelineLayout(state->device, data.layout, NULL);
+			return ret;
+		}
 	}
 
 	vk_pipeline_pool_handle h =
@@ -1383,7 +1396,7 @@ gpu_pipeline vulkan_create_pipeline(struct gpu_api* self, gpu_pipeline_ci* ci) {
 	return ret;
 }
 
-void vulkan_destroy_pipeline(struct gpu_api* self, gpu_pipeline handle) {
+void vulkan_destroy_pipeline(gpu_api* self, gpu_pipeline handle) {
 	vk_api_state* state = self->state;
 	vk_pipeline_data* data =
 		vk_pipeline_pool_get(state->pipeline_pool, to_vk_pipeline(handle));
@@ -1451,7 +1464,7 @@ gpu_image vulkan_create_image(gpu_api* self, gpu_image_ci* ci) {
 	return ret;
 }
 
-void vulkan_destroy_image(struct gpu_api* self, gpu_image handle) {
+void vulkan_destroy_image(gpu_api* self, gpu_image handle) {
 	vk_api_state* state = self->state;
 
 	vk_image_data* data =
@@ -1471,7 +1484,7 @@ void vulkan_destroy_image(struct gpu_api* self, gpu_image handle) {
 	vk_image_pool_release(state->image_pool, to_vk_img(handle));
 }
 
-bool vulkan_create_image_view(struct gpu_api* self, gpu_image_view* out,
+bool vulkan_create_image_view(gpu_api* self, gpu_image_view* out,
 							  gpu_image_view_ci* ci) {
 	vk_api_state* state = (vk_api_state*)self;
 
@@ -1520,7 +1533,7 @@ bool vulkan_create_image_view(struct gpu_api* self, gpu_image_view* out,
 	return true;
 }
 
-void vulkan_destroy_image_view(struct gpu_api* self, gpu_image_view view) {
+void vulkan_destroy_image_view(gpu_api* self, gpu_image_view view) {
 	vk_api_state* state = (vk_api_state*)self;
 
 	if (!self || !self->is_init) {
@@ -1536,7 +1549,7 @@ void vulkan_destroy_image_view(struct gpu_api* self, gpu_image_view view) {
 	vkDestroyImageView(state->device, view.internal, NULL);
 }
 
-bool vulkan_temp_copy_to_image(struct gpu_api* self, gpu_command_buffer cmd,
+bool vulkan_temp_copy_to_image(gpu_api* self, gpu_command_buffer cmd,
 							   gpu_image handle, image_data pixels) {
 	vk_api_state* state = self->state;
 
@@ -1619,7 +1632,7 @@ void vulkan_temp_set_image_desc(gpu_api* self, gpu_image_view gpu_view) {
 	vkUpdateDescriptorSets(state->device, 1, &w, 0, NULL);
 }
 
-gpu_buffer vulkan_create_buffer(struct gpu_api* self, gpu_buffer_ci* ci) {
+gpu_buffer vulkan_create_buffer(gpu_api* self, gpu_buffer_ci* ci) {
 	gpu_buffer ret = {.handle = POOL_INVALID_HANDLE};
 	if (!self || !ci || !self->is_init) {
 		LOG_ERR("vulkan_create_buffer: invalid parameters");
@@ -1673,7 +1686,18 @@ gpu_buffer vulkan_create_buffer(struct gpu_api* self, gpu_buffer_ci* ci) {
 	// would prefer
 	VkMemoryType mem = state->memory_props.memoryProperties
 						   .memoryTypes[data.alloc_info.memoryType];
+	VkBufferDeviceAddressInfo deviceAdressInfo = {0};
+	{
+		deviceAdressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+		deviceAdressInfo.buffer = data.buffer;
+	}
+
 	data.memory_flags = mem.propertyFlags;
+	data.usage_flags = buf_ci.usage;
+	if (data.usage_flags & VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT) {
+		data.device_address =
+			vkGetBufferDeviceAddress(state->device, &deviceAdressInfo);
+	}
 
 	vk_buffer_pool_handle vk_ret =
 		vk_buffer_pool_new(state->buffer_pool, &data);
@@ -1682,7 +1706,7 @@ gpu_buffer vulkan_create_buffer(struct gpu_api* self, gpu_buffer_ci* ci) {
 	return ret;
 }
 
-void vulkan_destroy_buffer(struct gpu_api* self, gpu_buffer buf) {
+void vulkan_destroy_buffer(gpu_api* self, gpu_buffer buf) {
 	vk_api_state* state = self->state;
 
 	vk_buffer_data* data =
@@ -1696,7 +1720,7 @@ void vulkan_destroy_buffer(struct gpu_api* self, gpu_buffer buf) {
 	vmaDestroyBuffer(state->allocator, data->buffer, data->alloc);
 }
 
-gpu_buffer_map_result vulkan_map_buffer(struct gpu_api* self, gpu_buffer buf) {
+gpu_buffer_map_result vulkan_map_buffer(gpu_api* self, gpu_buffer buf) {
 	gpu_buffer_map_result res = {0};
 	vk_api_state* state = self->state;
 
@@ -1717,6 +1741,195 @@ gpu_buffer_map_result vulkan_map_buffer(struct gpu_api* self, gpu_buffer buf) {
 	res.ok = true;
 
 	return res;
+}
+
+gpu_buffer_device_address_result
+vulkan_buffer_get_device_address(gpu_api* self, gpu_buffer buf) {
+	gpu_buffer_device_address_result res = {0};
+	vk_api_state* state = self->state;
+
+	vk_buffer_data* data =
+		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(buf));
+
+	if (!data || !data->buffer) {
+		LOG_ERR("vulkan_buffer_get_device_address: invalid buffer");
+		return res;
+	}
+
+	if (!data->device_address) {
+		LOG_ERR(
+			"vulkan_buffer_get_device_address: buffer has no device address");
+		return res;
+	}
+
+	res.address = data->device_address;
+	res.ok = true;
+
+	return res;
+}
+
+bool vulkan_copy_to_staging_buffer(gpu_api* self, gpu_buffer dst,
+								   gpu_data_payload data) {
+	vk_api_state* state = self->state;
+
+	size_t size = 0;
+	void* src = NULL;
+	if (data.data_format == GPU_DATA_ARRAY) {
+		size = _array_size(&data.data.array);
+		ASSERT(_array_at(&data.data.array, src, 0));
+		if (size == 0 || !data.data.array.internal) {
+			LOG_ERR("vulkan_copy_to_staging_buffer: invalid data payload");
+			return false;
+		}
+	}
+	if (data.data_format == GPU_DATA_SPAN) {
+		size = data.data.span.size;
+		src = data.data.span.data;
+		if (size == 0 || !data.data.span.data) {
+			LOG_ERR("vulkan_copy_to_staging_buffer: invalid data payload");
+			return false;
+		}
+	}
+
+	vk_buffer_data* dst_data =
+		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(dst));
+
+	if (!dst_data || !dst_data->buffer ||
+		!(dst_data->usage_flags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) ||
+		!dst_data->alloc_info.pMappedData) {
+		LOG_ERR("vulkan_copy_to_staging_buffer: invalid destination buffer");
+		breakpoint();
+		return false;
+	}
+
+	if (size > (dst_data->alloc_info.size - data.offset)) {
+		LOG_ERR("vulkan_copy_to_staging_buffer: invalid transfer size");
+		return false;
+	}
+
+	ASSERT(src);
+	memcpy(dst_data->alloc_info.pMappedData, src, size);
+
+	return true;
+}
+
+bool vulkan_cmd_copy_to_buffer(gpu_api* self, gpu_command_buffer cmd,
+							   gpu_buffer_copy_info* info) {
+	vk_api_state* state = self->state;
+
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
+	if (cmd_data->state != CMDBUF_RECORDING) {
+		LOG_ERR("vulkan_cmd_copy_to_buffer: invalid command buffer state");
+		return false;
+	};
+	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
+
+	vk_buffer_data* dst_data =
+		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(info->dst));
+
+	if (!dst_data || !dst_data->buffer ||
+		!(dst_data->usage_flags & VK_BUFFER_USAGE_TRANSFER_DST_BIT)) {
+		LOG_ERR("vulkan_cmd_copy_to_buffer: invalid destination buffer");
+		breakpoint();
+		return false;
+	}
+
+	vk_buffer_data* src_data =
+		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(info->src));
+
+	if (!src_data || !src_data->buffer ||
+		!(src_data->usage_flags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT)) {
+		LOG_ERR("vulkan_cmd_copy_to_buffer: invalid source buffer");
+		return false;
+	}
+
+	if (!info->size) {
+		LOG_ERR("vulkan_cmd_copy_to_buffer: invalid size");
+		return false;
+	}
+
+	if (info->size > (dst_data->alloc_info.size - info->dst_offset) ||
+		info->size > (src_data->alloc_info.size - info->src_offset)) {
+		LOG_ERR("vulkan_cmd_copy_to_buffer: size is too big");
+		return false;
+	}
+
+	VkBufferCopy2 reg = {0};
+	{
+		reg.sType = VK_STRUCTURE_TYPE_BUFFER_COPY_2;
+		reg.size = info->size;
+		reg.srcOffset = info->src_offset;
+		reg.dstOffset = info->dst_offset;
+	}
+
+	VkCopyBufferInfo2 copy_ci = {0};
+	{
+		copy_ci.sType = VK_STRUCTURE_TYPE_COPY_BUFFER_INFO_2;
+		copy_ci.srcBuffer = src_data->buffer;
+		copy_ci.dstBuffer = dst_data->buffer;
+		copy_ci.regionCount = 1;
+		copy_ci.pRegions = &reg;
+	}
+
+	vkCmdCopyBuffer2(cmd_buf, &copy_ci);
+	return true;
+}
+
+bool vulkan_cmd_buffer_barrier(gpu_api* self, gpu_command_buffer cmd,
+							   gpu_buffer buf_handle, gpu_buffer_access from,
+							   gpu_buffer_access to) {
+	vk_api_state* state = self->state;
+
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
+	if (cmd_data->state != CMDBUF_RECORDING) {
+		LOG_ERR("vulkan_cmd_buffer_barrier: invalid command buffer state");
+		return false;
+	};
+	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
+
+	vk_buffer_data* buf_data =
+		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(buf_handle));
+
+	if (!buf_data || !buf_data->buffer) {
+		LOG_ERR("vulkan_cmd_buffer_barrier: invalid buffer");
+		return false;
+	}
+
+	// [TODO]: validate that transition is valid, same as with images
+	VkAccessFlags2 src_access =
+		gpu_buffer_access_to_vk_state_flags[from].access;
+	VkPipelineStageFlags2 src_stage =
+		gpu_buffer_access_to_vk_state_flags[from].stage;
+	VkAccessFlags2 dst_access = gpu_buffer_access_to_vk_state_flags[to].access;
+	VkPipelineStageFlags2 dst_stage =
+		gpu_buffer_access_to_vk_state_flags[to].stage;
+
+	VkBufferMemoryBarrier2 barrier = {0};
+	{
+		barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
+		barrier.buffer = buf_data->buffer;
+		barrier.size = VK_WHOLE_SIZE;
+
+		barrier.srcAccessMask = src_access;
+		barrier.srcStageMask = src_stage;
+		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+		barrier.dstAccessMask = dst_access;
+		barrier.dstStageMask = dst_stage;
+		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	}
+
+	VkDependencyInfo dep_info = {0};
+	{
+		dep_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+		dep_info.bufferMemoryBarrierCount = 1;
+		dep_info.pBufferMemoryBarriers = &barrier;
+	}
+	vkCmdPipelineBarrier2(cmd_buf, &dep_info);
+
+	return true;
 }
 
 bool gpu_create_api(gpu_api_config config, gpu_api* out) {
@@ -1759,9 +1972,10 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->create_buffer = vulkan_create_buffer;
 		out->destroy_buffer = vulkan_destroy_buffer;
 		out->buffer_get_mapped = vulkan_map_buffer;
-		out->copy_to_staging_buffer = NULL;
-		out->cmd_copy_to_buffer = NULL;
-		out->cmd_buffer_barrier = NULL;
+		out->buffer_get_device_address = vulkan_buffer_get_device_address;
+		out->copy_to_staging_buffer = vulkan_copy_to_staging_buffer;
+		out->cmd_copy_to_buffer = vulkan_cmd_copy_to_buffer;
+		out->cmd_buffer_barrier = vulkan_cmd_buffer_barrier;
 
 		/* == Images =========================================================*/
 		out->create_image = vulkan_create_image;
