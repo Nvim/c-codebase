@@ -337,7 +337,7 @@ vk_render_sync* vk_get_current_sync(vk_api_state* state) {
 }
 
 bool vk_begin_frame(vk_api_state* state, vk_frame* out,
-					window_size window_size) {
+								window_size window_size) {
 	*out = (vk_frame){0};
 	if (state->frame_in_progress) {
 		LOG_ERR("vulkan_begin_frame: a frame in already in progress");
@@ -374,15 +374,15 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 	} else {
 		// Wait & reset fence
 		static uint64_t const fence_timeout = sec_to_ns(10);
-	if (!check_result(vkWaitForFences(state->device, 1,
-									  &frame_sync->drawn_fence, false,
-									  fence_timeout))) {
-		return false;
-	};
-	if (!check_result(
-			vkResetFences(state->device, 1, &frame_sync->drawn_fence))) {
-		return false;
-	};
+		if (!check_result(vkWaitForFences(state->device, 1,
+										  &frame_sync->drawn_fence, false,
+										  fence_timeout))) {
+			return false;
+		};
+		if (!check_result(
+				vkResetFences(state->device, 1, &frame_sync->drawn_fence))) {
+			return false;
+		};
 	}
 
 	vk_image_pool_handle sc_image = VK_IMGPOOL_INVALID;
@@ -403,16 +403,16 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 			state->swapchain.must_refresh = true;
 		} else {
 			// get image view only if we got an image
-		sc_image = to_vk_img(sc_ret.image);
+			sc_image = to_vk_img(sc_ret.image);
 
 			vk_image_data* data =
 				vk_image_pool_get(state->image_pool, sc_image);
-		if (!data) {
+			if (!data) {
 				LOG_ERR(
 					"vulkan_begin_frame: couldn't get swapchain image's data");
-			return false;
-		}
-		sc_image_view = data->full_view;
+				return false;
+			}
+			sc_image_view = data->full_view;
 			out->has_rendertarget = true;
 		}
 	}

@@ -6,6 +6,9 @@ layout (location=2) out vec2 outUv;
 
 struct Vertex {
     vec3 position;
+	float _pad1;
+	vec2 uv;
+	vec2 _pad2;
 };
 
 layout(buffer_reference, std430) readonly buffer VertexBuffer {
@@ -16,15 +19,10 @@ layout(push_constant) uniform constants {
     VertexBuffer vertex_buffer;
 } push_constants;
 
-const vec2 uvs[6] = vec2[6](
-		vec2(0.f, 0.f), vec2(1.f, 1.f), vec2(1.f, 0.f),
-		vec2(0.f, 0.f), vec2(0.f, 1.f), vec2(1.f, 1.f)
-		);
-
 void main()
 {
     Vertex vert = push_constants.vertex_buffer.vertices[gl_VertexIndex];
 	outPos = vert.position;
-	outUv = uvs[gl_VertexIndex];
+	outUv = vert.uv;
 	gl_Position = vec4(vert.position, 1.f);
 }

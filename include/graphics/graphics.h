@@ -500,6 +500,9 @@ typedef struct gpu_api {
 	void (*cmd_draw)(struct gpu_api*, gpu_command_buffer, uint32_t vertex_count,
 					 uint32_t instance_count, uint32_t first_vertex,
 					 uint32_t first_instance);
+	void (*cmd_draw_indexed)(struct gpu_api*, gpu_command_buffer,
+							 uint32_t index_count, uint32_t instance_count,
+							 uint32_t first_index, uint32_t first_instance);
 
 	/**
 	 * @brief End the current frame. Must be called before requesting a new
@@ -515,14 +518,17 @@ typedef struct gpu_api {
 
 	gpu_pipeline (*create_pipeline)(struct gpu_api*, gpu_pipeline_ci*);
 	void (*destroy_pipeline)(struct gpu_api*, gpu_pipeline);
-	void (*cmd_bind_pipeline)(struct gpu_api*, gpu_command_buffer,
-							  gpu_pipeline, gpu_per_frame_data*);
+	void (*cmd_bind_pipeline)(struct gpu_api*, gpu_command_buffer, gpu_pipeline,
+							  gpu_per_frame_data*);
 
 	/* == Buffers ============================================================*/
 	gpu_buffer (*create_buffer)(struct gpu_api*, gpu_buffer_ci*);
 	void (*destroy_buffer)(struct gpu_api*, gpu_buffer);
 	gpu_buffer_map_result (*buffer_get_mapped)(struct gpu_api*, gpu_buffer);
-	gpu_buffer_device_address_result (*buffer_get_device_address)(struct gpu_api*, gpu_buffer);
+	gpu_buffer_device_address_result (*buffer_get_device_address)(
+		struct gpu_api*, gpu_buffer);
+	bool (*cmd_bind_index_buffer)(struct gpu_api*, gpu_command_buffer,
+								  gpu_buffer);
 
 	/**
 	 * @brief Copies data from RAM to a mapped buffer.

@@ -16,16 +16,21 @@ static uint8_t const GREEN[4] = {0x0, 0xff, 0x0, 0xff};
 static uint8_t const BLUE[4] = {0x0, 0x0, 0xff, 0xff};
 
 typedef struct {
-	float pos[4];
+	float pos[3];
+	float _pad;
+	float uv[2];
+	float _pad2[2];
 } tmp_vertex;
 
-static tmp_vertex const bot_left = {-.75f, -.75f, 0.f, 0.f};
-static tmp_vertex const bot_right = {.75f, -.75f, 0.f, 0.f};
-static tmp_vertex const top_right = {.75f, .75f, 0.f, 0.f};
-static tmp_vertex const top_left = {-.75f, .75f, 0.f, 0.f};
+// clang-format off
+static tmp_vertex const bot_left = {.pos = {-.75f, -.75f, 0.f}, .uv = {0.f, 0.f}};
+static tmp_vertex const bot_right = {.pos = {.75f, -.75f, 0.f}, .uv = {1.f, 0.f}};
+static tmp_vertex const top_right = {.pos = {.75f, .75f, 0.f}, .uv = {1.f, 1.f}};
+static tmp_vertex const top_left = {.pos = {-.75f, .75f, 0.f}, .uv = {0.f, 1.f}};
+// clang-format on
 
-static tmp_vertex vertex_data[] = {bot_left, top_right, bot_right,
-								   bot_left, top_left,	top_right};
+static tmp_vertex vertex_data[] = {bot_left, bot_right, top_right, top_left};
+static uint32_t index_data[] = {0, 1, 2, 0, 2, 3};
 
 int main(void) {
 
@@ -152,6 +157,13 @@ int main(void) {
 	ASSERT(ret.ok);
 	gpu_device_address vbuf_addr = ret.address;
 
+	gpu_buffer_ci ibuf_ci = {0};
+	{
+		ibuf_ci.size = sizeof(index_data);
+		ibuf_ci.usage = GPU_BUFFER_USAGE_INDEX;
+	}
+	gpu_buffer index_buffer = gpu.create_buffer(&gpu, &ibuf_ci);
+
 	gpu_buffer_ci staging_ci = {0};
 	{
 		staging_ci.size = 4 * MEMORY_KIB;
@@ -167,6 +179,15 @@ int main(void) {
 	}
 	gpu.copy_to_staging_buffer(&gpu, staging_buffer, vbuf_payload);
 
+	gpu_data_payload ibuf_payload = {0};
+	{
+		ibuf_payload.data_format = GPU_DATA_SPAN;
+		ibuf_payload.data.span.data = index_data;
+		ibuf_payload.data.span.size = sizeof(index_data);
+		ibuf_payload.offset = sizeof(vertex_data);
+	}
+	gpu.copy_to_staging_buffer(&gpu, staging_buffer, ibuf_payload);
+
 	{ // Upload image and vertices and wait
 		gpu_command_buffer cmd = gpu.create_command_buffer(&gpu);
 		ASSERT(check_handle(cmd.handle));
@@ -181,6 +202,16 @@ int main(void) {
 			buf_copy.size = sizeof(vertex_data);
 			buf_copy.src = staging_buffer;
 			buf_copy.dst = vertex_buffer;
+			buf_copy.src_offset = 0;
+			buf_copy.dst_offset = 0;
+		}
+		ASSERT(gpu.cmd_copy_to_buffer(&gpu, cmd, &buf_copy));
+
+		{
+			buf_copy.size = sizeof(index_data);
+			buf_copy.src = staging_buffer;
+			buf_copy.src_offset = sizeof(vertex_data);
+			buf_copy.dst = index_buffer;
 		}
 		ASSERT(gpu.cmd_copy_to_buffer(&gpu, cmd, &buf_copy));
 
@@ -234,16 +265,22 @@ int main(void) {
 	uint32_t frame_count = 0;
 	while (!_quit) {
 		frame_count++;
+		LOG_WARN("FRAME %u", frame_count);
+
+		if (frame_count == 1) {
+			// Set image binding on 1st frame only
+			gpu.temp_set_image_desc(&gpu, full_view);
+		}
 
 		platform_poll();
 		if (platform_window_should_close(win)) { break; }
 
 		gpu_frame_result frame_res = gpu.begin_frame(&gpu);
-		if(frame_res.status == FRAME_ERROR) {
+		if (frame_res.status == FRAME_ERROR) {
 			_quit = true;
 			break;
 		}
-		if(frame_res.status == FRAME_SKIP) {
+		if (frame_res.status == FRAME_SKIP) {
 			gpu.end_frame(&gpu, &frame_res.frame);
 			LOG_INFO("SKIPPING FRAME");
 			continue;
@@ -264,12 +301,6 @@ int main(void) {
 			.target = frame.framebuffer,
 		};
 		gpu_render_state s = {
-		LOG_WARN("FRAME %u", frame_count);
-
-		if (frame_count == 1) {
-			// Set image binding on 1st frame only
-			gpu.temp_set_image_desc(&gpu, full_view);
-		}
 			.color_target_count = 1,
 			.color_targets = {color_target},
 		};
@@ -281,7 +312,8 @@ int main(void) {
 		gpu.cmd_bind_pipeline(
 			&gpu, cmd, pipeline,
 			&(gpu_per_frame_data){.vertex_buffer = vbuf_addr});
-		gpu.cmd_draw(&gpu, cmd, 6, 1, 0, 0);
+		ASSERT(gpu.cmd_bind_index_buffer(&gpu, cmd, index_buffer));
+		gpu.cmd_draw_indexed(&gpu, cmd, 6, 1, 0, 0);
 		gpu.cmd_end_rendering(&gpu, cmd);
 		ASSERT(gpu.end_frame(&gpu, &frame));
 		double t_now = platform_get_time();
@@ -300,6 +332,7 @@ int main(void) {
 	gpu.destroy_image(&gpu, test_image);
 	gpu.destroy_buffer(&gpu, staging_buffer);
 	gpu.destroy_buffer(&gpu, vertex_buffer);
+	gpu.destroy_buffer(&gpu, index_buffer);
 	gpu.destroy_pipeline(&gpu, pipeline);
 
 	gpu.destroy(&gpu);

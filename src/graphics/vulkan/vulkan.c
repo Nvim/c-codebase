@@ -985,10 +985,10 @@ bool vulkan_end_frame(gpu_api* self, gpu_frame* f) {
 
 	// Transition framebuffer layout
 	if (check_handle(f->framebuffer.handle)) {
-	if (!vk_transition_to_present(state, f)) {
-		LOG_ERR("vulkan_end_frame: couldn't transition swapchain image");
-		return false;
-	}
+		if (!vk_transition_to_present(state, f)) {
+			LOG_ERR("vulkan_end_frame: couldn't transition swapchain image");
+			return false;
+		}
 	}
 
 	// Submit command buffer
@@ -999,16 +999,16 @@ bool vulkan_end_frame(gpu_api* self, gpu_frame* f) {
 
 	// Present
 	if (check_handle(f->framebuffer.handle)) {
-	LOG_DEBUG("vulkan_end_frame: presenting");
-	vk_present_result pres_res =
-		vk_swapchain_present(&state->swapchain, state->queue);
+		LOG_DEBUG("vulkan_end_frame: presenting");
+		vk_present_result pres_res =
+			vk_swapchain_present(&state->swapchain, state->queue);
 
-	if (pres_res == PRESENT_ERROR) {
-		LOG_ERR("vulkan_end_frame: couldn't present to swapchain");
-		return false;
-	}
+		if (pres_res == PRESENT_ERROR) {
+			LOG_ERR("vulkan_end_frame: couldn't present to swapchain");
+			return false;
+		}
 
-	if (pres_res == PRESENT_OUT_OF_DATE) {
+		if (pres_res == PRESENT_OUT_OF_DATE) {
 			LOG_INFO(
 				"vulkan_end_frame: queueing swapchain refresh for next frame");
 			state->swapchain.must_refresh = true;
@@ -1121,6 +1121,19 @@ void vulkan_cmd_draw(gpu_api* self, gpu_command_buffer cmd,
 
 	vkCmdDraw(cmd_data->command_buffer, vertex_count, instance_count,
 			  first_vertex, first_instance);
+}
+
+void vulkan_cmd_draw_indexed(gpu_api* self, gpu_command_buffer cmd,
+							 uint32_t index_count, uint32_t instance_count,
+							 uint32_t first_index, uint32_t first_instance) {
+	vk_api_state* state = self->state;
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
+
+	ASSERT(cmd_data->state == CMDBUF_RENDERING);
+
+	vkCmdDrawIndexed(cmd_data->command_buffer, index_count, instance_count,
+					 first_index, 0, first_instance);
 }
 
 gpu_image_extent vulkan_get_image_extent(gpu_api* self, gpu_image gpu_img) {
@@ -1815,6 +1828,33 @@ vulkan_buffer_get_device_address(gpu_api* self, gpu_buffer buf) {
 	return res;
 }
 
+bool vulkan_cmd_bind_index_buffer(gpu_api* self, gpu_command_buffer cmd,
+								  gpu_buffer buf_handle) {
+	vk_api_state* state = self->state;
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
+	if (cmd_data->state != CMDBUF_RECORDING &&
+		cmd_data->state != CMDBUF_RENDERING) {
+		LOG_ERR("vulkan_cmd_bind_index_buffer: invalid command buffer state");
+		return false;
+	};
+	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
+
+	vk_buffer_data* buf_data =
+		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(buf_handle));
+
+	if (!buf_data || !buf_data->buffer ||
+		!(buf_data->usage_flags & VK_BUFFER_USAGE_INDEX_BUFFER_BIT)) {
+		LOG_ERR("vulkan_cmd_bind_index_buffer: invalid buffer");
+		return false;
+	}
+
+	vkCmdBindIndexBuffer2(cmd_buf, buf_data->buffer, 0,
+						  buf_data->alloc_info.size, VK_INDEX_TYPE_UINT32);
+
+	return true;
+}
+
 bool vulkan_copy_to_staging_buffer(gpu_api* self, gpu_buffer dst,
 								   gpu_data_payload data) {
 	vk_api_state* state = self->state;
@@ -1855,7 +1895,8 @@ bool vulkan_copy_to_staging_buffer(gpu_api* self, gpu_buffer dst,
 	}
 
 	ASSERT(src);
-	memcpy(dst_data->alloc_info.pMappedData, src, size);
+	void* addr = (uint8_t*)dst_data->alloc_info.pMappedData + data.offset;
+	memcpy(addr, src, size);
 
 	return true;
 }
@@ -2006,6 +2047,7 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->cmd_reset_viewport = vulkan_cmd_reset_viewport;
 		out->cmd_reset_scissor = vulkan_cmd_reset_scissor;
 		out->cmd_draw = vulkan_cmd_draw;
+		out->cmd_draw_indexed = vulkan_cmd_draw_indexed;
 		out->end_frame = vulkan_end_frame;
 
 		/* == Shaders & Pipelines ============================================*/
@@ -2020,6 +2062,7 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->destroy_buffer = vulkan_destroy_buffer;
 		out->buffer_get_mapped = vulkan_map_buffer;
 		out->buffer_get_device_address = vulkan_buffer_get_device_address;
+		out->cmd_bind_index_buffer = vulkan_cmd_bind_index_buffer;
 		out->copy_to_staging_buffer = vulkan_copy_to_staging_buffer;
 		out->cmd_copy_to_buffer = vulkan_cmd_copy_to_buffer;
 		out->cmd_buffer_barrier = vulkan_cmd_buffer_barrier;
