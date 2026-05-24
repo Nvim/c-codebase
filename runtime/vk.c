@@ -239,14 +239,17 @@ int main(void) {
 		if (platform_window_should_close(win)) { break; }
 
 		gpu_frame_result frame_res = gpu.begin_frame(&gpu);
-		ASSERT(frame_res.ok);
+		if(frame_res.status == FRAME_ERROR) {
+			_quit = true;
+			break;
+		}
+		if(frame_res.status == FRAME_SKIP) {
+			gpu.end_frame(&gpu, &frame_res.frame);
+			LOG_INFO("SKIPPING FRAME");
+			continue;
+		}
 		gpu_frame frame = frame_res.frame;
 		gpu_command_buffer cmd = frame.frame_cmd;
-
-		if (frame_count == 1) {
-			// Set image binding on 1st frame only
-			gpu.temp_set_image_desc(&gpu, full_view);
-		}
 
 		{ // [TODO]: temp
 			gpu_image_view v = {0};
@@ -261,6 +264,12 @@ int main(void) {
 			.target = frame.framebuffer,
 		};
 		gpu_render_state s = {
+		LOG_WARN("FRAME %u", frame_count);
+
+		if (frame_count == 1) {
+			// Set image binding on 1st frame only
+			gpu.temp_set_image_desc(&gpu, full_view);
+		}
 			.color_target_count = 1,
 			.color_targets = {color_target},
 		};

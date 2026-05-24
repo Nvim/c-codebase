@@ -60,6 +60,7 @@ static void framebuffer_size_callback(GLFWwindow* window, int width,
 bool platform_init(void) {
 	glfwSetErrorCallback(on_error);
 
+	glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
 	_init = (glfwInit() == GLFW_TRUE);
 	ASSERT(_init);
 

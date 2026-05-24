@@ -39,6 +39,13 @@ typedef enum gpu_image_format {
 	IMAGE_FORMAT_RGB_UNORM,
 	IMAGE_FORMAT_RGB_SNORM,
 	IMAGE_FORMAT_RGB_SRGB,
+
+	IMAGE_FORMAT_BGRA_UNORM,
+	IMAGE_FORMAT_BGRA_SNORM,
+	IMAGE_FORMAT_BGRA_SRGB,
+	IMAGE_FORMAT_BGR_UNORM,
+	IMAGE_FORMAT_BGR_SNORM,
+	IMAGE_FORMAT_BGR_SRGB,
 	// TODO: add 16 & 32 bit HDR and depth formats
 	IMAGE_FORMAT_D16,
 } gpu_image_format;
@@ -107,6 +114,10 @@ typedef struct gpu_shader_ci {
 	string debug_name;
 } gpu_shader_ci;
 
+/**
+ * [NOTE]: framebuffer and framebuffer_view handles can be invalid (e.g during
+ * resizing), rendering should be skipped in this case.
+ */
 typedef struct gpu_frame {
 	gpu_image framebuffer;
 	gpu_image_view framebuffer_view;
@@ -398,9 +409,15 @@ typedef struct gpu_buffer_device_address_result {
 	gpu_device_address address;
 } gpu_buffer_device_address_result;
 
+typedef enum {
+	FRAME_ERROR, // Error acquiring frame, unrecoverable
+	FRAME_SKIP,	 // Frame must be skipped (probably due to resizing)
+	FRAME_OK,	 // All good
+} gpu_frame_status;
+
 typedef struct gpu_frame_result {
+	gpu_frame_status status;
 	gpu_frame frame;
-	bool ok;
 } gpu_frame_result;
 
 /* ========================================================================== */

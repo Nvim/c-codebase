@@ -134,6 +134,8 @@ bool vk_surface_get_capabilities(vk_surface* surface, VkPhysicalDevice device);
 void vk_surface_destroy(vk_surface* surface, VkInstance instance);
 
 typedef struct vk_swapchain {
+	bool must_refresh; // recreate at beginning of next frame
+
 	VkSwapchainKHR swapchain;
 	vk_image_array images;
 	vk_image_view_array image_views;
@@ -209,6 +211,7 @@ bool vk_sync_buffer_create(VkDevice device, vk_sync_buffer* out,
 void vk_sync_buffer_destroy(VkDevice device, vk_sync_buffer* out);
 
 typedef struct {
+	bool has_rendertarget; // False if swapchain acquire failed, frame should be skipped
 	uint64_t frame_idx;
 	vk_image_pool_handle rendertarget;
 	VkImageView rendertarget_view;
@@ -242,7 +245,6 @@ typedef struct vk_api_state {
 	vk_surface surface;
 	VkFormat rendertarget_format;
 	vk_swapchain swapchain;
-	bool swapchain_must_refresh; // recreate at beginning of next frame
 
 	// Frame-in-flight buffering
 	uint64_t frame_idx;

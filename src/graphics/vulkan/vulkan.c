@@ -27,6 +27,8 @@ ARRAY_DEFINE_TYPE(VkExtensionProperties, vk_ext_props_array)
 #define BUFFER_POOL_SIZE 1024
 #define HANDLE_POOL_SIZE 1024
 
+static VkFormat const _default_surface_format = VK_FORMAT_B8G8R8A8_UNORM;
+
 static bool _is_vk_13(VkPhysicalDeviceProperties2 props) {
 	return props.properties.apiVersion >= VK_API_VERSION_1_3;
 }
@@ -380,13 +382,48 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			return;
 		}
 		ASSERT(state->surface.capabilities.minImageCount);
+
+		VkPhysicalDeviceSurfaceInfo2KHR surface_info = {0};
+		{
+			surface_info.sType =
+				VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR;
+			surface_info.surface = state->surface.surface;
+		}
+		uint32_t surface_formats_count = 0;
+		vkGetPhysicalDeviceSurfaceFormatsKHR(state->physical_device,
+											 state->surface.surface,
+											 &surface_formats_count, NULL);
+
+		VkSurfaceFormatKHR* surface_formats = arena_push_array_z(
+			state->arena, VkSurfaceFormatKHR, surface_formats_count);
+
+		vkGetPhysicalDeviceSurfaceFormatsKHR(
+			state->physical_device, state->surface.surface,
+			&surface_formats_count, surface_formats);
+
+		bool format_supported = false;
+		VkFormat wanted =
+			gpu_to_vk_image_format(self->config.target_image_format);
+		LOG_DEBUG("vulkan_initialize: looking for surface format %d", wanted);
+		for (uint32_t i = 0; i < surface_formats_count; ++i) {
+			if (surface_formats[i].format == wanted) {
+				format_supported = true;
+				state->rendertarget_format = wanted;
+				break;
+			}
+		}
+
+		if (!format_supported) {
+			state->rendertarget_format = _default_surface_format;
+			self->config.target_image_format =
+				vk_to_gpu_image_format(_default_surface_format);
+			LOG_DEBUG("vulkan_initialize: fallback to default surface format");
+		}
 	}
 
 	// Swapchain:
 	{
 		window_size win_size = platform_get_window_size(window);
-		state->rendertarget_format =
-			gpu_to_vk_image_format(self->config.target_image_format);
 
 		// Buffering setup:
 		uint32_t buffering = self->config.frames_in_flight;
@@ -587,8 +624,14 @@ gpu_frame_result vulkan_begin_frame(gpu_api* self) {
 	}
 	cmd_data->state = CMDBUF_RECORDING;
 
+	if (frame.has_rendertarget == true) {
+		ret.status = FRAME_OK;
+	} else {
+		LOG_INFO("vulkan_begin_frame: frame must be skipped by client");
+		ret.status = FRAME_SKIP;
+	}
+
 	ret.frame = vk_to_gpu_frame(&frame);
-	ret.ok = true;
 	return ret;
 }
 
@@ -941,9 +984,11 @@ bool vulkan_end_frame(gpu_api* self, gpu_frame* f) {
 	}
 
 	// Transition framebuffer layout
+	if (check_handle(f->framebuffer.handle)) {
 	if (!vk_transition_to_present(state, f)) {
 		LOG_ERR("vulkan_end_frame: couldn't transition swapchain image");
 		return false;
+	}
 	}
 
 	// Submit command buffer
@@ -953,6 +998,7 @@ bool vulkan_end_frame(gpu_api* self, gpu_frame* f) {
 	}
 
 	// Present
+	if (check_handle(f->framebuffer.handle)) {
 	LOG_DEBUG("vulkan_end_frame: presenting");
 	vk_present_result pres_res =
 		vk_swapchain_present(&state->swapchain, state->queue);
@@ -963,9 +1009,10 @@ bool vulkan_end_frame(gpu_api* self, gpu_frame* f) {
 	}
 
 	if (pres_res == PRESENT_OUT_OF_DATE) {
-		LOG_INFO("vulkan_end_frame: queueing swapchain refresh for next frame");
-		state->swapchain_must_refresh = true;
-		return true;
+			LOG_INFO(
+				"vulkan_end_frame: queueing swapchain refresh for next frame");
+			state->swapchain.must_refresh = true;
+		}
 	}
 
 	// Reset frame's command buffer
