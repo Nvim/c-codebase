@@ -120,7 +120,8 @@ POOL_DEFINE_TYPE(vk_opaque_handle, vk_handle_pool)
  * ========================================================================== */
 
 typedef struct {
-	VkDeviceAddress vertex_buffer;
+	VkDeviceAddress reserved_address;
+	VkDeviceAddress user_data_buffer;
 } vk_push_constants;
 
 typedef struct vk_surface {

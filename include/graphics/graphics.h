@@ -247,7 +247,7 @@ typedef struct {
  *
  */
 typedef struct gpu_per_frame_data {
-	gpu_device_address vertex_buffer;
+	gpu_device_address frame_buffer_address; // Address of user-data buffer
 } gpu_per_frame_data;
 
 typedef enum gpu_data_format {
@@ -409,6 +409,21 @@ typedef struct gpu_buffer_device_address_result {
 	gpu_device_address address;
 } gpu_buffer_device_address_result;
 
+typedef struct {
+	uint32_t vertex_count;
+	uint32_t instance_count;
+	uint32_t first_vertex;
+	uint32_t first_instance;
+} gpu_indirect_draw_command;
+
+ typedef struct {
+	 uint32_t    index_count;
+	 uint32_t    instance_count;
+	 uint32_t    first_index;
+	 int32_t     vertex_offset;
+	 uint32_t    first_instance;
+ } gpu_cmd_indirect_indexed_draw_command;
+
 typedef enum {
 	FRAME_ERROR, // Error acquiring frame, unrecoverable
 	FRAME_SKIP,	 // Frame must be skipped (probably due to resizing)
@@ -503,6 +518,13 @@ typedef struct gpu_api {
 	void (*cmd_draw_indexed)(struct gpu_api*, gpu_command_buffer,
 							 uint32_t index_count, uint32_t instance_count,
 							 uint32_t first_index, uint32_t first_instance);
+	void (*cmd_draw_indirect)(struct gpu_api*, gpu_command_buffer,
+							  gpu_buffer indirect_buffer, uint32_t offset,
+							  uint32_t draw_count, uint32_t stride);
+	void (*cmd_draw_indirect_indexed)(struct gpu_api*, gpu_command_buffer,
+									  gpu_buffer indirect_buffer,
+									  uint32_t offset, uint32_t draw_count,
+									  uint32_t stride);
 
 	/**
 	 * @brief End the current frame. Must be called before requesting a new

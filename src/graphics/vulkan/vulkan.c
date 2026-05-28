@@ -1098,7 +1098,9 @@ void vulkan_cmd_bind_pipeline(gpu_api* self, gpu_command_buffer cmd,
 	vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
 							data->layout, 0, 1, &state->descriptor, 0, 0);
 
-	vk_push_constants pc = {.vertex_buffer = frame_data->vertex_buffer};
+	vk_push_constants pc = {
+		.reserved_address = 0,
+		.user_data_buffer = frame_data->frame_buffer_address};
 	VkPushConstantsInfo pc_info = {0};
 	{
 		pc_info.sType = VK_STRUCTURE_TYPE_PUSH_CONSTANTS_INFO;
@@ -1134,6 +1136,49 @@ void vulkan_cmd_draw_indexed(gpu_api* self, gpu_command_buffer cmd,
 
 	vkCmdDrawIndexed(cmd_data->command_buffer, index_count, instance_count,
 					 first_index, 0, first_instance);
+}
+
+void vulkan_cmd_draw_indirect(gpu_api* self, gpu_command_buffer cmd,
+							  gpu_buffer indirect_buffer, uint32_t offset,
+							  uint32_t draw_count, uint32_t stride) {
+	vk_api_state* state = self->state;
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
+
+	ASSERT(cmd_data->state == CMDBUF_RENDERING);
+
+	vk_buffer_data* buf_data =
+		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(indirect_buffer));
+
+	if (!buf_data || !buf_data->buffer) {
+		LOG_ERR("vulkan_cmd_draw_indirect: invalid buffer");
+		return;
+	}
+
+	vkCmdDrawIndirect(cmd_data->command_buffer, buf_data->buffer, offset,
+					  draw_count, stride);
+}
+
+void vulkan_cmd_draw_indirect_indexed(gpu_api* self, gpu_command_buffer cmd,
+									  gpu_buffer indirect_buffer,
+									  uint32_t offset, uint32_t draw_count,
+									  uint32_t stride) {
+	vk_api_state* state = self->state;
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
+
+	ASSERT(cmd_data->state == CMDBUF_RENDERING);
+
+	vk_buffer_data* buf_data =
+		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(indirect_buffer));
+
+	if (!buf_data || !buf_data->buffer) {
+		LOG_ERR("vulkan_cmd_draw_indirect_indexed: invalid buffer");
+		return;
+	}
+
+	vkCmdDrawIndexedIndirect(cmd_data->command_buffer, buf_data->buffer, offset,
+							 draw_count, stride);
 }
 
 gpu_image_extent vulkan_get_image_extent(gpu_api* self, gpu_image gpu_img) {
@@ -2048,6 +2093,8 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->cmd_reset_scissor = vulkan_cmd_reset_scissor;
 		out->cmd_draw = vulkan_cmd_draw;
 		out->cmd_draw_indexed = vulkan_cmd_draw_indexed;
+		out->cmd_draw_indirect = vulkan_cmd_draw_indirect;
+		out->cmd_draw_indirect_indexed = vulkan_cmd_draw_indirect_indexed;
 		out->end_frame = vulkan_end_frame;
 
 		/* == Shaders & Pipelines ============================================*/

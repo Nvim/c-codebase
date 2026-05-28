@@ -7,3 +7,4 @@ out/*
 thirdparty/*
 *.spirv
 mise.local.toml
+*.cap

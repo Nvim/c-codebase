@@ -15,7 +15,12 @@ layout(buffer_reference, std430) readonly buffer VertexBuffer {
     Vertex vertices[];
 };
 
+layout(buffer_reference, std430) readonly buffer ReservedBuffer {
+    uint idontneedyoufornow[];
+};
+
 layout(push_constant) uniform constants {
+	ReservedBuffer reserved_buffer;
     VertexBuffer vertex_buffer;
 } push_constants;
 

@@ -135,8 +135,7 @@ bool gpu_validate_buffer_ci(gpu_buffer_ci* ci) {
 		return false;
 	}
 
-	if (ci->usage == GPU_BUFFER_USAGE_INDIRECT ||
-		ci->usage == GPU_BUFFER_USAGE_STAGING_DOWN) {
+	if (ci->usage == GPU_BUFFER_USAGE_STAGING_DOWN) {
 		LOG_ERR("gpu_validate_buffer_ci: unsupported usage");
 		return false;
 	}

@@ -32,6 +32,14 @@ static tmp_vertex const top_left = {.pos = {-.75f, .75f, 0.f}, .uv = {0.f, 1.f}}
 static tmp_vertex vertex_data[] = {bot_left, bot_right, top_right, top_left};
 static uint32_t index_data[] = {0, 1, 2, 0, 2, 3};
 
+static gpu_cmd_indirect_indexed_draw_command indirect_data = {
+	.index_count = 6,
+	.instance_count = 1,
+	.first_index = 0,
+	.vertex_offset = 0,
+	.first_instance = 0,
+};
+
 int main(void) {
 
 	ASSERT(platform_init());
@@ -152,10 +160,6 @@ int main(void) {
 		vbuf_ci.usage = GPU_BUFFER_USAGE_STORAGE;
 	}
 	gpu_buffer vertex_buffer = gpu.create_buffer(&gpu, &vbuf_ci);
-	gpu_buffer_device_address_result ret =
-		gpu.buffer_get_device_address(&gpu, vertex_buffer);
-	ASSERT(ret.ok);
-	gpu_device_address vbuf_addr = ret.address;
 
 	gpu_buffer_ci ibuf_ci = {0};
 	{
@@ -164,6 +168,14 @@ int main(void) {
 	}
 	gpu_buffer index_buffer = gpu.create_buffer(&gpu, &ibuf_ci);
 
+	gpu_buffer_ci indirect_buf_ci = {0};
+	{
+		indirect_buf_ci.size = sizeof(indirect_data);
+		indirect_buf_ci.usage = GPU_BUFFER_USAGE_INDIRECT;
+		indirect_buf_ci.memory_preference = GPU_BUFFER_MEMORY_GPU;
+	}
+	gpu_buffer indirect_buffer = gpu.create_buffer(&gpu, &indirect_buf_ci);
+
 	gpu_buffer_ci staging_ci = {0};
 	{
 		staging_ci.size = 4 * MEMORY_KIB;
@@ -171,6 +183,7 @@ int main(void) {
 	}
 	gpu_buffer staging_buffer = gpu.create_buffer(&gpu, &staging_ci);
 
+	size_t offset = 0;
 	gpu_data_payload vbuf_payload = {0};
 	{
 		vbuf_payload.data_format = GPU_DATA_SPAN;
@@ -178,6 +191,7 @@ int main(void) {
 		vbuf_payload.data.span.size = sizeof(vertex_data);
 	}
 	gpu.copy_to_staging_buffer(&gpu, staging_buffer, vbuf_payload);
+	offset += sizeof(vertex_data);
 
 	gpu_data_payload ibuf_payload = {0};
 	{
@@ -187,6 +201,29 @@ int main(void) {
 		ibuf_payload.offset = sizeof(vertex_data);
 	}
 	gpu.copy_to_staging_buffer(&gpu, staging_buffer, ibuf_payload);
+	offset += sizeof(index_data);
+
+	gpu_data_payload indirect_payload = {0};
+	{
+		indirect_payload.data_format = GPU_DATA_SPAN;
+		indirect_payload.data.span.data = &indirect_data;
+		indirect_payload.data.span.size = sizeof(indirect_data);
+		indirect_payload.offset = offset;
+	}
+	gpu.copy_to_staging_buffer(&gpu, staging_buffer, indirect_payload);
+
+	// get device addresses:
+	gpu_device_address vertex_buffer_addr;
+	// gpu_device_address indirect_buffer_addr;
+	{
+		gpu_buffer_device_address_result ret =
+			gpu.buffer_get_device_address(&gpu, vertex_buffer);
+		ASSERT(ret.ok);
+		vertex_buffer_addr = ret.address;
+		// ret = gpu.buffer_get_device_address(&gpu, indirect_buffer);
+		// ASSERT(ret.ok);
+		// indirect_buffer_addr = ret.address;
+	}
 
 	{ // Upload image and vertices and wait
 		gpu_command_buffer cmd = gpu.create_command_buffer(&gpu);
@@ -197,21 +234,30 @@ int main(void) {
 		gpu.cmd_transition_image(&gpu, cmd, test_image,
 								 GPU_IMAGE_STATE_SHADER_READ);
 
+		offset = 0;
 		gpu_buffer_copy_info buf_copy = {0};
 		{
 			buf_copy.size = sizeof(vertex_data);
 			buf_copy.src = staging_buffer;
 			buf_copy.dst = vertex_buffer;
-			buf_copy.src_offset = 0;
-			buf_copy.dst_offset = 0;
 		}
 		ASSERT(gpu.cmd_copy_to_buffer(&gpu, cmd, &buf_copy));
+		offset += buf_copy.size;
 
 		{
 			buf_copy.size = sizeof(index_data);
 			buf_copy.src = staging_buffer;
-			buf_copy.src_offset = sizeof(vertex_data);
+			buf_copy.src_offset = offset;
 			buf_copy.dst = index_buffer;
+		}
+		ASSERT(gpu.cmd_copy_to_buffer(&gpu, cmd, &buf_copy));
+		offset += buf_copy.size;
+
+		{
+			buf_copy.size = sizeof(indirect_data);
+			buf_copy.src = staging_buffer;
+			buf_copy.src_offset = offset;
+			buf_copy.dst = indirect_buffer;
 		}
 		ASSERT(gpu.cmd_copy_to_buffer(&gpu, cmd, &buf_copy));
 
@@ -227,39 +273,6 @@ int main(void) {
 		gpu_sampler_ci ci = {0};
 		gpu_sampler sampler = gpu.create_sampler(&gpu, &ci);
 		gpu.destroy_sampler(&gpu, sampler);
-	}
-
-	{ // [TODO]: temp buffer tests
-		gpu_buffer_ci ci = {0};
-		{
-			ci.size = 4 * MEMORY_KIB;
-			ci.usage = GPU_BUFFER_USAGE_STAGING_UP;
-			ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
-		}
-		gpu_buffer buffer = gpu.create_buffer(&gpu, &ci);
-		gpu_buffer_map_result res = gpu.buffer_get_mapped(&gpu, buffer);
-		ASSERT(res.ok && res.ptr);
-		gpu.destroy_buffer(&gpu, buffer);
-
-		/* ================================================================== */
-		{
-			ci.usage = GPU_BUFFER_USAGE_STORAGE;
-			ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
-		}
-		buffer = gpu.create_buffer(&gpu, &ci);
-		res = gpu.buffer_get_mapped(&gpu, buffer);
-		ASSERT(res.ok && res.ptr);
-		gpu.destroy_buffer(&gpu, buffer);
-
-		/* ================================================================== */
-		{
-			ci.usage = GPU_BUFFER_USAGE_STORAGE;
-			ci.memory_preference = GPU_BUFFER_MEMORY_GPU;
-		}
-		buffer = gpu.create_buffer(&gpu, &ci);
-		res = gpu.buffer_get_mapped(&gpu, buffer);
-		ASSERT(!res.ok && !res.ptr);
-		gpu.destroy_buffer(&gpu, buffer);
 	}
 
 	uint32_t frame_count = 0;
@@ -311,9 +324,11 @@ int main(void) {
 		gpu.cmd_begin_rendering(&gpu, cmd, &s);
 		gpu.cmd_bind_pipeline(
 			&gpu, cmd, pipeline,
-			&(gpu_per_frame_data){.vertex_buffer = vbuf_addr});
+			&(gpu_per_frame_data){.frame_buffer_address = vertex_buffer_addr});
 		ASSERT(gpu.cmd_bind_index_buffer(&gpu, cmd, index_buffer));
-		gpu.cmd_draw_indexed(&gpu, cmd, 6, 1, 0, 0);
+		gpu.cmd_draw_indirect_indexed(
+			&gpu, cmd, indirect_buffer, 0, 1,
+			sizeof(gpu_cmd_indirect_indexed_draw_command));
 		gpu.cmd_end_rendering(&gpu, cmd);
 		ASSERT(gpu.end_frame(&gpu, &frame));
 		double t_now = platform_get_time();
@@ -333,6 +348,7 @@ int main(void) {
 	gpu.destroy_buffer(&gpu, staging_buffer);
 	gpu.destroy_buffer(&gpu, vertex_buffer);
 	gpu.destroy_buffer(&gpu, index_buffer);
+	gpu.destroy_buffer(&gpu, indirect_buffer);
 	gpu.destroy_pipeline(&gpu, pipeline);
 
 	gpu.destroy(&gpu);
