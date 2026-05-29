@@ -83,7 +83,7 @@ int main(void) {
 	{ // Vertex shader
 		path vs_path;
 		ASSERT(path_create(arena, scratch.arena,
-						   str("src/shaders/quad.vert.spirv"), &vs_path));
+						   str("build/shaders/quad.slang.vert.spirv"), &vs_path));
 		fs_file_read_result res = fs_read_all_file(arena, vs_path);
 		ASSERT(res.ok);
 		gpu_shader_ci vs_ci = {0};
@@ -96,7 +96,7 @@ int main(void) {
 	{ // Fragment shader
 		path fs_path;
 		ASSERT(path_create(arena, scratch.arena,
-						   str("src/shaders/quad.frag.spirv"), &fs_path));
+						   str("build/shaders/quad.slang.frag.spirv"), &fs_path));
 		fs_file_read_result res = fs_read_all_file(arena, fs_path);
 		ASSERT(res.ok);
 		gpu_shader_ci fs_ci = {0};
