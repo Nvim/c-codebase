@@ -171,16 +171,26 @@ _find_device(vulkan_init_info* pf_info, VkInstance instance, arena_t* scratch) {
 
 static VkDevice _create_device(VkPhysicalDevice physical_device,
 							   uint32_t queue_idx) {
+
+	VkPhysicalDeviceVulkan11Features vk_11_features = {0};
+	{
+		vk_11_features.sType =
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+		vk_11_features.shaderDrawParameters = VK_TRUE;
+	}
+
 	VkPhysicalDeviceVulkan12Features vk_12_features = {0};
 	{
 		vk_12_features.sType =
 			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+		vk_12_features.pNext = &vk_11_features;
 		vk_12_features.descriptorIndexing = true;
 		vk_12_features.shaderSampledImageArrayNonUniformIndexing = true;
 		vk_12_features.descriptorBindingVariableDescriptorCount = true;
 		vk_12_features.runtimeDescriptorArray = true;
 		vk_12_features.bufferDeviceAddress = true;
 	}
+
 	VkPhysicalDeviceVulkan13Features vk_13_features = {0};
 	{
 		vk_13_features.sType =
@@ -189,7 +199,9 @@ static VkDevice _create_device(VkPhysicalDevice physical_device,
 		vk_13_features.synchronization2 = true;
 		vk_13_features.dynamicRendering = true;
 	}
-	VkPhysicalDeviceFeatures vk_10_features = {.samplerAnisotropy = VK_TRUE};
+
+	VkPhysicalDeviceFeatures vk_10_features = {.samplerAnisotropy = VK_TRUE,
+											   .shaderInt64 = VK_TRUE};
 
 	static char const* required_exts[1] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 	static float const qfpriorities = 1.0f;
@@ -1098,9 +1110,9 @@ void vulkan_cmd_bind_pipeline(gpu_api* self, gpu_command_buffer cmd,
 	vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
 							data->layout, 0, 1, &state->descriptor, 0, 0);
 
-	vk_push_constants pc = {
-		.reserved_address = 0,
-		.user_data_buffer = frame_data->frame_buffer_address};
+	vk_push_constants pc = {.reserved_address = 0,
+							.user_data_buffer =
+								frame_data->frame_buffer_address};
 	VkPushConstantsInfo pc_info = {0};
 	{
 		pc_info.sType = VK_STRUCTURE_TYPE_PUSH_CONSTANTS_INFO;
