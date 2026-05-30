@@ -67,6 +67,8 @@ LIB_EXPORT void pool_release(pool_t* pool, pool_handle handle);
  */
 LIB_EXPORT bool pool_is_handle_valid(pool_t* pool, pool_handle handle);
 
+LIB_EXPORT uint32_t pool_handle_index(pool_handle handle);
+
 /**
  * @brief Get a pointer to a pool element.
  *

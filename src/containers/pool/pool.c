@@ -187,6 +187,10 @@ bool pool_is_handle_valid(pool_t* pool, pool_handle handle) {
 	return true;
 }
 
+uint32_t pool_handle_index(pool_handle handle) {
+	return _handle_index(handle.handle);
+}
+
 void* pool_get(pool_t* pool, pool_handle handle) {
 	if (!pool_is_handle_valid(pool, handle)) { return NULL; }
 

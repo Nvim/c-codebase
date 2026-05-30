@@ -25,6 +25,7 @@ ARRAY_DEFINE_TYPE(VkSemaphore, vk_sem_array)
 /* == Image == */
 typedef enum {
 	IMAGE_FLAGS_SWAPCHAIN = BIT(1),
+	IMAGE_FLAGS_HAS_DESCRIPTOR = BIT(2), // Is it used in shaders?
 } vk_image_flags;
 
 typedef struct vk_image_data {
@@ -36,12 +37,12 @@ typedef struct vk_image_data {
 	VkImageUsageFlags usage_flags; // Set at creation (not swapchain)
 	gpu_image_type gpu_type;
 	gpu_image_state gpu_state;
-	uint32_t layer_count;
-	uint32_t level_count;
+	uint16_t layer_count;
+	uint8_t level_count;
 	uint8_t vk_image_flags;
 } vk_image_data;
 
-STATIC_ASSERT(sizeof(vk_image_data) == 64, "pretty tight");
+STATIC_ASSERT(sizeof(vk_image_data) == 56, "pretty tight");
 POOL_DEFINE_TYPE(vk_image_data, vk_image_pool)
 #define VK_IMGPOOL_INVALID (vk_image_pool_handle){.raw_handle = 0}
 
@@ -212,7 +213,8 @@ bool vk_sync_buffer_create(VkDevice device, vk_sync_buffer* out,
 void vk_sync_buffer_destroy(VkDevice device, vk_sync_buffer* out);
 
 typedef struct {
-	bool has_rendertarget; // False if swapchain acquire failed, frame should be skipped
+	bool has_rendertarget; // False if swapchain acquire failed, frame should be
+						   // skipped
 	uint64_t frame_idx;
 	vk_image_pool_handle rendertarget;
 	VkImageView rendertarget_view;
@@ -227,6 +229,7 @@ typedef struct vk_api_state {
 	VkInstance instance;
 	VkPhysicalDevice physical_device;
 	uint32_t queue_family_idx;
+	VkPhysicalDeviceFeatures2 device_features;
 	VkPhysicalDeviceProperties2 device_props;
 	VkPhysicalDeviceMemoryProperties2 memory_props;
 
@@ -376,10 +379,17 @@ static vk_image_barrier_info gpu_state_to_vk_image_barrier[] = {
 		},
 };
 
+static inline VkImageLayout
+_gpu_image_state_to_vk_image_layout(gpu_image_state s) {
+	return gpu_state_to_vk_image_barrier[s].layout;
+}
+
 void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
 					  vk_image_barrier_info from, vk_image_barrier_info to);
 
 bool vk_transition_to_present(vk_api_state* state, gpu_frame* frame);
+
+bool vk_update_image_descriptor(vk_api_state* state, vk_image_pool_handle img);
 
 typedef struct vk_buffer_barrier_info {
 	VkAccessFlags2 access;

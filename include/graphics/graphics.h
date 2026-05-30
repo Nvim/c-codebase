@@ -26,12 +26,6 @@ typedef struct { pool_handle handle; } gpu_semaphore;
 
 typedef uint64_t gpu_device_address;
 
-typedef struct image_data {
-	uint32_t width;
-	uint32_t height;
-	u8_array bytes;
-} image_data;
-
 typedef enum gpu_image_format {
 	IMAGE_FORMAT_RGBA_UNORM,
 	IMAGE_FORMAT_RGBA_SNORM,
@@ -259,11 +253,17 @@ typedef enum gpu_data_format {
 typedef struct gpu_data_payload {
 	gpu_data_format data_format;
 	union {
-		array_t array;
+		u8_array array;
 		span span;
 	} data;
 	size_t offset;
 } gpu_data_payload;
+
+typedef struct gpu_image_data_payload {
+	uint32_t width;
+	uint32_t height;
+	gpu_data_payload data;
+} gpu_image_data_payload;
 
 typedef enum gpu_sampler_filter_mode {
 	GPU_SAMPLER_FILTER_NEAREST,
@@ -416,13 +416,13 @@ typedef struct {
 	uint32_t first_instance;
 } gpu_indirect_draw_command;
 
- typedef struct {
-	 uint32_t    index_count;
-	 uint32_t    instance_count;
-	 uint32_t    first_index;
-	 int32_t     vertex_offset;
-	 uint32_t    first_instance;
- } gpu_cmd_indirect_indexed_draw_command;
+typedef struct {
+	uint32_t index_count;
+	uint32_t instance_count;
+	uint32_t first_index;
+	int32_t vertex_offset;
+	uint32_t first_instance;
+} gpu_cmd_indirect_indexed_draw_command;
 
 typedef enum {
 	FRAME_ERROR, // Error acquiring frame, unrecoverable
@@ -587,9 +587,7 @@ typedef struct gpu_api {
 	bool (*create_image_view)(struct gpu_api*, gpu_image_view* out,
 							  gpu_image_view_ci*);
 	void (*destroy_image_view)(struct gpu_api*, gpu_image_view);
-	bool (*temp_copy_to_image)(struct gpu_api*, gpu_command_buffer, gpu_image,
-							   image_data);
-	void (*temp_set_image_desc)(struct gpu_api*, gpu_image_view);
+	bool (*cmd_update_image)(struct gpu_api*, gpu_command_buffer, gpu_image, gpu_image_data_payload* payload);
 
 	/**
 	 * @brief Specify a new usage for image. Image has to have been created
@@ -599,6 +597,7 @@ typedef struct gpu_api {
 	bool (*cmd_transition_image)(struct gpu_api*, gpu_command_buffer, gpu_image,
 								 gpu_image_state new_state);
 
+	/* == Samplers ===========================================================*/
 	gpu_sampler (*create_sampler)(struct gpu_api*, gpu_sampler_ci*);
 	void (*destroy_sampler)(struct gpu_api*, gpu_sampler);
 

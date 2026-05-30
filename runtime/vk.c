@@ -83,7 +83,8 @@ int main(void) {
 	{ // Vertex shader
 		path vs_path;
 		ASSERT(path_create(arena, scratch.arena,
-						   str("build/shaders/quad.slang.vert.spirv"), &vs_path));
+						   str("build/shaders/quad.slang.vert.spirv"),
+						   &vs_path));
 		fs_file_read_result res = fs_read_all_file(arena, vs_path);
 		ASSERT(res.ok);
 		gpu_shader_ci vs_ci = {0};
@@ -96,7 +97,8 @@ int main(void) {
 	{ // Fragment shader
 		path fs_path;
 		ASSERT(path_create(arena, scratch.arena,
-						   str("build/shaders/quad.slang.frag.spirv"), &fs_path));
+						   str("build/shaders/quad.slang.frag.spirv"),
+						   &fs_path));
 		fs_file_read_result res = fs_read_all_file(arena, fs_path);
 		ASSERT(res.ok);
 		gpu_shader_ci fs_ci = {0};
@@ -147,10 +149,9 @@ int main(void) {
 		memcpy(px + 12, WHITE, 4);
 	}
 
-	image_data const test_image_data = {
-		.height = 2,
-		.width = 2,
-		.bytes = pixels,
+	gpu_data_payload const test_image_data = {
+		.data_format = GPU_DATA_ARRAY,
+		.data.array = pixels,
 	};
 
 	gpu_buffer_ci vbuf_ci = {0};
@@ -214,15 +215,11 @@ int main(void) {
 
 	// get device addresses:
 	gpu_device_address vertex_buffer_addr;
-	// gpu_device_address indirect_buffer_addr;
 	{
 		gpu_buffer_device_address_result ret =
 			gpu.buffer_get_device_address(&gpu, vertex_buffer);
 		ASSERT(ret.ok);
 		vertex_buffer_addr = ret.address;
-		// ret = gpu.buffer_get_device_address(&gpu, indirect_buffer);
-		// ASSERT(ret.ok);
-		// indirect_buffer_addr = ret.address;
 	}
 
 	{ // Upload image and vertices and wait
@@ -230,7 +227,12 @@ int main(void) {
 		ASSERT(check_handle(cmd.handle));
 		gpu.cmd_transition_image(&gpu, cmd, test_image,
 								 GPU_IMAGE_STATE_TRANSFER_DST);
-		ASSERT(gpu.temp_copy_to_image(&gpu, cmd, test_image, test_image_data));
+		gpu_image_data_payload img_payload = {
+			.data = test_image_data,
+			.height = 2,
+			.width = 2,
+		};
+		ASSERT(gpu.cmd_update_image(&gpu, cmd, test_image, &img_payload));
 		gpu.cmd_transition_image(&gpu, cmd, test_image,
 								 GPU_IMAGE_STATE_SHADER_READ);
 
@@ -279,11 +281,6 @@ int main(void) {
 	while (!_quit) {
 		frame_count++;
 		LOG_WARN("FRAME %u", frame_count);
-
-		if (frame_count == 1) {
-			// Set image binding on 1st frame only
-			gpu.temp_set_image_desc(&gpu, full_view);
-		}
 
 		platform_poll();
 		if (platform_window_should_close(win)) { break; }

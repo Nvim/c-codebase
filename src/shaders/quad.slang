@@ -33,7 +33,7 @@ struct FSOutput {
 };
 
 struct FSInput {
-	Sampler2D Texture;
+	Sampler2D[] Texture;
 };
 
 ParameterBlock<FSInput> fs_input;
@@ -42,7 +42,8 @@ ParameterBlock<FSInput> fs_input;
 FSOutput fragMain(VSOutput input) {
 	FSOutput ret;
 
-	ret.color = fs_input.Texture.Sample(input.uv);
+	// TODO: get image index as parameter in frame user data
+	ret.color = fs_input.Texture[4].Sample(input.uv);
 
 	return ret;
 }

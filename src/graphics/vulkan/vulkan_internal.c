@@ -337,7 +337,7 @@ vk_render_sync* vk_get_current_sync(vk_api_state* state) {
 }
 
 bool vk_begin_frame(vk_api_state* state, vk_frame* out,
-								window_size window_size) {
+					window_size window_size) {
 	*out = (vk_frame){0};
 	if (state->frame_in_progress) {
 		LOG_ERR("vulkan_begin_frame: a frame in already in progress");
@@ -434,6 +434,7 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 
 void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
 					  vk_image_barrier_info from, vk_image_barrier_info to) {
+	if (from.layout == to.layout) { return; }
 	VkImageMemoryBarrier2 barrier = {0};
 	{
 		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
@@ -481,6 +482,40 @@ bool vk_transition_to_present(vk_api_state* state, gpu_frame* frame) {
 	// Reset usage for next frame
 	img->gpu_state = GPU_IMAGE_STATE_NONE;
 
+	return true;
+}
+
+bool vk_update_image_descriptor(vk_api_state* state, vk_image_pool_handle img) {
+	VkDescriptorImageInfo img_info = {0};
+
+	vk_image_pool_handle h = {.raw_handle = img.raw_handle};
+	vk_image_data* img_data = vk_image_pool_get(state->image_pool, h);
+	if (!img_data || !(img_data->vk_image_flags & IMAGE_FLAGS_HAS_DESCRIPTOR)) {
+		LOG_ERR("vk_update_image_descriptor: invalid image: %u",
+				h.raw_handle.handle);
+		return false;
+	}
+
+	// [NOTE]: I only expect updating textures for now. Might need more
+	// checks here in the future?
+	img_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	img_info.imageView = img_data->full_view;
+	img_info.sampler = state->default_sampler;
+
+	uint32_t array_index = pool_handle_index(img.raw_handle);
+	LOG_WARN("ARRAY INDEX: %u", array_index);
+	VkWriteDescriptorSet w = {0};
+	{
+		w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		w.descriptorCount = 1;
+		w.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		w.dstSet = state->descriptor;
+		w.dstArrayElement = array_index;
+		w.dstBinding = 0;
+		w.pImageInfo = &img_info;
+	}
+
+	vkUpdateDescriptorSets(state->device, 1, &w, 0, NULL);
 	return true;
 }
 
@@ -628,6 +663,10 @@ vk_image_pool_handle vk_create_2d_image(vk_api_state* state, VkExtent2D extent,
 		data.gpu_state = GPU_IMAGE_STATE_NONE;
 		data.layer_count = 1;
 		data.level_count = levels;
+	}
+
+	if (data.usage_flags & VK_IMAGE_USAGE_SAMPLED_BIT) {
+		data.vk_image_flags |= IMAGE_FLAGS_HAS_DESCRIPTOR;
 	}
 
 	return vk_image_pool_new(state->image_pool, &data);

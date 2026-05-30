@@ -187,6 +187,8 @@ static VkDevice _create_device(VkPhysicalDevice physical_device,
 		vk_12_features.descriptorIndexing = true;
 		vk_12_features.shaderSampledImageArrayNonUniformIndexing = true;
 		vk_12_features.descriptorBindingVariableDescriptorCount = true;
+		vk_12_features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+		// vk_12_features.descriptorBindingPartiallyBound = VK_TRUE;
 		vk_12_features.runtimeDescriptorArray = true;
 		vk_12_features.bufferDeviceAddress = true;
 	}
@@ -224,6 +226,10 @@ static VkDevice _create_device(VkPhysicalDevice physical_device,
 		device_ci.ppEnabledExtensionNames = required_exts;
 		device_ci.pEnabledFeatures = &vk_10_features;
 	}
+
+	VkPhysicalDeviceFeatures2 features = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+	vkGetPhysicalDeviceFeatures2(physical_device, &features);
 
 	VkDevice device = NULL;
 	check_result(vkCreateDevice(physical_device, &device_ci, NULL, &device));
@@ -509,7 +515,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		VkDescriptorPoolSize pool_size = {0};
 		{
 			pool_size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			pool_size.descriptorCount = 16;
+			pool_size.descriptorCount = IMAGE_POOL_SIZE;
 		}
 
 		VkDescriptorPoolCreateInfo ci = {0};
@@ -518,6 +524,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			ci.maxSets = 16;
 			ci.poolSizeCount = 1;
 			ci.pPoolSizes = &pool_size;
+			ci.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
 		}
 
 		if (!check_result(vkCreateDescriptorPool(state->device, &ci, NULL,
@@ -530,18 +537,34 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	{ // Descriptor layout & set
 		VkDescriptorSetLayoutBinding bind = {0};
 		{
-			bind.descriptorCount = 1;
+			bind.descriptorCount = IMAGE_POOL_SIZE;
 			bind.binding = 0;
 			bind.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			bind.pImmutableSamplers = &state->default_sampler;
 			bind.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 		}
+
+		// Create descriptor set layout with indexing feature:
+		VkDescriptorBindingFlags binding_flags =
+			VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT |
+			VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+
+		VkDescriptorSetLayoutBindingFlagsCreateInfo layout_binding_flags = {0};
+		{
+			layout_binding_flags.sType =
+				VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+			layout_binding_flags.bindingCount = 1;
+			layout_binding_flags.pBindingFlags = &binding_flags;
+		};
+
 		VkDescriptorSetLayoutCreateInfo layout_ci = {0};
 		{
 			layout_ci.sType =
 				VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+			layout_ci.pNext = &layout_binding_flags;
 			layout_ci.bindingCount = 1;
 			layout_ci.pBindings = &bind;
+			layout_ci.flags =
+				VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
 		}
 		if (!check_result(vkCreateDescriptorSetLayout(
 				state->device, &layout_ci, NULL, &state->descriptor_layout))) {
@@ -549,9 +572,20 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			return;
 		}
 
+		// Allocate a descriptor array for images:
+		uint32_t var_desc_count = IMAGE_POOL_SIZE;
+		VkDescriptorSetVariableDescriptorCountAllocateInfo var_ci = {0};
+		{
+			var_ci.sType =
+				VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT;
+			var_ci.descriptorSetCount = 1;
+			var_ci.pDescriptorCounts = &var_desc_count;
+		}
+
 		VkDescriptorSetAllocateInfo alloc_ci = {0};
 		{
 			alloc_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+			alloc_ci.pNext = &var_ci;
 			alloc_ci.descriptorPool = state->descriptor_pool;
 			alloc_ci.descriptorSetCount = 1;
 			alloc_ci.pSetLayouts = &state->descriptor_layout;
@@ -1666,39 +1700,61 @@ void vulkan_destroy_image_view(gpu_api* self, gpu_image_view view) {
 	vkDestroyImageView(state->device, view.internal, NULL);
 }
 
-bool vulkan_temp_copy_to_image(gpu_api* self, gpu_command_buffer cmd,
-							   gpu_image handle, image_data pixels) {
+
+// [NOTE]: Only 2d images for now. Multiple layers are supported.
+bool vulkan_cmd_update_image(struct gpu_api* self, gpu_command_buffer cmd,
+							 gpu_image img, gpu_image_data_payload* payload) {
 	vk_api_state* state = self->state;
 
 	vk_cmdbuf_data* cmd_data =
 		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
 	if (cmd_data->state != CMDBUF_RECORDING) {
-		LOG_ERR("vulkan_temp_copy_to_image: invalid command buffer state");
+		LOG_ERR("vulkan_update_image: invalid command buffer state");
 		return false;
 	};
 	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
 
-	vk_image_data* data =
-		vk_image_pool_get(state->image_pool, to_vk_img(handle));
+	vk_image_data* data = vk_image_pool_get(state->image_pool, to_vk_img(img));
 	if (!data) {
-		LOG_ERR("vulkan_temp_create_image: invalid image handle");
+		LOG_ERR("vulkan_update_image: invalid image handle");
 		return false;
 	}
 	if (data->vk_image_flags & IMAGE_FLAGS_SWAPCHAIN) {
-		LOG_ERR("vulkan_temp_copy_to_image: can't copy to swapchain image");
+		LOG_ERR("vulkan_update_image: can't update to swapchain image");
 		return false;
 	}
 
-	vk_image_barrier_info from =
-		gpu_state_to_vk_image_barrier[GPU_IMAGE_STATE_NONE];
+	// Get data before inserting barrier:
+	ASSERT(state->staging_buffer_info.pMappedData != NULL);
+	void* dst = NULL;
+	size_t size = 0;
+	if (payload->data.data_format == GPU_DATA_SPAN) {
+		dst = payload->data.data.span.data;
+		size = payload->data.data.span.size;
+	} else if (payload->data.data_format == GPU_DATA_ARRAY) {
+		dst = u8_array_begin(payload->data.data.array);
+		size = u8_array_size(payload->data.data.array);
+	} else {
+		ASSERT(false);
+	}
+
+	if (!(dst && size)) {
+		LOG_ERR("vulkan_update_image: invalid data payload");
+		return false;
+	}
+
+	// [NOTE]: temporary, doesn't account for multiple mips or layers
+	ASSERT((payload->width * payload->height * 4 == size) ||
+		   (payload->width * payload->height * 3 == size));
+
+	// Barrier to TRANSFER_DST:
+	vk_image_barrier_info from = gpu_state_to_vk_image_barrier[data->gpu_state];
 	vk_image_barrier_info to =
 		gpu_state_to_vk_image_barrier[GPU_IMAGE_STATE_TRANSFER_DST];
 	vk_image_barrier(cmd_buf, data->image, from, to);
 
-	ASSERT(state->staging_buffer_info.pMappedData != NULL);
-	memcpy(state->staging_buffer_info.pMappedData, u8_array_begin(pixels.bytes),
-		   u8_array_size(pixels.bytes));
-
+	// Copy:
+	memcpy(state->staging_buffer_info.pMappedData, dst, size);
 	VkImageSubresourceLayers img_layer = {0};
 	{
 		img_layer.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -1724,29 +1780,22 @@ bool vulkan_temp_copy_to_image(gpu_api* self, gpu_command_buffer cmd,
 	}
 
 	vkCmdCopyBufferToImage2(cmd_buf, &copy_ci);
+
+	// [NOTE]: Could barrier to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL if we
+	// assume updated image is always used as a texture.
+
+	// Write descriptor set:
+	bool has_descriptor = (data->vk_image_flags & IMAGE_FLAGS_HAS_DESCRIPTOR);
+	if (has_descriptor) {
+		LOG_DEBUG("vulkan_update_image: updating image descriptor");
+
+		if (!vk_update_image_descriptor(state, to_vk_img(img))) {
+			LOG_ERR("vulkan_update_image: couldn't write descriptor");
+			return false;
+		}
+	}
+
 	return true;
-}
-
-void vulkan_temp_set_image_desc(gpu_api* self, gpu_image_view gpu_view) {
-	vk_api_state* state = self->state;
-
-	VkImageView view = gpu_view.internal;
-	VkDescriptorImageInfo img_info = {0};
-	{
-		img_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		img_info.imageView = view;
-	}
-	VkWriteDescriptorSet w = {0};
-	{
-		w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		w.descriptorCount = 1;
-		w.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		w.dstSet = state->descriptor;
-		w.dstBinding = 0;
-		w.pImageInfo = &img_info;
-	}
-
-	vkUpdateDescriptorSets(state->device, 1, &w, 0, NULL);
 }
 
 gpu_buffer vulkan_create_buffer(gpu_api* self, gpu_buffer_ci* ci) {
@@ -1919,20 +1968,21 @@ bool vulkan_copy_to_staging_buffer(gpu_api* self, gpu_buffer dst,
 	size_t size = 0;
 	void* src = NULL;
 	if (data.data_format == GPU_DATA_ARRAY) {
-		size = _array_size(&data.data.array);
-		ASSERT(_array_at(&data.data.array, src, 0));
-		if (size == 0 || !data.data.array.internal) {
+		size = u8_array_size(data.data.array);
+		src = u8_array_begin(data.data.array);
+		if (size == 0 || !src) {
 			LOG_ERR("vulkan_copy_to_staging_buffer: invalid data payload");
 			return false;
 		}
-	}
-	if (data.data_format == GPU_DATA_SPAN) {
+	} else if (data.data_format == GPU_DATA_SPAN) {
 		size = data.data.span.size;
 		src = data.data.span.data;
 		if (size == 0 || !data.data.span.data) {
 			LOG_ERR("vulkan_copy_to_staging_buffer: invalid data payload");
 			return false;
 		}
+	} else {
+		ASSERT(false);
 	}
 
 	vk_buffer_data* dst_data =
@@ -2131,8 +2181,7 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->destroy_image = vulkan_destroy_image;
 		out->create_image_view = vulkan_create_image_view;
 		out->destroy_image_view = vulkan_destroy_image_view;
-		out->temp_copy_to_image = vulkan_temp_copy_to_image;
-		out->temp_set_image_desc = vulkan_temp_set_image_desc;
+		out->cmd_update_image = vulkan_cmd_update_image;
 		out->cmd_transition_image = vulkan_cmd_transition_image;
 
 		out->create_sampler = vulkan_create_sampler;
