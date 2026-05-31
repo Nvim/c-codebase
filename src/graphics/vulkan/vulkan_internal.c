@@ -63,12 +63,21 @@ static bool _swapchain_refresh_arrays(vk_swapchain* out, VkDevice device) {
 		ASSERT(pool_handle_array_get(out->images_pool_handles, &handle, i));
 		vk_image_data* img_data =
 			vk_image_pool_get(out->image_pool, vk_image_pool_wrap(handle));
+		ASSERT(img_data);
 		{
 			img_data->image = p_images[i];
-			img_data->full_view = p_views[i];
 			img_data->extent = out->ci.imageExtent;
 			img_data->format = out->img_format;
 		}
+
+		// Update view data in pool:
+		handle = POOL_INVALID_HANDLE;
+		ASSERT(
+			pool_handle_array_get(out->image_views_pool_handles, &handle, i));
+		vk_image_view_data* view_data = vk_image_view_pool_get(
+			out->image_view_pool, vk_image_view_pool_wrap(handle));
+		ASSERT(view_data);
+		view_data->view = p_views[i];
 	}
 
 	return true;
@@ -77,7 +86,8 @@ static bool _swapchain_refresh_arrays(vk_swapchain* out, VkDevice device) {
 bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
 						 vk_surface* surface, uint32_t width, uint32_t height,
 						 uint32_t min_image_count, VkFormat image_format,
-						 vk_image_pool image_pool) {
+						 vk_image_pool image_pool,
+						 vk_image_view_pool view_pool) {
 	VkExtent2D sc_extent = surface->capabilities.currentExtent;
 	if (sc_extent.width == 0xFFFFFFFF) {
 		sc_extent = (VkExtent2D){.width = width, .height = height};
@@ -101,6 +111,7 @@ bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
 	out->img_index = 0;
 	out->img_format = out->ci.imageFormat;
 	out->image_pool = image_pool;
+	out->image_view_pool = view_pool;
 
 	if (!check_result(
 			vkCreateSwapchainKHR(device, &out->ci, NULL, &out->swapchain))) {
@@ -116,16 +127,21 @@ bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
 	out->image_views = vk_image_view_array_create(arena, out->img_count);
 	out->present_semaphores = vk_sem_array_create(arena, out->img_count);
 	out->images_pool_handles = pool_handle_array_create(arena, out->img_count);
-	ASSERT(out->images.raw && out->image_views.raw &&
-		   out->present_semaphores.raw && out->images_pool_handles.raw);
+	out->image_views_pool_handles =
+		pool_handle_array_create(arena, out->img_count);
 
-	// Create pool handles for swapchain images right now. They will be updated
-	// by calls to vk_swapchain_refresh
+	ASSERT(out->images.raw && out->image_views.raw &&
+		   out->present_semaphores.raw && out->images_pool_handles.raw &&
+		   out->image_views_pool_handles.raw);
+
+	// Create pool handles for swapchain images and views right now. They will
+	// be updated by calls to vk_swapchain_refresh
 	for (uint32_t i = 0; i < out->img_count; i++) {
+
+		// Image:
 		vk_image_data img_data = {0};
 		{
-			img_data.image = 0;		// Populated by _swapchain_refresh_arrays
-			img_data.full_view = 0; // Populated by _swapchain_refresh_arrays
+			img_data.image = 0; // Populated by _swapchain_refresh_arrays
 			img_data.alloc = NULL;
 			img_data.extent = out->ci.imageExtent;
 			img_data.format = out->img_format;
@@ -134,10 +150,26 @@ bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
 			img_data.vk_image_flags = IMAGE_FLAGS_SWAPCHAIN;
 		}
 
-		vk_image_pool_handle handle = vk_image_pool_new(image_pool, &img_data);
+		vk_image_pool_handle img_handle =
+			vk_image_pool_new(image_pool, &img_data);
 		pool_handle* elem = NULL;
 		ASSERT(pool_handle_array_at(out->images_pool_handles, &elem, i));
-		*elem = vk_image_pool_unwrap(handle);
+		*elem = vk_image_pool_unwrap(img_handle);
+
+		// View:
+		vk_image_view_data view_data = {0};
+		{
+			view_data.view = 0; // Populated by _swapchain_refresh_arrays
+			view_data.image = img_handle;
+			view_data.type = GPU_IMAGE_VIEW_RENDER_TARGET;
+			view_data.data.view_info.layer = 0;
+			view_data.data.view_info.level = 0;
+		}
+
+		vk_image_view_pool_handle view_handle =
+			vk_image_view_pool_new(view_pool, &view_data);
+		ASSERT(pool_handle_array_at(out->image_views_pool_handles, &elem, i));
+		*elem = vk_image_view_pool_unwrap(view_handle);
 	}
 
 	return _swapchain_refresh_arrays(out, device);
@@ -210,7 +242,12 @@ vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 	ASSERT(pool_handle_array_get(swapchain->images_pool_handles, &img_hanlde,
 								 swapchain->img_index));
 
+	pool_handle view_hanlde = POOL_INVALID_HANDLE;
+	ASSERT(pool_handle_array_get(swapchain->image_views_pool_handles,
+								 &view_hanlde, swapchain->img_index));
+
 	ret.image = (gpu_image){.handle = img_hanlde};
+	ret.view = (gpu_image_view){.handle = view_hanlde};
 	ret.status = ACQUIRE_SUCCESS;
 
 	return ret;
@@ -246,6 +283,9 @@ vk_present_result vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue) {
 	return PRESENT_SUCCESS;
 }
 
+// [NOTE]: image view pool handles are not destroyed as this function is called
+// when swapchain is refreshed, and we don't want to reallocate the slots all
+// the time.
 void vk_swapchain_destroy(vk_swapchain* swapchain, VkDevice device) {
 	ASSERT(swapchain->img_count);
 	VkImageView* v = vk_image_view_array_begin(swapchain->image_views);
@@ -386,7 +426,7 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 	}
 
 	vk_image_pool_handle sc_image = VK_IMGPOOL_INVALID;
-	VkImageView sc_image_view = {0};
+	vk_image_view_pool_handle sc_image_view = {0};
 	{ // Acquire a swapchain image
 		LOG_DEBUG("vk_begin_frame: acquiring swapchain image");
 		vk_sc_image_acquire_result sc_ret = vk_swapchain_acquire_image(
@@ -404,15 +444,15 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 		} else {
 			// get image view only if we got an image
 			sc_image = to_vk_img(sc_ret.image);
+			sc_image_view = to_vk_imgview(sc_ret.view);
 
-			vk_image_data* data =
+			vk_image_data* img_data =
 				vk_image_pool_get(state->image_pool, sc_image);
-			if (!data) {
+			if (!img_data) {
 				LOG_ERR(
 					"vulkan_begin_frame: couldn't get swapchain image's data");
 				return false;
 			}
-			sc_image_view = data->full_view;
 			out->has_rendertarget = true;
 		}
 	}
@@ -485,33 +525,46 @@ bool vk_transition_to_present(vk_api_state* state, gpu_frame* frame) {
 	return true;
 }
 
-bool vk_update_image_descriptor(vk_api_state* state, vk_image_pool_handle img) {
+bool has_image_descriptor(gpu_image_view_type view_type) {
+	return (view_type == GPU_IMAGE_VIEW_TEXTURE ||
+			view_type == GPU_IMAGE_VIEW_STORAGE);
+}
+
+bool vk_update_image_descriptor(vk_api_state* state,
+								vk_image_view_pool_handle view) {
 	VkDescriptorImageInfo img_info = {0};
 
-	vk_image_pool_handle h = {.raw_handle = img.raw_handle};
-	vk_image_data* img_data = vk_image_pool_get(state->image_pool, h);
-	if (!img_data || !(img_data->vk_image_flags & IMAGE_FLAGS_HAS_DESCRIPTOR)) {
-		LOG_ERR("vk_update_image_descriptor: invalid image: %u",
-				h.raw_handle.handle);
+	vk_image_view_data* view_data =
+		vk_image_view_pool_get(state->image_view_pool, view);
+	if (!view_data || !has_image_descriptor(view_data->type)) {
+		LOG_ERR("vk_update_image_descriptor: invalid image view: %u");
 		return false;
 	}
 
-	// [NOTE]: I only expect updating textures for now. Might need more
-	// checks here in the future?
-	img_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	img_info.imageView = img_data->full_view;
-	img_info.sampler = state->default_sampler;
+	img_info.imageView = view_data->view;
+	VkDescriptorType type = 0;
+	uint32_t binding = 0; // [TODO]: add binding for storage images
+	if (view_data->type == GPU_IMAGE_VIEW_TEXTURE) {
+		img_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		img_info.sampler = state->default_sampler;
+		type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		binding = TEXTURE_BINDING;
+	} else {
+		img_info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+		type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		binding = STORAGE_IMAGE_BINDING;
+	}
 
-	uint32_t array_index = pool_handle_index(img.raw_handle);
+	uint32_t array_index = pool_handle_index(view.raw_handle);
 	LOG_WARN("ARRAY INDEX: %u", array_index);
 	VkWriteDescriptorSet w = {0};
 	{
 		w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		w.descriptorCount = 1;
-		w.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		w.descriptorType = type;
 		w.dstSet = state->descriptor;
 		w.dstArrayElement = array_index;
-		w.dstBinding = 0;
+		w.dstBinding = binding;
 		w.pImageInfo = &img_info;
 	}
 
@@ -631,30 +684,9 @@ vk_image_pool_handle vk_create_2d_image(vk_api_state* state, VkExtent2D extent,
 		return VK_IMGPOOL_INVALID;
 	}
 
-	VkImageSubresourceRange full_range =
-		vk_full_subresource_range(usage, layers, levels);
-
-	VkImageView view = {0};
-	VkImageViewCreateInfo view_ci = {0};
-	{
-		view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		view_ci.image = img;
-		view_ci.format = format;
-		view_ci.viewType = gpu_to_vk_image_type(gpu_type);
-		view_ci.subresourceRange = full_range;
-		view_ci.subresourceRange.levelCount = levels;
-	}
-
-	if (!check_result(
-			vkCreateImageView(state->device, &view_ci, NULL, &view))) {
-		LOG_ERR("vk_create_2d_image: couldn't create vulkan image view");
-		return VK_IMGPOOL_INVALID;
-	}
-
 	vk_image_data data = {0};
 	{
 		data.image = img;
-		data.full_view = view;
 		data.alloc = alloc;
 		data.format = format;
 		data.extent = extent;
@@ -663,10 +695,6 @@ vk_image_pool_handle vk_create_2d_image(vk_api_state* state, VkExtent2D extent,
 		data.gpu_state = GPU_IMAGE_STATE_NONE;
 		data.layer_count = 1;
 		data.level_count = levels;
-	}
-
-	if (data.usage_flags & VK_IMAGE_USAGE_SAMPLED_BIT) {
-		data.vk_image_flags |= IMAGE_FLAGS_HAS_DESCRIPTOR;
 	}
 
 	return vk_image_pool_new(state->image_pool, &data);
@@ -732,7 +760,8 @@ gpu_frame vk_to_gpu_frame(vk_frame* f) {
 	return (gpu_frame){
 		.frame_index = f->frame_idx,
 		.framebuffer = {.handle = vk_image_pool_unwrap(f->rendertarget)},
-		.framebuffer_view = {.internal = f->rendertarget_view},
+		.framebuffer_view = {.handle = vk_image_view_pool_unwrap(
+								 f->rendertarget_view)},
 		.frame_cmd = (gpu_command_buffer){
 			.handle = f->frame_sync->command_buffer.raw_handle.handle}};
 }
@@ -927,4 +956,18 @@ VmaAllocationCreateInfo gpu_to_vk_buffer_memory(gpu_buffer_ci* ci) {
 	}
 
 	return ret;
+}
+
+VkAttachmentStoreOp gpu_to_vk_store_op(gpu_target_store_op op) {
+	switch (op) {
+	case GPU_STORE_OP_STORE: return VK_ATTACHMENT_STORE_OP_STORE;
+	case GPU_STORE_OP_DONT_CARE: return VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	}
+}
+
+VkAttachmentLoadOp gpu_to_vk_load_op(gpu_target_load_op op) {
+	switch (op) {
+	case GPU_LOAD_OP_LOAD: return VK_ATTACHMENT_LOAD_OP_LOAD;
+	case GPU_LOAD_OP_CLEAR: return VK_ATTACHMENT_LOAD_OP_CLEAR;
+	}
 }

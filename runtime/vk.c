@@ -136,9 +136,6 @@ int main(void) {
 		test_image = gpu.create_image(&gpu, &img_ci);
 		ASSERT(check_handle(test_image.handle));
 	}
-	gpu_image_view full_view;
-	ASSERT(gpu.get_image_full_view(&gpu, &full_view, test_image));
-	ASSERT(full_view.internal != NULL);
 
 	u8_array pixels = u8_array_create(arena, 16);
 	uint8_t* px = u8_array_begin(pixels);
@@ -277,8 +274,22 @@ int main(void) {
 		gpu.destroy_sampler(&gpu, sampler);
 	}
 
+	// Create texture so image gets a shader binding
+	gpu_image_view texture_view;
+	gpu_image_view_ci view_ci = {0};
+	{
+		view_ci.image = test_image;
+		view_ci.type = GPU_IMAGE_VIEW_TEXTURE;
+		view_ci.base_layer = 0;
+		view_ci.base_level = 0;
+		view_ci.layer_count = GPU_COUNT_REMAINING;
+		view_ci.level_count = GPU_COUNT_REMAINING;
+	}
+
+	ASSERT(gpu.create_image_view(&gpu, &texture_view, &view_ci));
+
 	uint32_t frame_count = 0;
-	while (!_quit) {
+	while (!_quit && frame_count < 8) {
 		frame_count++;
 		LOG_WARN("FRAME %u", frame_count);
 
@@ -298,17 +309,11 @@ int main(void) {
 		gpu_frame frame = frame_res.frame;
 		gpu_command_buffer cmd = frame.frame_cmd;
 
-		{ // [TODO]: temp
-			gpu_image_view v = {0};
-			ASSERT(gpu.get_image_full_view(&gpu, &v, frame.framebuffer));
-			ASSERT(v.internal && v.internal == frame.framebuffer_view.internal);
-		}
-
 		gpu_color_target color_target = {
 			.clear_color = (gpu_color){.floats = {.3f, .7f, .2f, 1.f}},
 			.load_op = GPU_LOAD_OP_CLEAR,
 			.store_op = GPU_STORE_OP_STORE,
-			.target = frame.framebuffer,
+			.target = frame.framebuffer_view,
 		};
 		gpu_render_state s = {
 			.color_target_count = 1,
@@ -341,6 +346,7 @@ int main(void) {
 	}
 
 	gpu.wait_idle(&gpu);
+	gpu.destroy_image_view(&gpu, texture_view);
 	gpu.destroy_image(&gpu, test_image);
 	gpu.destroy_buffer(&gpu, staging_buffer);
 	gpu.destroy_buffer(&gpu, vertex_buffer);

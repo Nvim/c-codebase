@@ -4,34 +4,35 @@
 
 # gpu
 
-[ ] quake2 like dll at runtime
-[x] implement pool alloc/getter funcs
-[x] implement begin and end rendering with hardcoded attachment and barriers (assume image is always swapchain)
-[x] debug :)
-[x] vk_barrier utils
-[x] don't hardcode the attachment -> use the image intented usage to place barriers when needed
-[x] docs (frame cmd_buf shouldn't be destroyed)
-[ ] make opaque handle for basic resources (e.g sampler,fence) better (union on `VkXXX`+debug name?)
-[ ] debug name strings for every resource
-[ ] pool cleanup (needs iterate API)
-[ ] support UMA systems (always bypass staging buffer flow)
-[ ] query & store hardware limits on startup
-[ ] silence validation best practices by querying swapchain supported formats
+- [ ] quake2 like dll at runtime
+- [x] implement pool alloc/getter funcs
+- [x] implement begin and end rendering with hardcoded attachment and barriers (assume image is always swapchain)
+- [x] debug :)
+- [x] vk_barrier utils
+- [x] don't hardcode the attachment -> use the image intented usage to place barriers when needed
+- [x] docs (frame cmd_buf shouldn't be destroyed)
+- [ ] make opaque handle for basic resources (e.g sampler,fence) better (union on `VkXXX`+debug name?)
+- [ ] debug name strings for every resource
+- [ ] pool cleanup (needs iterate API)
+- [ ] support UMA systems (always bypass staging buffer flow)
+- [ ] query & store hardware limits on startup
+- [ ] silence validation best practices by querying swapchain supported formats
+- [ ] layered rendering (color attachment views with many layers)
 
 ## threading
 
-[ ] queue selection: try to get separate graphics & transfer if possible
-[ ] command buffer submit: add preferred queue type hint to API
-[ ] command buffer submit: give & accept semaphores
-[ ] frame sync: add a dedicated transfer cmdbuffer to frame? (maybe in renderer-level)
+- [ ] queue selection: try to get separate graphics & transfer if possible
+- [ ] command buffer submit: add preferred queue type hint to API
+- [ ] command buffer submit: give & accept semaphores
+- [ ] frame sync: add a dedicated transfer cmdbuffer to frame? (maybe in renderer-level)
 
 ## pipeline
 
-[x] implement gpu_ci builder
-[x] implement gpu_ci -> VkPipelineCreateInfo & friends
-[x] vk_pipeline_pool & data struct (store ci along pipeline?)
-[x] improve vulkan_cmd_begin_rendering to actually use every field from render_state
-[x] depth
+- [x] implement gpu_ci builder
+- [x] implement gpu_ci -> VkPipelineCreateInfo & friends
+- [x] vk_pipeline_pool & data struct (store ci along pipeline?)
+- [x] improve vulkan_cmd_begin_rendering to actually use every field from render_state
+- [x] depth
 
 ## buffers
 
@@ -66,5 +67,5 @@
 
 ## views
 
-[ ] give image_view a *view_type* inspired by sokol
-[ ] do i need buffer views?
+- [ ] give image_view a *view_type* inspired by sokol
+- [ ] do i need buffer views?

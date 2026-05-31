@@ -18,6 +18,9 @@ ARRAY_DEFINE_TYPE(VkSemaphore, vk_sem_array)
 
 #define VK_MAX_BUFFERING 4
 
+#define TEXTURE_BINDING 0
+#define STORAGE_IMAGE_BINDING 1
+
 /* ===========================================================================
  * Resource pools
  * ========================================================================== */
@@ -25,12 +28,10 @@ ARRAY_DEFINE_TYPE(VkSemaphore, vk_sem_array)
 /* == Image == */
 typedef enum {
 	IMAGE_FLAGS_SWAPCHAIN = BIT(1),
-	IMAGE_FLAGS_HAS_DESCRIPTOR = BIT(2), // Is it used in shaders?
 } vk_image_flags;
 
 typedef struct vk_image_data {
 	VkImage image;
-	VkImageView full_view; // Default view for all image range
 	VmaAllocation alloc;
 	VkExtent2D extent;
 	VkFormat format;
@@ -38,13 +39,39 @@ typedef struct vk_image_data {
 	gpu_image_type gpu_type;
 	gpu_image_state gpu_state;
 	uint16_t layer_count;
-	uint8_t level_count;
+	uint16_t level_count;
+	// TODO: view count for validating destruction
 	uint8_t vk_image_flags;
 } vk_image_data;
 
-STATIC_ASSERT(sizeof(vk_image_data) == 56, "pretty tight");
+STATIC_ASSERT(sizeof(vk_image_data) == 48, "pretty tight");
 POOL_DEFINE_TYPE(vk_image_data, vk_image_pool)
 #define VK_IMGPOOL_INVALID (vk_image_pool_handle){.raw_handle = 0}
+
+/* == Image View == */
+typedef struct {
+	uint16_t base_level;
+	uint16_t level_count;
+	uint16_t base_layer;
+	uint16_t layer_count;
+} vk_texture_view_infos;
+
+typedef struct {
+	uint16_t level;
+	uint16_t layer;
+} vk_image_view_infos;
+
+typedef struct vk_image_view_data {
+	vk_image_pool_handle image;
+	VkImageView view;
+	gpu_image_view_type type;
+	union {
+		vk_texture_view_infos texture_info;
+		vk_image_view_infos view_info;
+	} data;
+} vk_image_view_data;
+POOL_DEFINE_TYPE(vk_image_view_data, vk_image_view_pool)
+#define VK_IMGVIEWPOOL_INVALID (vk_image_view_pool_handle){.raw_handle = 0}
 
 /* == Command Buffer == */
 typedef enum vk_cmdbuf_state {
@@ -148,7 +175,9 @@ typedef struct vk_swapchain {
 	VkSwapchainCreateInfoKHR ci;
 
 	vk_image_pool image_pool;
+	vk_image_view_pool image_view_pool;
 	pool_handle_array images_pool_handles;
+	pool_handle_array image_views_pool_handles;
 } vk_swapchain;
 
 typedef enum {
@@ -159,7 +188,8 @@ typedef enum {
 
 typedef struct {
 	vk_swapchain_status status;
-	gpu_image image; // Only valid if status is `ACQUIRE_SUCCESS`.
+	gpu_image image;	 // Only valid if status is `ACQUIRE_SUCCESS`.
+	gpu_image_view view; // Only valid if status is `ACQUIRE_SUCCESS`.
 } vk_sc_image_acquire_result;
 
 typedef enum {
@@ -171,7 +201,8 @@ typedef enum {
 bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
 						 vk_surface* surface, uint32_t width, uint32_t height,
 						 uint32_t min_image_count, VkFormat image_format,
-						 vk_image_pool image_pool);
+						 vk_image_pool image_pool,
+						 vk_image_view_pool view_pool);
 bool vk_swapchain_refresh(vk_swapchain* swapchain, VkDevice device,
 						  vk_surface* surface, uint32_t width, uint32_t height);
 bool vk_swapchain_get_current_image(vk_swapchain* swapchain, VkImage* out);
@@ -217,7 +248,7 @@ typedef struct {
 						   // skipped
 	uint64_t frame_idx;
 	vk_image_pool_handle rendertarget;
-	VkImageView rendertarget_view;
+	vk_image_view_pool_handle rendertarget_view;
 	vk_render_sync* frame_sync;
 	VkSemaphore swapchain_semaphore;
 } vk_frame;
@@ -258,6 +289,7 @@ typedef struct vk_api_state {
 
 	// Resource pools:
 	vk_image_pool image_pool;
+	vk_image_view_pool image_view_pool;
 	vk_cmdbuf_pool cmd_pool;
 	vk_shader_pool shader_pool;
 	vk_pipeline_pool pipeline_pool;
@@ -389,7 +421,10 @@ void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
 
 bool vk_transition_to_present(vk_api_state* state, gpu_frame* frame);
 
-bool vk_update_image_descriptor(vk_api_state* state, vk_image_pool_handle img);
+bool has_image_descriptor(gpu_image_view_type view_type);
+
+bool vk_update_image_descriptor(vk_api_state* state,
+								vk_image_view_pool_handle view);
 
 typedef struct vk_buffer_barrier_info {
 	VkAccessFlags2 access;
@@ -478,6 +513,10 @@ static inline vk_image_pool_handle to_vk_img(gpu_image handle) {
 	return vk_image_pool_wrap(handle.handle);
 }
 
+static inline vk_image_view_pool_handle to_vk_imgview(gpu_image_view handle) {
+	return vk_image_view_pool_wrap(handle.handle);
+}
+
 static inline vk_cmdbuf_pool_handle to_vk_cmdbuf(gpu_command_buffer handle) {
 	return vk_cmdbuf_pool_wrap(handle.handle);
 }
@@ -541,5 +580,9 @@ VkSamplerAddressMode gpu_to_vk_address_mode(gpu_sampler_address_mode);
 VkBufferUsageFlagBits2 gpu_to_vk_buffer_usage(gpu_buffer_usage u);
 
 VmaAllocationCreateInfo gpu_to_vk_buffer_memory(gpu_buffer_ci* ci);
+
+VkAttachmentStoreOp gpu_to_vk_store_op(gpu_target_store_op op);
+
+VkAttachmentLoadOp gpu_to_vk_load_op(gpu_target_load_op op);
 
 #endif // !VULKAN_UTIL_H
