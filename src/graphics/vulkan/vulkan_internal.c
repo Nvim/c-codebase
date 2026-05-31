@@ -66,7 +66,6 @@ static bool _swapchain_refresh_arrays(vk_swapchain* out, VkDevice device) {
 		ASSERT(img_data);
 		{
 			img_data->image = p_images[i];
-			// img_data->full_view = p_views[i];
 			img_data->extent = out->ci.imageExtent;
 			img_data->format = out->img_format;
 		}
@@ -284,6 +283,9 @@ vk_present_result vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue) {
 	return PRESENT_SUCCESS;
 }
 
+// [NOTE]: image view pool handles are not destroyed as this function is called
+// when swapchain is refreshed, and we don't want to reallocate the slots all
+// the time.
 void vk_swapchain_destroy(vk_swapchain* swapchain, VkDevice device) {
 	ASSERT(swapchain->img_count);
 	VkImageView* v = vk_image_view_array_begin(swapchain->image_views);
@@ -681,25 +683,6 @@ vk_image_pool_handle vk_create_2d_image(vk_api_state* state, VkExtent2D extent,
 		LOG_ERR("vk_create_2d_image: couldn't create vulkan image");
 		return VK_IMGPOOL_INVALID;
 	}
-
-	// VkImageSubresourceRange full_range =
-	// 	vk_full_subresource_range(usage, layers, levels);
-	// VkImageView view = {0};
-	// VkImageViewCreateInfo view_ci = {0};
-	// {
-	// 	view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	// 	view_ci.image = img;
-	// 	view_ci.format = format;
-	// 	view_ci.viewType = gpu_to_vk_image_type(gpu_type);
-	// 	view_ci.subresourceRange = full_range;
-	// 	view_ci.subresourceRange.levelCount = levels;
-	// }
-	//
-	// if (!check_result(
-	// 		vkCreateImageView(state->device, &view_ci, NULL, &view))) {
-	// 	LOG_ERR("vk_create_2d_image: couldn't create vulkan image view");
-	// 	return VK_IMGPOOL_INVALID;
-	// }
 
 	vk_image_data data = {0};
 	{

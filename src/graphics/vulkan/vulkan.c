@@ -1281,35 +1281,6 @@ gpu_image_format vulkan_get_image_format(gpu_api* self, gpu_image gpu_img) {
 	return vk_to_gpu_image_format(data->format);
 }
 
-// bool vulkan_get_image_full_view(gpu_api* self, gpu_image_view* out,
-// 								gpu_image handle) {
-// 	vk_api_state* state = self->state;
-//
-// 	if (!self || !self->is_init) {
-// 		LOG_ERR("vulkan_get_image_full_view: invalid parameters");
-// 		return false;
-// 	}
-//
-// 	vk_image_data* vk_img =
-// 		vk_image_pool_get(state->image_pool, to_vk_img(handle));
-// 	if (!vk_img) {
-// 		LOG_ERR("vulkan_get_image_full_view: invalid image handle");
-// 		return false;
-// 	}
-//
-// 	if (vk_img->vk_image_flags & IMAGE_FLAGS_SWAPCHAIN) {
-// 		// User obtained it via begin_frame, so it can only be the current image
-// 		VkImageView* current_swapchain_view;
-// 		ASSERT(vk_image_view_array_at(state->swapchain.image_views,
-// 									  &current_swapchain_view,
-// 									  state->swapchain.img_index));
-// 		out->internal = current_swapchain_view;
-// 	}
-//
-// 	out->internal = vk_img->full_view;
-// 	return true;
-// }
-
 gpu_sampler vulkan_create_sampler(gpu_api* self, gpu_sampler_ci* ci) {
 	vk_api_state* state = self->state;
 	gpu_sampler ret = {0};
@@ -2327,7 +2298,6 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		/* == Getters ======================================================= */
 		out->get_image_extent = vulkan_get_image_extent;
 		out->get_image_format = vulkan_get_image_format;
-		// out->get_image_full_view = vulkan_get_image_full_view;
 	}
 
 	return true;

@@ -640,8 +640,6 @@ typedef struct gpu_api {
 	/* == Getters =========================================================== */
 	gpu_image_extent (*get_image_extent)(struct gpu_api*, gpu_image);
 	gpu_image_format (*get_image_format)(struct gpu_api*, gpu_image);
-	// bool (*get_image_full_view)(struct gpu_api*, gpu_image_view* out,
-	// 							gpu_image);
 } gpu_api;
 
 LIB_EXPORT bool gpu_create_api(gpu_api_config config, gpu_api* out);
