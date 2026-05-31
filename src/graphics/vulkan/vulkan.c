@@ -187,8 +187,8 @@ static VkDevice _create_device(VkPhysicalDevice physical_device,
 		vk_12_features.pNext = &vk_11_features;
 		vk_12_features.descriptorIndexing = true;
 		vk_12_features.shaderSampledImageArrayNonUniformIndexing = true;
-		vk_12_features.descriptorBindingVariableDescriptorCount = true;
 		vk_12_features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+		vk_12_features.descriptorBindingStorageImageUpdateAfterBind = VK_TRUE;
 		// vk_12_features.descriptorBindingPartiallyBound = VK_TRUE;
 		vk_12_features.runtimeDescriptorArray = true;
 		vk_12_features.bufferDeviceAddress = true;
@@ -515,18 +515,25 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	}
 
 	{ // Descriptor pool
-		VkDescriptorPoolSize pool_size = {0};
+		VkDescriptorPoolSize tex_pool_size = {0};
 		{
-			pool_size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			pool_size.descriptorCount = IMAGE_POOL_SIZE;
+			tex_pool_size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			tex_pool_size.descriptorCount = IMAGE_POOL_SIZE;
 		}
+		VkDescriptorPoolSize storage_pool_size = {0};
+		{
+			storage_pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+			storage_pool_size.descriptorCount = IMAGE_POOL_SIZE;
+		}
+
+		VkDescriptorPoolSize pool_sizes[2] = {tex_pool_size, storage_pool_size};
 
 		VkDescriptorPoolCreateInfo ci = {0};
 		{
 			ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 			ci.maxSets = 16;
-			ci.poolSizeCount = 1;
-			ci.pPoolSizes = &pool_size;
+			ci.poolSizeCount = 2;
+			ci.pPoolSizes = pool_sizes;
 			ci.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
 		}
 
@@ -538,24 +545,34 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	}
 
 	{ // Descriptor layout & set
-		VkDescriptorSetLayoutBinding bind = {0};
+		VkDescriptorSetLayoutBinding texture_binding = {0};
 		{
-			bind.descriptorCount = IMAGE_POOL_SIZE;
-			bind.binding = 0;
-			bind.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			bind.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+			texture_binding.descriptorCount = IMAGE_POOL_SIZE;
+			texture_binding.binding = TEXTURE_BINDING;
+			texture_binding.descriptorType =
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			texture_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 		}
 
+		VkDescriptorSetLayoutBinding storage_binding = {0};
+		{
+			storage_binding.descriptorCount = IMAGE_POOL_SIZE;
+			storage_binding.binding = STORAGE_IMAGE_BINDING;
+			storage_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+			storage_binding.stageFlags =
+				VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+		}
+		VkDescriptorSetLayoutBinding bindings_array[] = {texture_binding,
+														 storage_binding};
+
 		// Create descriptor set layout with indexing feature:
-		VkDescriptorBindingFlags binding_flags =
-			VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT |
-			VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+		VkDescriptorBindingFlags binding_flags = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
 
 		VkDescriptorSetLayoutBindingFlagsCreateInfo layout_binding_flags = {0};
 		{
 			layout_binding_flags.sType =
 				VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
-			layout_binding_flags.bindingCount = 1;
+			layout_binding_flags.bindingCount = 2;
 			layout_binding_flags.pBindingFlags = &binding_flags;
 		};
 
@@ -564,8 +581,8 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			layout_ci.sType =
 				VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 			layout_ci.pNext = &layout_binding_flags;
-			layout_ci.bindingCount = 1;
-			layout_ci.pBindings = &bind;
+			layout_ci.bindingCount = 2;
+			layout_ci.pBindings = bindings_array;
 			layout_ci.flags =
 				VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
 		}
@@ -575,20 +592,10 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			return;
 		}
 
-		// Allocate a descriptor array for images:
-		uint32_t var_desc_count = IMAGE_POOL_SIZE;
-		VkDescriptorSetVariableDescriptorCountAllocateInfo var_ci = {0};
-		{
-			var_ci.sType =
-				VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT;
-			var_ci.descriptorSetCount = 1;
-			var_ci.pDescriptorCounts = &var_desc_count;
-		}
-
+		// Allocate descriptor arrays for images:
 		VkDescriptorSetAllocateInfo alloc_ci = {0};
 		{
 			alloc_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-			alloc_ci.pNext = &var_ci;
 			alloc_ci.descriptorPool = state->descriptor_pool;
 			alloc_ci.descriptorSetCount = 1;
 			alloc_ci.pSetLayouts = &state->descriptor_layout;
