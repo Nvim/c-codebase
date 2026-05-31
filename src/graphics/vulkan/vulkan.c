@@ -20,12 +20,13 @@ ARRAY_DEFINE_TYPE(VkPhysicalDevice, vk_physical_device_array)
 ARRAY_DEFINE_TYPE(VkQueueFamilyProperties2, vk_qf_props_array)
 ARRAY_DEFINE_TYPE(VkExtensionProperties, vk_ext_props_array)
 
-#define IMAGE_POOL_SIZE 1024
-#define CMDBUF_POOL_SIZE 1024
-#define SHADER_POOL_SIZE 1024
-#define PIPELINE_POOL_SIZE 512
-#define BUFFER_POOL_SIZE 1024
-#define HANDLE_POOL_SIZE 1024
+#define IMAGE_POOL_SIZE 1024U
+#define IMAGE_VIEW_POOL_SIZE 2048U
+#define CMDBUF_POOL_SIZE 1024U
+#define SHADER_POOL_SIZE 1024U
+#define PIPELINE_POOL_SIZE 512U
+#define BUFFER_POOL_SIZE 1024U
+#define HANDLE_POOL_SIZE 1024U
 
 static VkFormat const _default_surface_format = VK_FORMAT_B8G8R8A8_UNORM;
 
@@ -266,6 +267,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 
 	// Init resource pools:
 	state->image_pool = vk_image_pool_create(arena, IMAGE_POOL_SIZE);
+	state->image_view_pool = vk_image_view_pool_create(arena, IMAGE_POOL_SIZE);
 	state->cmd_pool = vk_cmdbuf_pool_create(arena, CMDBUF_POOL_SIZE);
 	state->shader_pool = vk_shader_pool_create(arena, SHADER_POOL_SIZE);
 	state->pipeline_pool = vk_pipeline_pool_create(arena, PIPELINE_POOL_SIZE);
@@ -463,10 +465,11 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 
 		uint32_t sc_img_count = CLAMP(buffering, sc_min, sc_max);
 
-		if (!vk_swapchain_create(
-				&state->swapchain, arena, state->device, &state->surface,
-				win_size.width, win_size.height, sc_img_count,
-				state->rendertarget_format, state->image_pool)) {
+		if (!vk_swapchain_create(&state->swapchain, arena, state->device,
+								 &state->surface, win_size.width,
+								 win_size.height, sc_img_count,
+								 state->rendertarget_format, state->image_pool,
+								 state->image_view_pool)) {
 			LOG_ERR("vulkan_initialize: couldn't create swapchain");
 			return;
 		}
@@ -689,22 +692,49 @@ void vulkan_cmd_begin_rendering(gpu_api* self, gpu_command_buffer cmd,
 	ASSERT(cmd_data->state == CMDBUF_RECORDING);
 	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
 
-	vk_image_data* img_data = vk_image_pool_get(
-		state->image_pool,
-		(vk_image_pool_handle){s->color_targets[0].target.handle});
+	vk_image_view_data* target = vk_image_view_pool_get(
+		state->image_view_pool, to_vk_imgview(s->color_targets[0].target));
+	if (!target || target->type != GPU_IMAGE_VIEW_RENDER_TARGET) {
+		LOG_ERR("vulkan_cmd_begin_rendering: invalid render target view");
+		return;
+	}
 
 	VkRenderingInfo rendering_info = {0};
-	VkRenderingAttachmentInfo color_attachment = {0};
-
 	VkClearValue color = {.color = {.float32 = {1.f, 0.f, 1.f, 1.f}}};
+
+	VkRenderingAttachmentInfo color_attachment = {0};
 	{
 		color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		color_attachment.imageView = img_data->full_view;
+		color_attachment.imageView = target->view;
 		color_attachment.clearValue = color;
 		color_attachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-		color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		color_attachment.loadOp =
+			gpu_to_vk_load_op(s->color_targets[0].load_op);
+		color_attachment.storeOp =
+			gpu_to_vk_store_op(s->color_targets[0].store_op);
 	}
+
+	VkRenderingAttachmentInfo depth_attachment = {0};
+	bool has_depth = (s->depth_target != NULL);
+	if (has_depth) {
+		vk_image_view_data* depth_view = vk_image_view_pool_get(
+			state->image_view_pool, to_vk_imgview(s->depth_target->target));
+		if (!depth_view || depth_view->type != GPU_IMAGE_VIEW_DEPTH_TARGET) {
+			LOG_ERR("vulkan_cmd_begin_rendering: invalid depth target view");
+			return;
+		}
+		VkClearValue clear =
+			(VkClearValue){.depthStencil.depth = s->depth_target->clear_value};
+
+		depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+		depth_attachment.imageView = depth_view->view;
+		depth_attachment.clearValue = clear;
+		depth_attachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+		depth_attachment.loadOp = gpu_to_vk_load_op(s->depth_target->load_op);
+		depth_attachment.storeOp =
+			gpu_to_vk_store_op(s->depth_target->store_op);
+	}
+
 	VkRect2D rect = {.extent = state->swapchain.ci.imageExtent,
 					 .offset = (VkOffset2D){.x = 0, .y = 0}};
 	{
@@ -712,6 +742,7 @@ void vulkan_cmd_begin_rendering(gpu_api* self, gpu_command_buffer cmd,
 		rendering_info.renderArea = rect;
 		rendering_info.colorAttachmentCount = 1;
 		rendering_info.pColorAttachments = &color_attachment;
+		if (has_depth) rendering_info.pDepthAttachment = &depth_attachment;
 		rendering_info.layerCount = 1;
 	}
 	vkCmdBeginRendering(cmd_buf, &rendering_info);
@@ -1243,34 +1274,34 @@ gpu_image_format vulkan_get_image_format(gpu_api* self, gpu_image gpu_img) {
 	return vk_to_gpu_image_format(data->format);
 }
 
-bool vulkan_get_image_full_view(gpu_api* self, gpu_image_view* out,
-								gpu_image handle) {
-	vk_api_state* state = self->state;
-
-	if (!self || !self->is_init) {
-		LOG_ERR("vulkan_get_image_full_view: invalid parameters");
-		return false;
-	}
-
-	vk_image_data* vk_img =
-		vk_image_pool_get(state->image_pool, to_vk_img(handle));
-	if (!vk_img) {
-		LOG_ERR("vulkan_get_image_full_view: invalid image handle");
-		return false;
-	}
-
-	if (vk_img->vk_image_flags & IMAGE_FLAGS_SWAPCHAIN) {
-		// User obtained it via begin_frame, so it can only be the current image
-		VkImageView* current_swapchain_view;
-		ASSERT(vk_image_view_array_at(state->swapchain.image_views,
-									  &current_swapchain_view,
-									  state->swapchain.img_index));
-		out->internal = current_swapchain_view;
-	}
-
-	out->internal = vk_img->full_view;
-	return true;
-}
+// bool vulkan_get_image_full_view(gpu_api* self, gpu_image_view* out,
+// 								gpu_image handle) {
+// 	vk_api_state* state = self->state;
+//
+// 	if (!self || !self->is_init) {
+// 		LOG_ERR("vulkan_get_image_full_view: invalid parameters");
+// 		return false;
+// 	}
+//
+// 	vk_image_data* vk_img =
+// 		vk_image_pool_get(state->image_pool, to_vk_img(handle));
+// 	if (!vk_img) {
+// 		LOG_ERR("vulkan_get_image_full_view: invalid image handle");
+// 		return false;
+// 	}
+//
+// 	if (vk_img->vk_image_flags & IMAGE_FLAGS_SWAPCHAIN) {
+// 		// User obtained it via begin_frame, so it can only be the current image
+// 		VkImageView* current_swapchain_view;
+// 		ASSERT(vk_image_view_array_at(state->swapchain.image_views,
+// 									  &current_swapchain_view,
+// 									  state->swapchain.img_index));
+// 		out->internal = current_swapchain_view;
+// 	}
+//
+// 	out->internal = vk_img->full_view;
+// 	return true;
+// }
 
 gpu_sampler vulkan_create_sampler(gpu_api* self, gpu_sampler_ci* ci) {
 	vk_api_state* state = self->state;
@@ -1591,6 +1622,10 @@ gpu_image vulkan_create_image(gpu_api* self, gpu_image_ci* ci) {
 		vk_usage_flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 		vk_usage_flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
 	}
+	if (flags & GPU_IMAGE_STORAGE_READ) {
+		vk_usage_flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+		vk_usage_flags |= VK_IMAGE_USAGE_STORAGE_BIT;
+	}
 
 	vk_image_pool_handle vk_img_handle = {0};
 	if (is_2d_image(ci->type)) {
@@ -1630,14 +1665,13 @@ void vulkan_destroy_image(gpu_api* self, gpu_image handle) {
 		return;
 	}
 
-	vkDestroyImageView(state->device, data->full_view, NULL);
 	vmaDestroyImage(state->allocator, data->image, data->alloc);
 	vk_image_pool_release(state->image_pool, to_vk_img(handle));
 }
 
 bool vulkan_create_image_view(gpu_api* self, gpu_image_view* out,
 							  gpu_image_view_ci* ci) {
-	vk_api_state* state = (vk_api_state*)self;
+	vk_api_state* state = self->state;
 
 	if (!self || !self->is_init || !ci) {
 		LOG_ERR("vulkan_create_image_view: invalid parameters");
@@ -1651,55 +1685,151 @@ bool vulkan_create_image_view(gpu_api* self, gpu_image_view* out,
 		return false;
 	}
 
-	if (ci->base_layer + ci->layer_count >= vk_img->layer_count) {
+	if (ci->base_layer >= ci->layer_count) {
 		LOG_ERR("vulkan_create_image_view: invalid layers");
 		return false;
 	}
-
-	if (ci->base_level + ci->level_count >= vk_img->level_count) {
+	if (ci->base_level >= ci->level_count) {
 		LOG_ERR("vulkan_create_image_view: invalid levels");
 		return false;
 	}
 
+	uint16_t layer_count = ci->layer_count;
+	if (layer_count == GPU_COUNT_REMAINING) {
+		layer_count = vk_img->layer_count - ci->base_layer;
+	}
+	uint16_t level_count = ci->level_count;
+	if (level_count == GPU_COUNT_REMAINING) {
+		level_count = vk_img->level_count - ci->base_level;
+	}
+
+	if (ci->type == GPU_IMAGE_VIEW_TEXTURE) {
+		if (ci->base_layer + layer_count > vk_img->layer_count) {
+			LOG_ERR("vulkan_create_image_view: invalid layers");
+			return false;
+		}
+
+		if (ci->base_level + level_count > vk_img->level_count) {
+			LOG_ERR("vulkan_create_image_view: invalid levels");
+			return false;
+		}
+
+	} else {
+		if (layer_count != 1 || level_count != 1) {
+			LOG_ERR(
+				"vulkan_create_image_view: layer and level count must be 1");
+			return false;
+		}
+	}
+
+	VkImageViewType view_type = 0;
+	VkImageUsageFlags want = 0;
+
+	switch (ci->type) {
+	case GPU_IMAGE_VIEW_TEXTURE:
+		// Textures views can have any type
+		view_type = gpu_to_vk_image_type(vk_img->gpu_type);
+		want = VK_IMAGE_USAGE_SAMPLED_BIT;
+		break;
+	case GPU_IMAGE_VIEW_STORAGE:
+		// Storage views can have any type, but are limited to one mip/layer
+		view_type = gpu_to_vk_image_type(vk_img->gpu_type);
+		want = VK_IMAGE_USAGE_STORAGE_BIT;
+		break;
+	case GPU_IMAGE_VIEW_RENDER_TARGET:
+		// Render targets have to be 2D, or single layers of an arrays
+		// Cubes are turned into 6-level arrays
+		view_type = vk_img->gpu_type == GPU_IMAGE_TYPE_2D
+						? VK_IMAGE_VIEW_TYPE_2D
+						: VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+		want = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		break;
+	case GPU_IMAGE_VIEW_DEPTH_TARGET:
+		// Depth images have to be 2D, enforced in gpu_validate_image_ci.
+		view_type = VK_IMAGE_VIEW_TYPE_2D;
+		want = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+		break;
+		;
+	default: ASSERT(false);
+	}
+
+	if (!(vk_img->usage_flags & want)) {
+		LOG_ERR(
+			"vulkan_create_image_view: image doesn't support this view type");
+		return false;
+	}
+
+	// We enforced non-textures to have single mip and level already
 	VkImageSubresourceRange range = vk_custom_subresource_range(
-		vk_img->usage_flags, ci->layer_count, ci->level_count, ci->base_level,
+		vk_img->usage_flags, layer_count, level_count, ci->base_level,
 		ci->base_layer);
 
-	VkImageView view = {0};
 	VkImageViewCreateInfo view_ci = {0};
 	{
 		view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		view_ci.image = vk_img->image;
-		view_ci.viewType = gpu_to_vk_image_type(vk_img->gpu_type);
+		view_ci.viewType = view_type;
+		view_ci.format = vk_img->format;
 		view_ci.subresourceRange = range;
 	}
 
+	VkImageView view = {0};
 	if (!check_result(
 			vkCreateImageView(state->device, &view_ci, NULL, &view))) {
 		LOG_ERR("vulkan_create_image_view: couldn't create vulkan image view");
 		return false;
 	}
 
-	out->internal = view;
+	vk_image_view_data data = {0};
+	{
+		data.image = to_vk_img(ci->image);
+		data.type = ci->type;
+		data.view = view;
+	}
+	if (ci->type == GPU_IMAGE_VIEW_TEXTURE) {
+		data.data.texture_info.base_layer = ci->base_layer;
+		data.data.texture_info.layer_count = layer_count;
+		data.data.texture_info.base_level = ci->base_level;
+		data.data.texture_info.level_count = level_count;
+
+	} else {
+		data.data.view_info.layer = ci->base_layer;
+		data.data.view_info.level = ci->base_level;
+	}
+
+	vk_image_view_pool_handle ret =
+		vk_image_view_pool_new(state->image_view_pool, &data);
+
+	if (has_image_descriptor(ci->type)) {
+		LOG_INFO("vulkan_create_image_view: updating image descriptor");
+		if (!vk_update_image_descriptor(state, ret)) {
+			LOG_ERR("vulkan_create_image_view: couldn't write descriptor");
+			return false;
+		}
+	}
+
+	*out = (gpu_image_view){.handle = vk_image_view_pool_unwrap(ret)};
 	return true;
 }
 
 void vulkan_destroy_image_view(gpu_api* self, gpu_image_view view) {
-	vk_api_state* state = (vk_api_state*)self;
+	vk_api_state* state = self->state;
 
 	if (!self || !self->is_init) {
 		LOG_ERR("vulkan_create_image_view: invalid parameters");
 		return;
 	}
 
-	if (!view.internal) {
+	vk_image_view_data* data =
+		vk_image_view_pool_get(state->image_view_pool, to_vk_imgview(view));
+	if (!data || !data->view) {
 		LOG_ERR("vulkan_destroy_image_view: invalid view handle");
 		return;
 	}
 
-	vkDestroyImageView(state->device, view.internal, NULL);
+	vkDestroyImageView(state->device, data->view, NULL);
+	vk_image_view_pool_release(state->image_view_pool, to_vk_imgview(view));
 }
-
 
 // [NOTE]: Only 2d images for now. Multiple layers are supported.
 bool vulkan_cmd_update_image(struct gpu_api* self, gpu_command_buffer cmd,
@@ -1783,17 +1913,6 @@ bool vulkan_cmd_update_image(struct gpu_api* self, gpu_command_buffer cmd,
 
 	// [NOTE]: Could barrier to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL if we
 	// assume updated image is always used as a texture.
-
-	// Write descriptor set:
-	bool has_descriptor = (data->vk_image_flags & IMAGE_FLAGS_HAS_DESCRIPTOR);
-	if (has_descriptor) {
-		LOG_DEBUG("vulkan_update_image: updating image descriptor");
-
-		if (!vk_update_image_descriptor(state, to_vk_img(img))) {
-			LOG_ERR("vulkan_update_image: couldn't write descriptor");
-			return false;
-		}
-	}
 
 	return true;
 }
@@ -1992,7 +2111,6 @@ bool vulkan_copy_to_staging_buffer(gpu_api* self, gpu_buffer dst,
 		!(dst_data->usage_flags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) ||
 		!dst_data->alloc_info.pMappedData) {
 		LOG_ERR("vulkan_copy_to_staging_buffer: invalid destination buffer");
-		breakpoint();
 		return false;
 	}
 
@@ -2026,7 +2144,6 @@ bool vulkan_cmd_copy_to_buffer(gpu_api* self, gpu_command_buffer cmd,
 	if (!dst_data || !dst_data->buffer ||
 		!(dst_data->usage_flags & VK_BUFFER_USAGE_TRANSFER_DST_BIT)) {
 		LOG_ERR("vulkan_cmd_copy_to_buffer: invalid destination buffer");
-		breakpoint();
 		return false;
 	}
 
@@ -2203,7 +2320,7 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		/* == Getters ======================================================= */
 		out->get_image_extent = vulkan_get_image_extent;
 		out->get_image_format = vulkan_get_image_format;
-		out->get_image_full_view = vulkan_get_image_full_view;
+		// out->get_image_full_view = vulkan_get_image_full_view;
 	}
 
 	return true;

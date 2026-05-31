@@ -19,7 +19,7 @@ typedef struct { pool_handle handle; } gpu_command_buffer;
 typedef struct { pool_handle handle; } gpu_shader;
 typedef struct { pool_handle handle; } gpu_pipeline;
 typedef struct { pool_handle handle; } gpu_sampler;
-typedef struct { void* internal; } gpu_image_view; // [TODO]
+typedef struct { pool_handle handle; } gpu_image_view;
 typedef struct { pool_handle handle; } gpu_fence;
 typedef struct { pool_handle handle; } gpu_semaphore;
 // clang-format on
@@ -94,6 +94,7 @@ typedef uint32_t gpu_image_usage;
 #define GPU_IMAGE_USAGE_RENDER_TARGET BIT(1)
 #define GPU_IMAGE_USAGE_DEPTH_TARGET  BIT(2)
 #define GPU_IMAGE_USAGE_SAMPLED       BIT(3)
+#define GPU_IMAGE_STORAGE_READ        BIT(4)
 // clang-format on
 
 typedef enum {
@@ -111,10 +112,13 @@ typedef struct gpu_shader_ci {
 /**
  * [NOTE]: framebuffer and framebuffer_view handles can be invalid (e.g during
  * resizing), rendering should be skipped in this case.
+ * [NOTE]: framebuffer_view is a view of type GPU_IMAGE_VIEW_RENDER_TARGET. when
+ * sampling the framebuffer, another view of type GPU_IMAGE_VIEW_TEXTURE has to
+ * be created.
  */
 typedef struct gpu_frame {
 	gpu_image framebuffer;
-	gpu_image_view framebuffer_view;
+	gpu_image_view framebuffer_view; // use for render target
 	gpu_command_buffer frame_cmd; // Only valid for this frame
 	uint64_t frame_index;
 } gpu_frame;
@@ -136,7 +140,7 @@ typedef enum {
 
 typedef struct gpu_color_target {
 	// [NOTE]: format is stored into image, no duplication
-	gpu_image target;
+	gpu_image_view target;
 	gpu_target_load_op load_op;
 	gpu_target_store_op store_op;
 	gpu_color clear_color;
@@ -149,7 +153,7 @@ typedef struct gpu_color_target_info {
 } gpu_color_target_info;
 
 typedef struct gpu_depth_target {
-	gpu_image target;
+	gpu_image_view target;
 	gpu_target_load_op load_op;
 	gpu_target_store_op store_op;
 	float clear_value;
@@ -310,16 +314,26 @@ typedef struct gpu_image_ci {
 	gpu_image_format format;
 	gpu_image_extent dimensions;
 	gpu_image_usage usage;
-	uint32_t array_layers;
-	uint32_t mip_levels;
+	uint16_t array_layers;
+	uint16_t mip_levels;
 } gpu_image_ci;
 
+typedef enum gpu_image_view_type {
+	GPU_IMAGE_VIEW_TEXTURE,
+	GPU_IMAGE_VIEW_STORAGE,
+	GPU_IMAGE_VIEW_RENDER_TARGET,
+	GPU_IMAGE_VIEW_DEPTH_TARGET,
+} gpu_image_view_type;
+
+#define GPU_COUNT_REMAINING UINT16_MAX
+
 typedef struct gpu_image_view_ci {
+	gpu_image_view_type type;
 	gpu_image image;
-	uint32_t base_layer;
-	uint32_t layer_count;
-	uint32_t base_level;
-	uint32_t level_count;
+	uint16_t base_layer;
+	uint16_t layer_count; // TEXTURE only
+	uint16_t base_level;
+	uint16_t level_count; // TEXTURE only
 } gpu_image_view_ci;
 
 /**
@@ -332,7 +346,7 @@ typedef struct gpu_image_view_ci {
  *
  */
 typedef struct gpu_texture {
-	gpu_image_view image; // Most often image's full view
+	gpu_image_view image; // Must be TEXTURE
 	gpu_sampler sampler;
 } gpu_texture;
 
@@ -587,7 +601,8 @@ typedef struct gpu_api {
 	bool (*create_image_view)(struct gpu_api*, gpu_image_view* out,
 							  gpu_image_view_ci*);
 	void (*destroy_image_view)(struct gpu_api*, gpu_image_view);
-	bool (*cmd_update_image)(struct gpu_api*, gpu_command_buffer, gpu_image, gpu_image_data_payload* payload);
+	bool (*cmd_update_image)(struct gpu_api*, gpu_command_buffer, gpu_image,
+							 gpu_image_data_payload* payload);
 
 	/**
 	 * @brief Specify a new usage for image. Image has to have been created
@@ -625,8 +640,8 @@ typedef struct gpu_api {
 	/* == Getters =========================================================== */
 	gpu_image_extent (*get_image_extent)(struct gpu_api*, gpu_image);
 	gpu_image_format (*get_image_format)(struct gpu_api*, gpu_image);
-	bool (*get_image_full_view)(struct gpu_api*, gpu_image_view* out,
-								gpu_image);
+	// bool (*get_image_full_view)(struct gpu_api*, gpu_image_view* out,
+	// 							gpu_image);
 } gpu_api;
 
 LIB_EXPORT bool gpu_create_api(gpu_api_config config, gpu_api* out);
