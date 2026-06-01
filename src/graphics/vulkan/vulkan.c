@@ -1160,7 +1160,7 @@ void vulkan_cmd_bind_pipeline(gpu_api* self, gpu_command_buffer cmd,
 	{
 		pc_info.sType = VK_STRUCTURE_TYPE_PUSH_CONSTANTS_INFO;
 		pc_info.size = sizeof(vk_push_constants);
-		pc_info.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+		pc_info.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 		pc_info.layout = data->layout;
 		pc_info.pValues = &pc;
 	}
@@ -1374,7 +1374,7 @@ gpu_pipeline vulkan_create_pipeline(gpu_api* self, gpu_pipeline_ci* ci) {
 	{
 		pc_range.offset = 0;
 		pc_range.size = sizeof(vk_push_constants);
-		pc_range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+		pc_range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 	}
 	VkPipelineLayoutCreateInfo layout_ci = {0};
 	{

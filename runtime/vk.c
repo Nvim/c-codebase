@@ -22,6 +22,12 @@ typedef struct {
 	float _pad2[2];
 } tmp_vertex;
 
+typedef struct {
+	gpu_device_address vertex_buffer_addr;
+	float time;
+	uint32_t image_index;
+} uniform_data;
+
 // clang-format off
 static tmp_vertex const bot_left = {.pos = {-.75f, -.75f, 0.f}, .uv = {0.f, 0.f}};
 static tmp_vertex const bot_right = {.pos = {.75f, -.75f, 0.f}, .uv = {1.f, 0.f}};
@@ -65,7 +71,7 @@ int main(void) {
 	gpu_api_config gpu_ci = {0};
 	{
 		gpu_ci.app_name = "please work";
-		gpu_ci.frames_in_flight = 3;
+		gpu_ci.frames_in_flight = 1;
 		gpu_ci.target_image_format = IMAGE_FORMAT_RGBA_SRGB;
 		gpu_ci.type = GRAPHICS_API_VULKAN;
 	}
@@ -75,9 +81,6 @@ int main(void) {
 	ASSERT(gpu.is_init);
 
 	arena_clear_scratch(scratch);
-
-	double t_prev = platform_get_time();
-	double delta = 0.0f;
 
 	gpu_shader vs = {0}, fs = {0};
 	{ // Vertex shader
@@ -158,6 +161,10 @@ int main(void) {
 		vbuf_ci.usage = GPU_BUFFER_USAGE_STORAGE;
 	}
 	gpu_buffer vertex_buffer = gpu.create_buffer(&gpu, &vbuf_ci);
+	gpu_buffer_device_address_result ret =
+		gpu.buffer_get_device_address(&gpu, vertex_buffer);
+	ASSERT(ret.ok);
+	gpu_device_address vertex_addr = ret.address;
 
 	gpu_buffer_ci ibuf_ci = {0};
 	{
@@ -180,6 +187,25 @@ int main(void) {
 		staging_ci.usage = GPU_BUFFER_USAGE_STAGING_UP;
 	}
 	gpu_buffer staging_buffer = gpu.create_buffer(&gpu, &staging_ci);
+
+	gpu_buffer_ci uniform_buffer_ci = {0};
+	{
+		uniform_buffer_ci.size = sizeof(uniform_data);
+		uniform_buffer_ci.usage = GPU_BUFFER_USAGE_STORAGE;
+		uniform_buffer_ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
+	}
+	gpu_buffer uniform_buffer = gpu.create_buffer(&gpu, &uniform_buffer_ci);
+	ret = gpu.buffer_get_device_address(&gpu, uniform_buffer);
+	ASSERT(ret.ok);
+	gpu_device_address uniform_addr = ret.address;
+	gpu_buffer_map_result mret = gpu.buffer_get_mapped(&gpu, uniform_buffer);
+	ASSERT(mret.ok);
+	uniform_data* uniform = mret.ptr;
+	{
+		uniform->image_index = pool_handle_index(test_image.handle);
+		uniform->time = 0.f;
+		uniform->vertex_buffer_addr = vertex_addr;
+	};
 
 	size_t offset = 0;
 	gpu_image_data_payload img_payload = {
@@ -218,15 +244,6 @@ int main(void) {
 		indirect_payload.offset = offset;
 	}
 	gpu.copy_to_staging_buffer(&gpu, staging_buffer, indirect_payload);
-
-	// get device addresses:
-	gpu_device_address vertex_buffer_addr;
-	{
-		gpu_buffer_device_address_result ret =
-			gpu.buffer_get_device_address(&gpu, vertex_buffer);
-		ASSERT(ret.ok);
-		vertex_buffer_addr = ret.address;
-	}
 
 	{ // Upload image and vertices and wait
 		gpu_command_buffer cmd = gpu.create_command_buffer(&gpu);
@@ -302,7 +319,10 @@ int main(void) {
 	ASSERT(gpu.create_image_view(&gpu, &texture_view, &view_ci));
 
 	uint32_t frame_count = 0;
-	while (!_quit && frame_count < 8) {
+	double t_prev = platform_get_time();
+	double delta = 0.0f;
+
+	while (!_quit ) {
 		frame_count++;
 		LOG_WARN("FRAME %u", frame_count);
 
@@ -322,6 +342,8 @@ int main(void) {
 		gpu_frame frame = frame_res.frame;
 		gpu_command_buffer cmd = frame.frame_cmd;
 
+		uniform->time = (float)frame_count;
+
 		gpu_color_target color_target = {
 			.clear_color = (gpu_color){.floats = {.3f, .7f, .2f, 1.f}},
 			.load_op = GPU_LOAD_OP_CLEAR,
@@ -337,9 +359,10 @@ int main(void) {
 		gpu.cmd_reset_viewport(&gpu, cmd);
 		gpu.cmd_reset_scissor(&gpu, cmd);
 		gpu.cmd_begin_rendering(&gpu, cmd, &s);
-		gpu.cmd_bind_pipeline(
-			&gpu, cmd, pipeline,
-			&(gpu_per_frame_data){.frame_buffer_address = vertex_buffer_addr});
+		gpu.cmd_bind_pipeline(&gpu, cmd, pipeline,
+							  &(gpu_per_frame_data){
+								  .frame_buffer_address = uniform_addr,
+							  });
 		ASSERT(gpu.cmd_bind_index_buffer(&gpu, cmd, index_buffer));
 		gpu.cmd_draw_indirect_indexed(
 			&gpu, cmd, indirect_buffer, 0, 1,
@@ -361,6 +384,7 @@ int main(void) {
 	gpu.wait_idle(&gpu);
 	gpu.destroy_image_view(&gpu, texture_view);
 	gpu.destroy_image(&gpu, test_image);
+	gpu.destroy_buffer(&gpu, uniform_buffer);
 	gpu.destroy_buffer(&gpu, staging_buffer);
 	gpu.destroy_buffer(&gpu, vertex_buffer);
 	gpu.destroy_buffer(&gpu, index_buffer);

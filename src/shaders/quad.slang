@@ -10,16 +10,23 @@ struct Vertex {
 	float2 _pad2;
 };
 
+struct UniformData {
+	Vertex* vertex_buffer;
+	float time;
+	uint image_index;
+};
+
+// Push constant range is the same for both vertex & fragment stages for now
 struct VSInput {
 	uint64_t* reserved_buffer; // unused
-	Vertex* vertex_buffer;
+	UniformData* uniform;
 };
 
 [[shader("vertex")]]
 VSOutput vertMain(uint vertexID : SV_VertexID, uniform VSInput constants) {
 	VSOutput ret;
 
-	Vertex vert = constants.vertex_buffer[vertexID];
+	Vertex vert = constants.uniform[0].vertex_buffer[vertexID];
 
 	ret.pos = float4(vert.position, 1.f);
 	ret.uv = vert.uv;
@@ -39,11 +46,12 @@ struct FSInput {
 ParameterBlock<FSInput> fs_input;
 
 [[shader("pixel")]]
-FSOutput fragMain(VSOutput input) {
+FSOutput fragMain(VSOutput input, uniform VSInput constants) {
 	FSOutput ret;
 
-	// TODO: get image index as parameter in frame user data
-	ret.color = fs_input.Texture[4].Sample(input.uv);
-
+	uint tex_idx = constants.uniform[0].image_index;
+	ret.color = fs_input.Texture[tex_idx].Sample(input.uv);
+	float fact = sin(constants.uniform[0].time*0.05);
+	ret.color = mul(ret.color, fact);
 	return ret;
 }
