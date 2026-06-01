@@ -119,7 +119,7 @@ typedef struct gpu_shader_ci {
 typedef struct gpu_frame {
 	gpu_image framebuffer;
 	gpu_image_view framebuffer_view; // use for render target
-	gpu_command_buffer frame_cmd; // Only valid for this frame
+	gpu_command_buffer frame_cmd;	 // Only valid for this frame
 	uint64_t frame_index;
 } gpu_frame;
 
@@ -268,6 +268,14 @@ typedef struct gpu_image_data_payload {
 	uint32_t height;
 	gpu_data_payload data;
 } gpu_image_data_payload;
+
+typedef struct gpu_image_copy_info {
+	gpu_buffer src;
+	size_t src_offset;
+	gpu_image dst;
+	// TODO: region system to copy to specific mip/layer
+	gpu_image_data_payload data;
+} gpu_image_copy_info;
 
 typedef enum gpu_sampler_filter_mode {
 	GPU_SAMPLER_FILTER_NEAREST,
@@ -601,8 +609,7 @@ typedef struct gpu_api {
 	bool (*create_image_view)(struct gpu_api*, gpu_image_view* out,
 							  gpu_image_view_ci*);
 	void (*destroy_image_view)(struct gpu_api*, gpu_image_view);
-	bool (*cmd_update_image)(struct gpu_api*, gpu_command_buffer, gpu_image,
-							 gpu_image_data_payload* payload);
+	bool (*cmd_copy_to_image)(struct gpu_api*, gpu_command_buffer, gpu_image_copy_info* info);
 
 	/**
 	 * @brief Specify a new usage for image. Image has to have been created

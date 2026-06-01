@@ -182,11 +182,20 @@ int main(void) {
 	gpu_buffer staging_buffer = gpu.create_buffer(&gpu, &staging_ci);
 
 	size_t offset = 0;
+	gpu_image_data_payload img_payload = {
+		.data = test_image_data,
+		.height = 2,
+		.width = 2,
+	};
+	gpu.copy_to_staging_buffer(&gpu, staging_buffer, img_payload.data);
+	offset += sizeof(RED) * u8_array_size(pixels);
+
 	gpu_data_payload vbuf_payload = {0};
 	{
 		vbuf_payload.data_format = GPU_DATA_SPAN;
 		vbuf_payload.data.span.data = vertex_data;
 		vbuf_payload.data.span.size = sizeof(vertex_data);
+		vbuf_payload.offset = offset;
 	}
 	gpu.copy_to_staging_buffer(&gpu, staging_buffer, vbuf_payload);
 	offset += sizeof(vertex_data);
@@ -196,7 +205,7 @@ int main(void) {
 		ibuf_payload.data_format = GPU_DATA_SPAN;
 		ibuf_payload.data.span.data = index_data;
 		ibuf_payload.data.span.size = sizeof(index_data);
-		ibuf_payload.offset = sizeof(vertex_data);
+		ibuf_payload.offset = offset;
 	}
 	gpu.copy_to_staging_buffer(&gpu, staging_buffer, ibuf_payload);
 	offset += sizeof(index_data);
@@ -224,20 +233,24 @@ int main(void) {
 		ASSERT(check_handle(cmd.handle));
 		gpu.cmd_transition_image(&gpu, cmd, test_image,
 								 GPU_IMAGE_STATE_TRANSFER_DST);
-		gpu_image_data_payload img_payload = {
-			.data = test_image_data,
-			.height = 2,
-			.width = 2,
-		};
-		ASSERT(gpu.cmd_update_image(&gpu, cmd, test_image, &img_payload));
-		gpu.cmd_transition_image(&gpu, cmd, test_image,
-								 GPU_IMAGE_STATE_SHADER_READ);
 
 		offset = 0;
+		gpu_image_copy_info img_copy_info = {
+			.data = img_payload,
+			.dst = test_image,
+			.src = staging_buffer,
+			.src_offset = offset,
+		};
+		ASSERT(gpu.cmd_copy_to_image(&gpu, cmd, &img_copy_info));
+		gpu.cmd_transition_image(&gpu, cmd, test_image,
+								 GPU_IMAGE_STATE_SHADER_READ);
+		offset += sizeof(RED) * u8_array_size(pixels);
+
 		gpu_buffer_copy_info buf_copy = {0};
 		{
 			buf_copy.size = sizeof(vertex_data);
 			buf_copy.src = staging_buffer;
+			buf_copy.src_offset = offset;
 			buf_copy.dst = vertex_buffer;
 		}
 		ASSERT(gpu.cmd_copy_to_buffer(&gpu, cmd, &buf_copy));

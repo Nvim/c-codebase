@@ -363,34 +363,6 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		check_result(vmaCreateAllocator(&alloc_ci, &state->allocator));
 	}
 
-	// [TODO]: temporary staging buffer
-	{
-		VkBufferCreateInfo buf_ci = {0};
-		{
-			buf_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-			buf_ci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-			buf_ci.pQueueFamilyIndices = &state->queue_family_idx;
-			buf_ci.queueFamilyIndexCount = 1;
-			buf_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-			buf_ci.size = 4 * MEMORY_MIB;
-		}
-
-		VmaAllocationCreateInfo vma_ci = {0};
-		{
-			vma_ci.flags =
-				VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-				VMA_ALLOCATION_CREATE_MAPPED_BIT;
-			vma_ci.usage = VMA_MEMORY_USAGE_AUTO;
-		}
-
-		if (!check_result(vmaCreateBuffer(
-				state->allocator, &buf_ci, &vma_ci, &state->staging_buffer,
-				&state->staging_buffer_alloc, &state->staging_buffer_info))) {
-			LOG_ERR("vulkan_initialize: couldn't create staging buffer");
-			return;
-		};
-	}
-
 	// Surface:
 	{
 		VkSurfaceKHR surface =
@@ -566,7 +538,8 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 														 storage_binding};
 
 		// Create descriptor set layout with indexing feature:
-		VkDescriptorBindingFlags binding_flags = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+		VkDescriptorBindingFlags binding_flags =
+			VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
 
 		VkDescriptorSetLayoutBindingFlagsCreateInfo layout_binding_flags = {0};
 		{
@@ -632,8 +605,6 @@ void vulkan_destroy(gpu_api* self) {
 			check_result(vkDeviceWaitIdle(state->device));
 			vk_swapchain_destroy(&state->swapchain, state->device);
 			vk_surface_destroy(&state->surface, state->instance);
-			vmaDestroyBuffer(state->allocator, state->staging_buffer,
-							 state->staging_buffer_alloc);
 			vmaDestroyAllocator(state->allocator);
 			vk_sync_buffer_destroy(state->device, &state->sync_buffer);
 			vkDestroySampler(state->device, state->default_sampler, NULL);
@@ -1809,51 +1780,68 @@ void vulkan_destroy_image_view(gpu_api* self, gpu_image_view view) {
 	vk_image_view_pool_release(state->image_view_pool, to_vk_imgview(view));
 }
 
-// [NOTE]: Only 2d images for now. Multiple layers are supported.
-bool vulkan_cmd_update_image(struct gpu_api* self, gpu_command_buffer cmd,
-							 gpu_image img, gpu_image_data_payload* payload) {
+bool vulkan_cmd_copy_to_image(struct gpu_api* self, gpu_command_buffer cmd,
+							  gpu_image_copy_info* info) {
 	vk_api_state* state = self->state;
+
+	if (!info) {
+		LOG_ERR("vulkan_cmd_copy_to_image: invalid command buffer state");
+		return false;
+	}
 
 	vk_cmdbuf_data* cmd_data =
 		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
 	if (cmd_data->state != CMDBUF_RECORDING) {
-		LOG_ERR("vulkan_update_image: invalid command buffer state");
+		LOG_ERR("vulkan_cmd_copy_to_image: invalid command buffer state");
 		return false;
 	};
 	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
 
-	vk_image_data* data = vk_image_pool_get(state->image_pool, to_vk_img(img));
+	vk_image_data* data =
+		vk_image_pool_get(state->image_pool, to_vk_img(info->dst));
 	if (!data) {
-		LOG_ERR("vulkan_update_image: invalid image handle");
+		LOG_ERR("vulkan_cmd_copy_to_image: invalid image handle");
 		return false;
 	}
 	if (data->vk_image_flags & IMAGE_FLAGS_SWAPCHAIN) {
-		LOG_ERR("vulkan_update_image: can't update to swapchain image");
+		LOG_ERR("vulkan_cmd_copy_to_image: can't update to swapchain image");
+		return false;
+	}
+
+	vk_buffer_data* buf_data =
+		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(info->src));
+	if (!buf_data) {
+		LOG_ERR("vulkan_cmd_copy_to_image: invalid staging buffer");
+		return false;
+	}
+
+	if (!(buf_data->usage_flags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) ||
+		!buf_data->alloc_info.pMappedData) {
+		LOG_ERR("vulkan_cmd_copy_to_image: invalid staging buffer usage");
 		return false;
 	}
 
 	// Get data before inserting barrier:
-	ASSERT(state->staging_buffer_info.pMappedData != NULL);
 	void* dst = NULL;
 	size_t size = 0;
-	if (payload->data.data_format == GPU_DATA_SPAN) {
-		dst = payload->data.data.span.data;
-		size = payload->data.data.span.size;
-	} else if (payload->data.data_format == GPU_DATA_ARRAY) {
-		dst = u8_array_begin(payload->data.data.array);
-		size = u8_array_size(payload->data.data.array);
+	if (info->data.data.data_format == GPU_DATA_SPAN) {
+		dst = info->data.data.data.span.data;
+		size = info->data.data.data.span.size;
+	} else if (info->data.data.data_format == GPU_DATA_ARRAY) {
+		dst = u8_array_begin(info->data.data.data.array);
+		size = u8_array_size(info->data.data.data.array);
 	} else {
 		ASSERT(false);
 	}
 
 	if (!(dst && size)) {
-		LOG_ERR("vulkan_update_image: invalid data payload");
+		LOG_ERR("vulkan_cmd_copy_to_image: invalid data payload");
 		return false;
 	}
 
 	// [NOTE]: temporary, doesn't account for multiple mips or layers
-	ASSERT((payload->width * payload->height * 4 == size) ||
-		   (payload->width * payload->height * 3 == size));
+	ASSERT((info->data.width * info->data.height * 4 == size) ||
+		   (info->data.width * info->data.height * 3 == size));
 
 	// Barrier to TRANSFER_DST:
 	vk_image_barrier_info from = gpu_state_to_vk_image_barrier[data->gpu_state];
@@ -1861,20 +1849,20 @@ bool vulkan_cmd_update_image(struct gpu_api* self, gpu_command_buffer cmd,
 		gpu_state_to_vk_image_barrier[GPU_IMAGE_STATE_TRANSFER_DST];
 	vk_image_barrier(cmd_buf, data->image, from, to);
 
-	// Copy:
-	memcpy(state->staging_buffer_info.pMappedData, dst, size);
+	// [TODO]: Multi-layer/level support
 	VkImageSubresourceLayers img_layer = {0};
 	{
 		img_layer.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		img_layer.layerCount = data->layer_count;
 	}
+	VkExtent3D extent = {
+		.width = info->data.width, .height = info->data.height, .depth = 1};
 	VkBufferImageCopy2 img_copy_info = {0};
 	{
-		VkExtent2D ext2d = data->extent;
 		img_copy_info.sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2;
-		img_copy_info.imageExtent = (VkExtent3D){
-			.width = ext2d.width, .height = ext2d.height, .depth = 1};
+		img_copy_info.imageExtent = extent;
 		img_copy_info.imageSubresource = img_layer;
+		img_copy_info.bufferOffset = info->src_offset;
 	}
 
 	VkCopyBufferToImageInfo2 copy_ci = {0};
@@ -1884,13 +1872,10 @@ bool vulkan_cmd_update_image(struct gpu_api* self, gpu_command_buffer cmd,
 		copy_ci.dstImageLayout = to.layout;
 		copy_ci.pRegions = &img_copy_info;
 		copy_ci.regionCount = 1;
-		copy_ci.srcBuffer = state->staging_buffer;
+		copy_ci.srcBuffer = buf_data->buffer;
 	}
 
 	vkCmdCopyBufferToImage2(cmd_buf, &copy_ci);
-
-	// [NOTE]: Could barrier to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL if we
-	// assume updated image is always used as a texture.
 
 	return true;
 }
@@ -2276,7 +2261,7 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->destroy_image = vulkan_destroy_image;
 		out->create_image_view = vulkan_create_image_view;
 		out->destroy_image_view = vulkan_destroy_image_view;
-		out->cmd_update_image = vulkan_cmd_update_image;
+		out->cmd_copy_to_image = vulkan_cmd_copy_to_image;
 		out->cmd_transition_image = vulkan_cmd_transition_image;
 
 		out->create_sampler = vulkan_create_sampler;
