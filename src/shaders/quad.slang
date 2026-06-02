@@ -22,14 +22,24 @@ struct VSInput {
 	UniformData* uniform;
 };
 
+float2x2 rotationMatrix(float theta) {
+	return float2x2(
+    cos(theta), -sin(theta),
+    sin(theta),  cos(theta));
+}
+
 [[shader("vertex")]]
 VSOutput vertMain(uint vertexID : SV_VertexID, uniform VSInput constants) {
 	VSOutput ret;
 
+	const float speed = .5f;
 	Vertex vert = constants.uniform[0].vertex_buffer[vertexID];
 
-	ret.pos = float4(vert.position, 1.f);
+	ret.pos = float4(mul(vert.position, .75f), 1.f);
 	ret.uv = vert.uv;
+
+	float2x2 mat = rotationMatrix(constants.uniform.time*speed);
+	ret.pos.xy = mul(mat, ret.pos.xy);
 
 	return ret;
 }
@@ -42,7 +52,6 @@ struct FSOutput {
 struct FSInput {
 	Sampler2D[] Texture;
 };
-
 ParameterBlock<FSInput> fs_input;
 
 [[shader("pixel")]]
@@ -51,7 +60,6 @@ FSOutput fragMain(VSOutput input, uniform VSInput constants) {
 
 	uint tex_idx = constants.uniform[0].image_index;
 	ret.color = fs_input.Texture[tex_idx].Sample(input.uv);
-	float fact = sin(constants.uniform[0].time*0.05);
-	ret.color = mul(ret.color, fact);
+
 	return ret;
 }

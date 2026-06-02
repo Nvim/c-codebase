@@ -1054,7 +1054,6 @@ bool vulkan_end_frame(gpu_api* self, gpu_frame* f) {
 
 	// Present
 	if (check_handle(f->framebuffer.handle)) {
-		LOG_DEBUG("vulkan_end_frame: presenting");
 		vk_present_result pres_res =
 			vk_swapchain_present(&state->swapchain, state->queue);
 

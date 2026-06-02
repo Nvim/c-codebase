@@ -46,6 +46,12 @@ LIB_EXPORT void platform_sleep(double time_ms);
  */
 LIB_EXPORT double platform_get_time(void);
 
+/**
+ * @brief Get current time in seconds
+ *
+ */
+LIB_EXPORT double platform_get_time_s(void);
+
 /* ********************************[ MEMORY ]******************************** */
 
 LIB_EXPORT static size_t const MEMORY_GIB = 1024UL * 1024UL * 1024UL;

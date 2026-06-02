@@ -8,7 +8,7 @@
 #include <string.h>
 
 static bool _quit = false;
-static double const TARGET_FRAMETIME = (1 / 60.f) * 1000.f;
+UNUSED static double const TARGET_FRAMETIME_MS = (1 / 60.f) * 1000.f;
 
 static uint8_t const WHITE[4] = {0xff, 0xff, 0xff, 0xff};
 static uint8_t const RED[4] = {0xff, 0x0, 0x0, 0xff};
@@ -71,7 +71,7 @@ int main(void) {
 	gpu_api_config gpu_ci = {0};
 	{
 		gpu_ci.app_name = "please work";
-		gpu_ci.frames_in_flight = 1;
+		gpu_ci.frames_in_flight = 3;
 		gpu_ci.target_image_format = IMAGE_FORMAT_RGBA_SRGB;
 		gpu_ci.type = GRAPHICS_API_VULKAN;
 	}
@@ -319,10 +319,10 @@ int main(void) {
 	ASSERT(gpu.create_image_view(&gpu, &texture_view, &view_ci));
 
 	uint32_t frame_count = 0;
-	double t_prev = platform_get_time();
-	double delta = 0.0f;
+	double t_prev_s = platform_get_time_s();
+	double delta_ms = 0.0f;
 
-	while (!_quit ) {
+	while (!_quit) {
 		frame_count++;
 		LOG_WARN("FRAME %u", frame_count);
 
@@ -342,7 +342,7 @@ int main(void) {
 		gpu_frame frame = frame_res.frame;
 		gpu_command_buffer cmd = frame.frame_cmd;
 
-		uniform->time = (float)frame_count;
+		uniform->time = t_prev_s;
 
 		gpu_color_target color_target = {
 			.clear_color = (gpu_color){.floats = {.3f, .7f, .2f, 1.f}},
@@ -369,16 +369,16 @@ int main(void) {
 			sizeof(gpu_cmd_indirect_indexed_draw_command));
 		gpu.cmd_end_rendering(&gpu, cmd);
 		ASSERT(gpu.end_frame(&gpu, &frame));
-		double t_now = platform_get_time();
-		delta = t_now - t_prev;
-		if (delta < TARGET_FRAMETIME) {
-			platform_sleep(TARGET_FRAMETIME - delta);
-			LOG_DEBUG("frame took %f. sleeping for %f ms", delta,
-					  TARGET_FRAMETIME - delta);
+		double t_now_s = platform_get_time_s();
+		delta_ms = (t_now_s - t_prev_s)*1000.f;
+		if (delta_ms < TARGET_FRAMETIME_MS) {
+			platform_sleep(TARGET_FRAMETIME_MS - delta_ms);
+			LOG_DEBUG("frame took %f ms. slept for %f ms", delta_ms,
+					TARGET_FRAMETIME_MS - delta_ms);
 			LOG_DEBUG("==============================================");
 		}
-		t_now = platform_get_time();
-		t_prev = t_now;
+		t_now_s = platform_get_time_s();
+		t_prev_s = t_now_s;
 	}
 
 	gpu.wait_idle(&gpu);

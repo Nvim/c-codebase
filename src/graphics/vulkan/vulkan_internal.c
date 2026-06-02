@@ -235,8 +235,8 @@ vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 		return ret;
 	}
 
-	LOG_DEBUG("vk_swapchain_acquire_image: acquired image %u",
-			  swapchain->img_index);
+	// LOG_DEBUG("vk_swapchain_acquire_image: acquired image %u",
+	// 		  swapchain->img_index);
 
 	pool_handle img_hanlde = POOL_INVALID_HANDLE;
 	ASSERT(pool_handle_array_get(swapchain->images_pool_handles, &img_hanlde,
@@ -258,8 +258,8 @@ vk_present_result vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue) {
 	ASSERT(vk_sem_array_get(swapchain->present_semaphores, &wait_semaphore,
 							swapchain->img_index));
 
-	LOG_DEBUG("vk_swapchain_present: presenting to image %u",
-			  swapchain->img_index);
+	// LOG_DEBUG("vk_swapchain_present: presenting to image %u",
+	// 		  swapchain->img_index);
 	VkPresentInfoKHR present_info = {0};
 	{
 		present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -428,7 +428,6 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 	vk_image_pool_handle sc_image = VK_IMGPOOL_INVALID;
 	vk_image_view_pool_handle sc_image_view = {0};
 	{ // Acquire a swapchain image
-		LOG_DEBUG("vk_begin_frame: acquiring swapchain image");
 		vk_sc_image_acquire_result sc_ret = vk_swapchain_acquire_image(
 			&state->swapchain, state->device, frame_sync->draw_sem);
 
@@ -590,7 +589,6 @@ bool vk_submit_frame_cmd(vk_api_state* state, gpu_frame* frame) {
 	vk_render_sync* frame_sync = vk_get_current_sync(state);
 
 	{ // Submit:
-		LOG_DEBUG("vk_submit_frame_cmd: submitting");
 		if (!check_result(vkEndCommandBuffer(cmd_buf))) {
 			LOG_ERR("vk_submit_frame_cmd: couldn't end command buffer");
 			return false;
