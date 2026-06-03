@@ -23,9 +23,9 @@ ARRAY_DEFINE_TYPE(VkExtensionProperties, vk_ext_props_array)
 #define IMAGE_POOL_SIZE 1024U
 #define IMAGE_VIEW_POOL_SIZE 2048U
 #define CMDBUF_POOL_SIZE 1024U
-#define SHADER_POOL_SIZE 1024U
-#define PIPELINE_POOL_SIZE 512U
-#define BUFFER_POOL_SIZE 1024U
+#define SHADER_POOL_SIZE 512U
+#define PIPELINE_POOL_SIZE 1024U
+#define BUFFER_POOL_SIZE 4096U
 #define HANDLE_POOL_SIZE 1024U
 
 static VkFormat const _default_surface_format = VK_FORMAT_B8G8R8A8_UNORM;
@@ -103,6 +103,8 @@ typedef struct vk_find_device_result {
 	VkPhysicalDevice device;
 	uint32_t queue_index;
 	VkPhysicalDeviceProperties2 device_props;
+	VkPhysicalDeviceDescriptorIndexingProperties descriptor_indexing_props;
+	VkPhysicalDeviceMaintenance4Properties maintenance4_props;
 } vk_find_device_result;
 
 /**
@@ -165,7 +167,18 @@ _find_device(vulkan_init_info* pf_info, VkInstance instance, arena_t* scratch) {
 		return ret;
 	}
 
-	// Get props again in case we fallback on earlier device
+	// Get props again in case we fallback on earlier device.
+
+	// Also get descriptor indexing props and max buffer size
+	ret.descriptor_indexing_props.sType =
+		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES_EXT;
+
+	// Also get max buffer size
+	ret.maintenance4_props.sType =
+		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_PROPERTIES;
+	ret.maintenance4_props.pNext = &ret.descriptor_indexing_props;
+
+	ret.device_props.pNext = &ret.maintenance4_props;
 	vkGetPhysicalDeviceProperties2(ret.device, &ret.device_props);
 	return ret;
 }
@@ -256,6 +269,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	if (!validate_gpu_config(&self->config)) { return; }
 
 	self->window = window;
+	uint64_t arena_base_usage = arena_get_usage(arena);
 	vk_api_state* state = arena_push_z(arena, vk_api_state);
 	if (!state) {
 		LOG_ERR("vulkan_initialize: couldn't allocate state");
@@ -264,18 +278,6 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	}
 
 	state->arena = arena;
-
-	// Init resource pools:
-	state->image_pool = vk_image_pool_create(arena, IMAGE_POOL_SIZE);
-	state->image_view_pool = vk_image_view_pool_create(arena, IMAGE_POOL_SIZE);
-	state->cmd_pool = vk_cmdbuf_pool_create(arena, CMDBUF_POOL_SIZE);
-	state->shader_pool = vk_shader_pool_create(arena, SHADER_POOL_SIZE);
-	state->pipeline_pool = vk_pipeline_pool_create(arena, PIPELINE_POOL_SIZE);
-	state->buffer_pool = vk_buffer_pool_create(arena, BUFFER_POOL_SIZE);
-	state->handle_pool = vk_handle_pool_create(arena, HANDLE_POOL_SIZE);
-
-	ASSERT(state->image_pool.raw && state->cmd_pool.raw &&
-		   state->shader_pool.raw);
 
 	{
 		vulkan_init_info vk_pf_info = {0};
@@ -314,6 +316,8 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		state->instance = instance;
 	}
 
+	gpu_api_config* cfg = &self->config;
+
 	{ // Physical Device:
 		vk_find_device_result dev_result =
 			_find_device(&state->pf_init_info, state->instance, scratch);
@@ -329,6 +333,65 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
 		vkGetPhysicalDeviceMemoryProperties2(state->physical_device,
 											 &state->memory_props);
+
+		// Set max limits according to props
+		VkPhysicalDeviceDescriptorIndexingProperties p =
+			dev_result.descriptor_indexing_props;
+		state->descriptor_props = p;
+
+		cfg->max_sampled_images =
+			((p.maxPerStageDescriptorUpdateAfterBindSampledImages <
+			  cfg->max_sampled_images)
+				 ? p.maxPerStageDescriptorUpdateAfterBindSampledImages
+				 : cfg->max_sampled_images);
+
+		cfg->max_storage_images =
+			MIN(p.maxPerStageDescriptorUpdateAfterBindStorageImages,
+				cfg->max_storage_images);
+
+		cfg->max_samplers = MIN(p.maxPerStageDescriptorUpdateAfterBindSamplers,
+								cfg->max_samplers);
+
+		if (cfg->max_samplers == 0) { cfg->max_samplers = IMAGE_POOL_SIZE; }
+
+		state->max_buffer_size = dev_result.maintenance4_props.maxBufferSize;
+		state->max_buffer_range =
+			state->device_props.properties.limits.maxStorageBufferRange;
+		state->push_constant_size =
+			state->device_props.properties.limits.maxPushConstantsSize;
+
+		// clang-format off
+		LOG_INFO("vulkan_initialize: max sampled images: %u", cfg->max_sampled_images);
+		LOG_INFO("vulkan_initialize: max storage images: %u", cfg->max_storage_images);
+		LOG_INFO("vulkan_initialize: max samplers: %u", cfg->max_samplers);
+		LOG_INFO("vulkan_initialize: max buffer size: %lu", state->max_buffer_size);
+		LOG_INFO("vulkan_initialize: max buffer range: %lu", state->max_buffer_range);
+		LOG_INFO("vulkan_initialize: max push constant size: %lu", state->push_constant_size);
+		// clang-format on
+	}
+
+	{ // Init resource pools:
+		size_t image_pool_size =
+			cfg->max_sampled_images + cfg->max_storage_images;
+
+		state->image_pool = vk_image_pool_create(
+			arena, OR_ELSE(image_pool_size, IMAGE_POOL_SIZE));
+
+		state->image_view_pool = vk_image_view_pool_create(
+			arena, OR_ELSE(image_pool_size, IMAGE_POOL_SIZE));
+
+		state->cmd_pool = vk_cmdbuf_pool_create(
+			arena, OR_ELSE(cfg->max_command_buffers, CMDBUF_POOL_SIZE));
+
+		state->shader_pool = vk_shader_pool_create(
+			arena, OR_ELSE(cfg->max_shader_programs, SHADER_POOL_SIZE));
+
+		state->pipeline_pool =
+			vk_pipeline_pool_create(arena, OR_ELSE(cfg->max_pipelines, PIPELINE_POOL_SIZE));
+
+		state->buffer_pool = vk_buffer_pool_create(arena, OR_ELSE(cfg->max_buffers, BUFFER_POOL_SIZE));
+
+		state->handle_pool = vk_handle_pool_create(arena, HANDLE_POOL_SIZE);
 	}
 
 	{ // Logical Device:
@@ -589,6 +652,8 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			  state->device_props.properties.deviceName);
 	LOG_DEBUG("vulkan_initialize: Using queue family: '%u'",
 			  state->queue_family_idx);
+	size_t alloc = arena_get_usage(state->arena) - arena_base_usage;
+	LOG_INFO("vulkan_initialize: allocated %lu bytes for gpu api", alloc);
 }
 
 void vulkan_destroy(gpu_api* self) {
@@ -1159,7 +1224,8 @@ void vulkan_cmd_bind_pipeline(gpu_api* self, gpu_command_buffer cmd,
 	{
 		pc_info.sType = VK_STRUCTURE_TYPE_PUSH_CONSTANTS_INFO;
 		pc_info.size = sizeof(vk_push_constants);
-		pc_info.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+		pc_info.stageFlags =
+			VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 		pc_info.layout = data->layout;
 		pc_info.pValues = &pc;
 	}
@@ -1373,7 +1439,8 @@ gpu_pipeline vulkan_create_pipeline(gpu_api* self, gpu_pipeline_ci* ci) {
 	{
 		pc_range.offset = 0;
 		pc_range.size = sizeof(vk_push_constants);
-		pc_range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+		pc_range.stageFlags =
+			VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 	}
 	VkPipelineLayoutCreateInfo layout_ci = {0};
 	{
@@ -1893,8 +1960,7 @@ gpu_buffer vulkan_create_buffer(gpu_api* self, gpu_buffer_ci* ci) {
 		return ret;
 	}
 
-	// [TODO]: query actual limits
-	if (!ci->size || ci->size > 4 * MEMORY_GIB) {
+	if (!ci->size || ci->size > state->max_buffer_size) {
 		LOG_ERR("vulkan_create_buffer: invalid buffer size");
 		return ret;
 	}

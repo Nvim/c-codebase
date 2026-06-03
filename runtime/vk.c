@@ -60,7 +60,7 @@ int main(void) {
 	arena_create_info arena_ci = {0};
 	{
 		arena_ci.initial_size = 8 * MEMORY_KIB;
-		arena_ci.max_size = MEMORY_MIB;
+		arena_ci.max_size = 8*MEMORY_MIB;
 		arena_ci.alignment = 8;
 		arena_ci.flags = ARENA_LOG | ARENA_GROWING;
 	}
@@ -74,6 +74,9 @@ int main(void) {
 		gpu_ci.frames_in_flight = 3;
 		gpu_ci.target_image_format = IMAGE_FORMAT_RGBA_SRGB;
 		gpu_ci.type = GRAPHICS_API_VULKAN;
+		gpu_ci.max_sampled_images = 32768;
+		gpu_ci.max_samplers = 1024;
+		gpu_ci.max_storage_images = 32768;
 	}
 
 	ASSERT(gpu_create_api(gpu_ci, &gpu));
@@ -370,11 +373,11 @@ int main(void) {
 		gpu.cmd_end_rendering(&gpu, cmd);
 		ASSERT(gpu.end_frame(&gpu, &frame));
 		double t_now_s = platform_get_time_s();
-		delta_ms = (t_now_s - t_prev_s)*1000.f;
+		delta_ms = (t_now_s - t_prev_s) * 1000.f;
 		if (delta_ms < TARGET_FRAMETIME_MS) {
 			platform_sleep(TARGET_FRAMETIME_MS - delta_ms);
 			LOG_DEBUG("frame took %f ms. slept for %f ms", delta_ms,
-					TARGET_FRAMETIME_MS - delta_ms);
+					  TARGET_FRAMETIME_MS - delta_ms);
 			LOG_DEBUG("==============================================");
 		}
 		t_now_s = platform_get_time_s();

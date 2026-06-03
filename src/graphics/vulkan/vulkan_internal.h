@@ -263,6 +263,11 @@ typedef struct vk_api_state {
 	VkPhysicalDeviceFeatures2 device_features;
 	VkPhysicalDeviceProperties2 device_props;
 	VkPhysicalDeviceMemoryProperties2 memory_props;
+	VkPhysicalDeviceDescriptorIndexingProperties descriptor_props;
+	VkPhysicalDeviceVulkan14Properties vulkan_props;
+	uint64_t max_buffer_size;
+	uint64_t max_buffer_range;
+	uint64_t push_constant_size;
 
 	// Base handles
 	VkDevice device;

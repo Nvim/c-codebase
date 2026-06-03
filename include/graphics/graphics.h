@@ -458,13 +458,35 @@ typedef struct gpu_frame_result {
 } gpu_frame_result;
 
 /* ========================================================================== */
+typedef enum gpu_present_mode {
+	GPU_PRESENT_MODE_IMMEDIATE,
+	GPU_PRESENT_MODE_VSYNC,
+	GPU_PRESENT_MODE_MAILBOX,
+} gpu_present_mode;
+
 typedef struct gpu_api_config {
 	gpu_api_type type;
 	char const* app_name;
 	uint32_t frames_in_flight;
 	gpu_image_format target_image_format;
-	// TODO: depth format
-	// TODO: vsync mode
+	gpu_present_mode present_mode;
+
+	/**
+	 * [NOTE]: These values controls CPU pool sizes, don't set them too high.
+	 * They fallback to a default if 0, and are capped to the gpu_limit.
+	 */
+	uint32_t max_sampled_images;
+	uint32_t max_storage_images;
+	uint32_t max_samplers;
+
+	/**
+	 * [NOTE]: These values controls CPU pool sizes, don't set them too high.
+	 * They fallback to a default if 0.
+	 */
+	uint32_t max_pipelines;
+	uint32_t max_shader_programs;
+	uint32_t max_buffers;
+	uint32_t max_command_buffers;
 } gpu_api_config;
 
 /**
@@ -609,7 +631,8 @@ typedef struct gpu_api {
 	bool (*create_image_view)(struct gpu_api*, gpu_image_view* out,
 							  gpu_image_view_ci*);
 	void (*destroy_image_view)(struct gpu_api*, gpu_image_view);
-	bool (*cmd_copy_to_image)(struct gpu_api*, gpu_command_buffer, gpu_image_copy_info* info);
+	bool (*cmd_copy_to_image)(struct gpu_api*, gpu_command_buffer,
+							  gpu_image_copy_info* info);
 
 	/**
 	 * @brief Specify a new usage for image. Image has to have been created

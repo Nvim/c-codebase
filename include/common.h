@@ -9,7 +9,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define MIN(a, b) ((a < b) ? a : b)
 #define CLAMP(x, min, max) ((x) < (min) ? (min) : ((x) > (max) ? (max) : (x)))
+
+#define OR_ELSE(x, fallback) ((x) ? (x) : (fallback))
 
 #define BIT(n) 1u << n
 
