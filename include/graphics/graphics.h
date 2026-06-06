@@ -3,6 +3,7 @@
 
 #include <allocators/arena.h>
 #include <common.h>
+#include <containers/array.h>
 #include <containers/pool.h>
 #include <strings/path.h>
 #include <visibility.h>
@@ -269,12 +270,24 @@ typedef struct gpu_image_data_payload {
 	gpu_data_payload data;
 } gpu_image_data_payload;
 
+/**
+ * @class gpu_image_region
+ * @brief Specific Array+Mip combo to copy to. Assumes tightly packed data and
+ * no offsets. Copies always affect the full region.
+ *
+ */
+typedef struct gpu_image_region {
+	uint32_t level;
+	uint32_t layer;
+} gpu_image_region;
+
+ARRAY_DEFINE_TYPE(gpu_image_region, gpu_image_region_array)
+
 typedef struct gpu_image_copy_info {
 	gpu_buffer src;
 	size_t src_offset;
 	gpu_image dst;
-	// TODO: region system to copy to specific mip/layer
-	gpu_image_data_payload data;
+	gpu_image_region_array regions;
 } gpu_image_copy_info;
 
 typedef enum gpu_sampler_filter_mode {

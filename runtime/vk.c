@@ -60,7 +60,7 @@ int main(void) {
 	arena_create_info arena_ci = {0};
 	{
 		arena_ci.initial_size = 8 * MEMORY_KIB;
-		arena_ci.max_size = 8*MEMORY_MIB;
+		arena_ci.max_size = 8 * MEMORY_MIB;
 		arena_ci.alignment = 8;
 		arena_ci.flags = ARENA_LOG | ARENA_GROWING;
 	}
@@ -254,12 +254,21 @@ int main(void) {
 		gpu.cmd_transition_image(&gpu, cmd, test_image,
 								 GPU_IMAGE_STATE_TRANSFER_DST);
 
+		gpu_image_region_array regions =
+			gpu_image_region_array_create(scratch.arena, 1);
+		ASSERT(regions.raw);
+		gpu_image_region* reg = gpu_image_region_array_begin(regions);
+		{
+			reg->layer = 0;
+			reg->level = 0;
+		}
+
 		offset = 0;
 		gpu_image_copy_info img_copy_info = {
-			.data = img_payload,
 			.dst = test_image,
 			.src = staging_buffer,
 			.src_offset = offset,
+			.regions = regions,
 		};
 		ASSERT(gpu.cmd_copy_to_image(&gpu, cmd, &img_copy_info));
 		gpu.cmd_transition_image(&gpu, cmd, test_image,

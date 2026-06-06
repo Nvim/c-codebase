@@ -10,6 +10,7 @@
 #include <stdint.h>
 
 #define MIN(a, b) ((a < b) ? a : b)
+#define MAX(a, b) ((a < b) ? b : a)
 #define CLAMP(x, min, max) ((x) < (min) ? (min) : ((x) > (max) ? (max) : (x)))
 
 #define OR_ELSE(x, fallback) ((x) ? (x) : (fallback))
