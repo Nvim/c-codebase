@@ -157,7 +157,7 @@ _find_device(vulkan_init_info* pf_info, VkInstance instance, arena_t* scratch) {
 			ret.device_props = device_props;
 			ret.found = true;
 		}
-		if (_is_dgpu(device_props)) { return ret; }
+		if (_is_dgpu(device_props)) { break; }
 		// Keep searching in case we get dgpu later
 	}
 
@@ -386,10 +386,11 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		state->shader_pool = vk_shader_pool_create(
 			arena, OR_ELSE(cfg->max_shader_programs, SHADER_POOL_SIZE));
 
-		state->pipeline_pool =
-			vk_pipeline_pool_create(arena, OR_ELSE(cfg->max_pipelines, PIPELINE_POOL_SIZE));
+		state->pipeline_pool = vk_pipeline_pool_create(
+			arena, OR_ELSE(cfg->max_pipelines, PIPELINE_POOL_SIZE));
 
-		state->buffer_pool = vk_buffer_pool_create(arena, OR_ELSE(cfg->max_buffers, BUFFER_POOL_SIZE));
+		state->buffer_pool = vk_buffer_pool_create(
+			arena, OR_ELSE(cfg->max_buffers, BUFFER_POOL_SIZE));
 
 		state->handle_pool = vk_handle_pool_create(arena, HANDLE_POOL_SIZE);
 	}
@@ -1855,6 +1856,13 @@ bool vulkan_cmd_copy_to_image(struct gpu_api* self, gpu_command_buffer cmd,
 		return false;
 	}
 
+#define MAX_REGIONS 256U
+	size_t region_count = gpu_image_region_array_size(info->regions);
+	if (!region_count || region_count > MAX_REGIONS) {
+		LOG_ERR("vulkan_cmd_copy_to_image: invalid region count");
+		return false;
+	}
+
 	vk_cmdbuf_data* cmd_data =
 		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
 	if (cmd_data->state != CMDBUF_RECORDING) {
@@ -1874,6 +1882,8 @@ bool vulkan_cmd_copy_to_image(struct gpu_api* self, gpu_command_buffer cmd,
 		return false;
 	}
 
+	// [TODO]: Validate regions based on image's spec
+
 	vk_buffer_data* buf_data =
 		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(info->src));
 	if (!buf_data) {
@@ -1887,48 +1897,50 @@ bool vulkan_cmd_copy_to_image(struct gpu_api* self, gpu_command_buffer cmd,
 		return false;
 	}
 
-	// Get data before inserting barrier:
-	void* dst = NULL;
-	size_t size = 0;
-	if (info->data.data.data_format == GPU_DATA_SPAN) {
-		dst = info->data.data.data.span.data;
-		size = info->data.data.data.span.size;
-	} else if (info->data.data.data_format == GPU_DATA_ARRAY) {
-		dst = u8_array_begin(info->data.data.data.array);
-		size = u8_array_size(info->data.data.data.array);
-	} else {
-		ASSERT(false);
-	}
-
-	if (!(dst && size)) {
-		LOG_ERR("vulkan_cmd_copy_to_image: invalid data payload");
-		return false;
-	}
-
-	// [NOTE]: temporary, doesn't account for multiple mips or layers
-	ASSERT((info->data.width * info->data.height * 4 == size) ||
-		   (info->data.width * info->data.height * 3 == size));
-
 	// Barrier to TRANSFER_DST:
 	vk_image_barrier_info from = gpu_state_to_vk_image_barrier[data->gpu_state];
 	vk_image_barrier_info to =
 		gpu_state_to_vk_image_barrier[GPU_IMAGE_STATE_TRANSFER_DST];
 	vk_image_barrier(cmd_buf, data->image, from, to);
 
-	// [TODO]: Multi-layer/level support
-	VkImageSubresourceLayers img_layer = {0};
-	{
-		img_layer.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		img_layer.layerCount = data->layer_count;
+	VkImageAspectFlags aspect = 0;
+	if (data->usage_flags & (VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) {
+		aspect = VK_IMAGE_ASPECT_DEPTH_BIT; // [TODO]: stencil?
+	} else {
+		aspect = VK_IMAGE_ASPECT_COLOR_BIT;
 	}
-	VkExtent3D extent = {
-		.width = info->data.width, .height = info->data.height, .depth = 1};
-	VkBufferImageCopy2 img_copy_info = {0};
-	{
-		img_copy_info.sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2;
-		img_copy_info.imageExtent = extent;
-		img_copy_info.imageSubresource = img_layer;
-		img_copy_info.bufferOffset = info->src_offset;
+
+	VkBufferImageCopy2 copies[MAX_REGIONS] = {0};
+	size_t offset = info->src_offset;
+
+	gpu_image_region* reg;
+	for (uint32_t i = 0; i < region_count; ++i) {
+		ASSERT(gpu_image_region_array_at(info->regions, &reg, i));
+
+		uint32_t mip_w = MAX(1u, data->extent.width >> reg->level);
+		uint32_t mip_h = MAX(1u, data->extent.height >> reg->level);
+		VkExtent3D extent = {
+			.width = mip_w,
+			.height = mip_h,
+			.depth = 1,
+		};
+
+		VkImageSubresourceLayers subresource = {
+			.aspectMask = aspect,
+			.mipLevel = reg->level,
+			.baseArrayLayer = reg->layer,
+			.layerCount = 1,
+		};
+
+		{
+			copies[i].sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2;
+			copies[i].imageExtent = extent;
+			copies[i].imageSubresource = subresource;
+			copies[i].bufferOffset = offset;
+		}
+
+		static uint32_t const bytes_per_pixel = 4; // [TODO]: helper for this
+		offset += (mip_w * mip_h * bytes_per_pixel);
 	}
 
 	VkCopyBufferToImageInfo2 copy_ci = {0};
@@ -1936,13 +1948,14 @@ bool vulkan_cmd_copy_to_image(struct gpu_api* self, gpu_command_buffer cmd,
 		copy_ci.sType = VK_STRUCTURE_TYPE_COPY_BUFFER_TO_IMAGE_INFO_2;
 		copy_ci.dstImage = data->image;
 		copy_ci.dstImageLayout = to.layout;
-		copy_ci.pRegions = &img_copy_info;
-		copy_ci.regionCount = 1;
+		copy_ci.pRegions = copies;
+		copy_ci.regionCount = region_count;
 		copy_ci.srcBuffer = buf_data->buffer;
 	}
 
 	vkCmdCopyBufferToImage2(cmd_buf, &copy_ci);
 
+#undef MAX_REGIONS
 	return true;
 }
 
@@ -2005,6 +2018,7 @@ gpu_buffer vulkan_create_buffer(gpu_api* self, gpu_buffer_ci* ci) {
 		deviceAdressInfo.buffer = data.buffer;
 	}
 
+	data.size = buf_ci.size;
 	data.memory_flags = mem.propertyFlags;
 	data.usage_flags = buf_ci.usage;
 	if (data.usage_flags & VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT) {
@@ -2102,8 +2116,8 @@ bool vulkan_cmd_bind_index_buffer(gpu_api* self, gpu_command_buffer cmd,
 		return false;
 	}
 
-	vkCmdBindIndexBuffer2(cmd_buf, buf_data->buffer, 0,
-						  buf_data->alloc_info.size, VK_INDEX_TYPE_UINT32);
+	vkCmdBindIndexBuffer2(cmd_buf, buf_data->buffer, 0, VK_WHOLE_SIZE,
+						  VK_INDEX_TYPE_UINT32);
 
 	return true;
 }
@@ -2142,7 +2156,7 @@ bool vulkan_copy_to_staging_buffer(gpu_api* self, gpu_buffer dst,
 		return false;
 	}
 
-	if (size > (dst_data->alloc_info.size - data.offset)) {
+	if (size > (dst_data->size - data.offset)) {
 		LOG_ERR("vulkan_copy_to_staging_buffer: invalid transfer size");
 		return false;
 	}
@@ -2189,8 +2203,8 @@ bool vulkan_cmd_copy_to_buffer(gpu_api* self, gpu_command_buffer cmd,
 		return false;
 	}
 
-	if (info->size > (dst_data->alloc_info.size - info->dst_offset) ||
-		info->size > (src_data->alloc_info.size - info->src_offset)) {
+	if (info->size > (dst_data->size - info->dst_offset) ||
+		info->size > (src_data->size - info->src_offset)) {
 		LOG_ERR("vulkan_cmd_copy_to_buffer: size is too big");
 		return false;
 	}

@@ -116,14 +116,17 @@ typedef struct vk_pipeline_data {
 POOL_DEFINE_TYPE(vk_pipeline_data, vk_pipeline_pool)
 #define VK_PIPELINEPOOL_INVALID (vk_pipeline_pool_handle){.raw_handle = 0}
 
+// [NOTE]: alloc_info.size != buffer's actual size, so might not need
+// VmaAllocationInfo, just VkMemoryPropertyFlags+Device Address should be enough
 typedef struct vk_buffer_data {
-	VkBuffer buffer;
-	VmaAllocation alloc;
 	VmaAllocationInfo alloc_info;
+	VmaAllocation alloc;
+	VkBuffer buffer;
+	VkDeviceAddress device_address;
+	VkDeviceSize size;
 	VkBufferUsageFlagBits2 usage_flags;
 	VkMemoryPropertyFlags memory_flags;
 	gpu_buffer_access last_access; // [NOTE]: CPU/GPU sync maybe sus
-	VkDeviceAddress device_address;
 } vk_buffer_data;
 
 POOL_DEFINE_TYPE(vk_buffer_data, vk_buffer_pool)
