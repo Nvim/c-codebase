@@ -11,5 +11,6 @@ target_link_libraries(vk PRIVATE
 	platform
 	core
 	graphics
+	loaders
 )
 

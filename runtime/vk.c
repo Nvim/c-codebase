@@ -1,19 +1,20 @@
 #include <core/core.h>
 #include <core/log.h>
 #include <filesystem/filesystem.h>
+#include <graphics/graphics.h>
+#include <loaders/qoi_loader.h>
 #include <platform/platform.h>
 
-#include <graphics/graphics.h>
 #include <limits.h>
 #include <string.h>
 
 static bool _quit = false;
 UNUSED static double const TARGET_FRAMETIME_MS = (1 / 60.f) * 1000.f;
 
-static uint8_t const WHITE[4] = {0xff, 0xff, 0xff, 0xff};
-static uint8_t const RED[4] = {0xff, 0x0, 0x0, 0xff};
-static uint8_t const GREEN[4] = {0x0, 0xff, 0x0, 0xff};
-static uint8_t const BLUE[4] = {0x0, 0x0, 0xff, 0xff};
+UNUSED static uint8_t const WHITE[4] = {0xff, 0xff, 0xff, 0xff};
+UNUSED static uint8_t const RED[4] = {0xff, 0x0, 0x0, 0xff};
+UNUSED static uint8_t const GREEN[4] = {0x0, 0xff, 0x0, 0xff};
+UNUSED static uint8_t const BLUE[4] = {0x0, 0x0, 0xff, 0xff};
 
 typedef struct {
 	float pos[3];
@@ -130,10 +131,15 @@ int main(void) {
 	gpu.destroy_shader(&gpu, vs);
 	gpu.destroy_shader(&gpu, fs);
 
+	image_read_result img_read = load_qoi(
+		arena, scratch.arena, str("runtime/qoi_test_images/testcard_rgba.qoi"));
+	ASSERT(img_read.ok && img_read.channels == 4);
+
 	gpu_image test_image;
 	{ // [TODO]: temp
 		gpu_image_ci img_ci = {0};
-		img_ci.dimensions = (gpu_image_extent){.width = 2, .height = 2};
+		img_ci.dimensions = (gpu_image_extent){.width = img_read.width,
+											   .height = img_read.height};
 		img_ci.format = IMAGE_FORMAT_RGBA_UNORM;
 		img_ci.type = GPU_IMAGE_TYPE_2D;
 		img_ci.usage = GPU_IMAGE_USAGE_SAMPLED;
@@ -143,18 +149,9 @@ int main(void) {
 		ASSERT(check_handle(test_image.handle));
 	}
 
-	u8_array pixels = u8_array_create(arena, 16);
-	uint8_t* px = u8_array_begin(pixels);
-	{
-		memcpy(px, RED, 4);
-		memcpy(px + 4, GREEN, 4);
-		memcpy(px + 8, BLUE, 4);
-		memcpy(px + 12, WHITE, 4);
-	}
-
 	gpu_data_payload const test_image_data = {
 		.data_format = GPU_DATA_ARRAY,
-		.data.array = pixels,
+		.data.array = img_read.bytes,
 	};
 
 	gpu_buffer_ci vbuf_ci = {0};
@@ -186,7 +183,7 @@ int main(void) {
 
 	gpu_buffer_ci staging_ci = {0};
 	{
-		staging_ci.size = 4 * MEMORY_KIB;
+		staging_ci.size = 4 * MEMORY_MIB;
 		staging_ci.usage = GPU_BUFFER_USAGE_STAGING_UP;
 	}
 	gpu_buffer staging_buffer = gpu.create_buffer(&gpu, &staging_ci);
@@ -213,11 +210,11 @@ int main(void) {
 	size_t offset = 0;
 	gpu_image_data_payload img_payload = {
 		.data = test_image_data,
-		.height = 2,
-		.width = 2,
+		.height = img_read.width,
+		.width = img_read.height,
 	};
 	gpu.copy_to_staging_buffer(&gpu, staging_buffer, img_payload.data);
-	offset += sizeof(RED) * u8_array_size(pixels);
+	offset += img_read.channels * u8_array_size(img_read.bytes);
 
 	gpu_data_payload vbuf_payload = {0};
 	{
@@ -273,7 +270,7 @@ int main(void) {
 		ASSERT(gpu.cmd_copy_to_image(&gpu, cmd, &img_copy_info));
 		gpu.cmd_transition_image(&gpu, cmd, test_image,
 								 GPU_IMAGE_STATE_SHADER_READ);
-		offset += sizeof(RED) * u8_array_size(pixels);
+		offset += img_read.channels * u8_array_size(img_read.bytes);
 
 		gpu_buffer_copy_info buf_copy = {0};
 		{
