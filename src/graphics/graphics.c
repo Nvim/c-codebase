@@ -155,3 +155,22 @@ bool gpu_validate_buffer_ci(gpu_buffer_ci* ci) {
 	}
 	return true;
 }
+
+uint32_t gpu_get_format_bytes_per_pixel(gpu_image_format f) {
+	switch (f) {
+	case IMAGE_FORMAT_RGBA_UNORM:
+	case IMAGE_FORMAT_RGBA_SNORM:
+	case IMAGE_FORMAT_RGBA_SRGB:
+	case IMAGE_FORMAT_BGRA_UNORM:
+	case IMAGE_FORMAT_BGRA_SNORM:
+	case IMAGE_FORMAT_BGRA_SRGB: return 4;
+	case IMAGE_FORMAT_RGB_UNORM:
+	case IMAGE_FORMAT_RGB_SNORM:
+	case IMAGE_FORMAT_RGB_SRGB:
+	case IMAGE_FORMAT_BGR_UNORM:
+	case IMAGE_FORMAT_BGR_SNORM:
+	case IMAGE_FORMAT_BGR_SRGB: return 3;
+	case IMAGE_FORMAT_D16: return 2;
+	default: ASSERT(false);
+	}
+}

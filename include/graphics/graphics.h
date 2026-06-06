@@ -45,6 +45,8 @@ typedef enum gpu_image_format {
 	IMAGE_FORMAT_D16,
 } gpu_image_format;
 
+uint32_t gpu_get_format_bytes_per_pixel(gpu_image_format f);
+
 typedef struct {
 	uint32_t width;
 	uint32_t height;

@@ -1882,8 +1882,6 @@ bool vulkan_cmd_copy_to_image(struct gpu_api* self, gpu_command_buffer cmd,
 		return false;
 	}
 
-	// [TODO]: Validate regions based on image's spec
-
 	vk_buffer_data* buf_data =
 		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(info->src));
 	if (!buf_data) {
@@ -1917,6 +1915,9 @@ bool vulkan_cmd_copy_to_image(struct gpu_api* self, gpu_command_buffer cmd,
 	for (uint32_t i = 0; i < region_count; ++i) {
 		ASSERT(gpu_image_region_array_at(info->regions, &reg, i));
 
+		ASSERT(reg->layer < data->layer_count &&
+			   reg->level < data->level_count);
+
 		uint32_t mip_w = MAX(1u, data->extent.width >> reg->level);
 		uint32_t mip_h = MAX(1u, data->extent.height >> reg->level);
 		VkExtent3D extent = {
@@ -1939,7 +1940,8 @@ bool vulkan_cmd_copy_to_image(struct gpu_api* self, gpu_command_buffer cmd,
 			copies[i].bufferOffset = offset;
 		}
 
-		static uint32_t const bytes_per_pixel = 4; // [TODO]: helper for this
+		uint32_t bytes_per_pixel = gpu_get_format_bytes_per_pixel(
+			vk_to_gpu_image_format(data->format));
 		offset += (mip_w * mip_h * bytes_per_pixel);
 	}
 
