@@ -131,8 +131,8 @@ int main(void) {
 	gpu.destroy_shader(&gpu, vs);
 	gpu.destroy_shader(&gpu, fs);
 
-	image_read_result img_read =
-		load_qoi(arena, scratch.arena, str("runtime/qoi_test_images/dice.qoi"));
+	image_read_result img_read = load_qoi(
+		arena, scratch.arena, str("runtime/qoi_test_images/meep.qoi"), true);
 	ASSERT(img_read.ok && img_read.channels == 4);
 	arena_clear_scratch(scratch);
 
@@ -328,13 +328,10 @@ int main(void) {
 
 	ASSERT(gpu.create_image_view(&gpu, &texture_view, &view_ci));
 
-	uint32_t frame_count = 0;
 	double t_prev_s = platform_get_time_s();
 	double delta_ms = 0.0f;
 
 	while (!_quit) {
-		frame_count++;
-		LOG_WARN("FRAME %u", frame_count);
 
 		platform_poll();
 		if (platform_window_should_close(win)) { break; }
@@ -383,9 +380,9 @@ int main(void) {
 		delta_ms = (t_now_s - t_prev_s) * 1000.f;
 		if (delta_ms < TARGET_FRAMETIME_MS) {
 			platform_sleep(TARGET_FRAMETIME_MS - delta_ms);
-			LOG_DEBUG("frame took %f ms. slept for %f ms", delta_ms,
-					  TARGET_FRAMETIME_MS - delta_ms);
-			LOG_DEBUG("==============================================");
+			// LOG_DEBUG("frame took %f ms. slept for %f ms", delta_ms,
+			// 		  TARGET_FRAMETIME_MS - delta_ms);
+			// LOG_DEBUG("==============================================");
 		}
 		t_now_s = platform_get_time_s();
 		t_prev_s = t_now_s;

@@ -555,7 +555,6 @@ bool vk_update_image_descriptor(vk_api_state* state,
 	}
 
 	uint32_t array_index = pool_handle_index(view.raw_handle);
-	LOG_WARN("ARRAY INDEX: %u", array_index);
 	VkWriteDescriptorSet w = {0};
 	{
 		w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;

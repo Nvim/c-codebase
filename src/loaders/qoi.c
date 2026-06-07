@@ -53,7 +53,8 @@ static bool _channels_valid(uint8_t ch) { return ch == 3 || ch == 4; }
 
 static bool _colorspace_valid(uint8_t c) { return c == 0 || c == 1; }
 
-image_read_result load_qoi(arena_t* arena, arena_t* scratch, path filename) {
+image_read_result load_qoi(arena_t* arena, arena_t* scratch, path filename,
+						   bool force_4_channels) {
 
 	image_read_result ret = {0};
 
@@ -91,16 +92,13 @@ image_read_result load_qoi(arena_t* arena, arena_t* scratch, path filename) {
 	LOG_INFO("load_qoi: " STR_FMT " (%ux%u) - %u channels, %d colorspace",
 			 STR_FMT_ARGS(filename), width, height, channels, colorspace);
 
-	if (channels != 4) {
-		LOG_WARN("only 4 channels images are supported for now");
-		return ret;
-	}
-
 	if (!width || !height || !_channels_valid(channels) ||
 		!_colorspace_valid(colorspace)) {
 		LOG_ERR("load_qoi: invalid header");
 		return ret;
 	}
+
+	if (channels == 3 && force_4_channels) { channels = 4; }
 
 	pixel previous_pixels[64] = {0};
 	pixel_array pixel_buffer = pixel_array_create(scratch, width * height);
@@ -123,7 +121,7 @@ image_read_result load_qoi(arena_t* arena, arena_t* scratch, path filename) {
 				p.r = _read_u8(&current_offset, raw);
 				p.g = _read_u8(&current_offset, raw);
 				p.b = _read_u8(&current_offset, raw);
-				p.a = 0xff;
+				p.a = 0xff; // Set alpha here too in case force_4_channels.
 			} else if (byte == QOI_OP_RGBA) {
 				p.r = _read_u8(&current_offset, raw);
 				p.g = _read_u8(&current_offset, raw);
@@ -174,7 +172,7 @@ image_read_result load_qoi(arena_t* arena, arena_t* scratch, path filename) {
 		u8_array_set(ret_arr, byte_idx++, &idk->r);
 		u8_array_set(ret_arr, byte_idx++, &idk->g);
 		u8_array_set(ret_arr, byte_idx++, &idk->b);
-		u8_array_set(ret_arr, byte_idx++, &idk->a);
+		if (channels == 4) { u8_array_set(ret_arr, byte_idx++, &idk->a); }
 	}
 
 	{
