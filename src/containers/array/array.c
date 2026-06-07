@@ -34,6 +34,8 @@ array_t* _array_create(arena_t* arena, size_t size, size_t elem_size) {
 	arr->elem_size = elem_size;
 	arr->size = size;
 	arr->memory = memory;
+
+	memset(arr->memory, 0, size * elem_size);
 	return (array_t*)arr;
 }
 

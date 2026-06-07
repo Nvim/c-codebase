@@ -60,8 +60,8 @@ int main(void) {
 
 	arena_create_info arena_ci = {0};
 	{
-		arena_ci.initial_size = 8 * MEMORY_KIB;
-		arena_ci.max_size = 8 * MEMORY_MIB;
+		arena_ci.initial_size = 8 * MEMORY_MIB;
+		arena_ci.max_size = 64 * MEMORY_MIB;
 		arena_ci.alignment = 8;
 		arena_ci.flags = ARENA_LOG | ARENA_GROWING;
 	}
@@ -131,9 +131,10 @@ int main(void) {
 	gpu.destroy_shader(&gpu, vs);
 	gpu.destroy_shader(&gpu, fs);
 
-	image_read_result img_read = load_qoi(
-		arena, scratch.arena, str("runtime/qoi_test_images/testcard_rgba.qoi"));
+	image_read_result img_read =
+		load_qoi(arena, scratch.arena, str("runtime/qoi_test_images/dice.qoi"));
 	ASSERT(img_read.ok && img_read.channels == 4);
+	arena_clear_scratch(scratch);
 
 	gpu_image test_image;
 	{ // [TODO]: temp
