@@ -1,6 +1,3 @@
-#ifndef GRAPHICS_VULKAN_H
-#define GRAPHICS_VULKAN_H
-
 #include <vulkan/vulkan.h>
 
 #include "../graphics_internal.h"
@@ -202,6 +199,7 @@ static VkDevice _create_device(VkPhysicalDevice physical_device,
 		vk_12_features.shaderSampledImageArrayNonUniformIndexing = true;
 		vk_12_features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
 		vk_12_features.descriptorBindingStorageImageUpdateAfterBind = VK_TRUE;
+		vk_12_features.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
 		// vk_12_features.descriptorBindingPartiallyBound = VK_TRUE;
 		vk_12_features.runtimeDescriptorArray = true;
 		vk_12_features.bufferDeviceAddress = true;
@@ -352,7 +350,17 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		cfg->max_samplers = MIN(p.maxPerStageDescriptorUpdateAfterBindSamplers,
 								cfg->max_samplers);
 
-		if (cfg->max_samplers == 0) { cfg->max_samplers = IMAGE_POOL_SIZE; }
+		{
+			// clang-format off
+			cfg->max_sampled_images = OR_ELSE(cfg->max_sampled_images, IMAGE_POOL_SIZE);
+			cfg->max_storage_images = OR_ELSE(cfg->max_storage_images, IMAGE_POOL_SIZE);
+			cfg->max_samplers = OR_ELSE(cfg->max_samplers, HANDLE_POOL_SIZE);
+			cfg->max_command_buffers = OR_ELSE(cfg->max_command_buffers, CMDBUF_POOL_SIZE);
+			cfg->max_shader_programs = OR_ELSE(cfg->max_shader_programs, SHADER_POOL_SIZE);
+			cfg->max_pipelines = OR_ELSE(cfg->max_pipelines, PIPELINE_POOL_SIZE);
+			cfg->max_buffers = OR_ELSE(cfg->max_buffers, BUFFER_POOL_SIZE);
+			// clang-format on
+		}
 
 		state->max_buffer_size = dev_result.maintenance4_props.maxBufferSize;
 		state->max_buffer_range =
@@ -374,25 +382,21 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		size_t image_pool_size =
 			cfg->max_sampled_images + cfg->max_storage_images;
 
-		state->image_pool = vk_image_pool_create(
-			arena, OR_ELSE(image_pool_size, IMAGE_POOL_SIZE));
+		state->image_pool = vk_image_pool_create(arena, image_pool_size);
 
-		state->image_view_pool = vk_image_view_pool_create(
-			arena, OR_ELSE(image_pool_size, IMAGE_POOL_SIZE));
+		state->image_view_pool =
+			vk_image_view_pool_create(arena, image_pool_size);
 
-		state->cmd_pool = vk_cmdbuf_pool_create(
-			arena, OR_ELSE(cfg->max_command_buffers, CMDBUF_POOL_SIZE));
+		state->cmd_pool =
+			vk_cmdbuf_pool_create(arena, cfg->max_command_buffers);
 
-		state->shader_pool = vk_shader_pool_create(
-			arena, OR_ELSE(cfg->max_shader_programs, SHADER_POOL_SIZE));
+		state->shader_pool =
+			vk_shader_pool_create(arena, cfg->max_shader_programs);
 
-		state->pipeline_pool = vk_pipeline_pool_create(
-			arena, OR_ELSE(cfg->max_pipelines, PIPELINE_POOL_SIZE));
-
-		state->buffer_pool = vk_buffer_pool_create(
-			arena, OR_ELSE(cfg->max_buffers, BUFFER_POOL_SIZE));
-
-		state->handle_pool = vk_handle_pool_create(arena, HANDLE_POOL_SIZE);
+		state->pipeline_pool =
+			vk_pipeline_pool_create(arena, cfg->max_pipelines);
+		state->buffer_pool = vk_buffer_pool_create(arena, cfg->max_buffers);
+		state->handle_pool = vk_handle_pool_create(arena, cfg->max_samplers);
 	}
 
 	{ // Logical Device:
@@ -530,45 +534,31 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		}
 	}
 
-	{ // [TODO]: Sampler
-		VkSamplerCreateInfo ci = {0};
-		{
-			ci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-			ci.addressModeU = VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
-			ci.addressModeV = VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
-			ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
-			ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-			ci.magFilter = VK_FILTER_LINEAR;
-			ci.minFilter = VK_FILTER_LINEAR;
-			ci.maxLod = VK_LOD_CLAMP_NONE;
-		}
-
-		if (!check_result(vkCreateSampler(state->device, &ci, NULL,
-										  &state->default_sampler))) {
-			LOG_ERR("vulkan_initialize: couldn't create sampler");
-			return;
-		}
-	}
-
 	{ // Descriptor pool
 		VkDescriptorPoolSize tex_pool_size = {0};
 		{
-			tex_pool_size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			tex_pool_size.descriptorCount = IMAGE_POOL_SIZE;
+			tex_pool_size.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+			tex_pool_size.descriptorCount = self->config.max_sampled_images;
 		}
 		VkDescriptorPoolSize storage_pool_size = {0};
 		{
 			storage_pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-			storage_pool_size.descriptorCount = IMAGE_POOL_SIZE;
+			storage_pool_size.descriptorCount = self->config.max_storage_images;
+		}
+		VkDescriptorPoolSize sampler_pool_size = {0};
+		{
+			sampler_pool_size.type = VK_DESCRIPTOR_TYPE_SAMPLER;
+			sampler_pool_size.descriptorCount = self->config.max_samplers;
 		}
 
-		VkDescriptorPoolSize pool_sizes[2] = {tex_pool_size, storage_pool_size};
+		VkDescriptorPoolSize pool_sizes[3] = {tex_pool_size, storage_pool_size,
+											  sampler_pool_size};
 
 		VkDescriptorPoolCreateInfo ci = {0};
 		{
 			ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 			ci.maxSets = 16;
-			ci.poolSizeCount = 2;
+			ci.poolSizeCount = countof(pool_sizes);
 			ci.pPoolSizes = pool_sizes;
 			ci.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
 		}
@@ -583,23 +573,30 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	{ // Descriptor layout & set
 		VkDescriptorSetLayoutBinding texture_binding = {0};
 		{
-			texture_binding.descriptorCount = IMAGE_POOL_SIZE;
+			texture_binding.descriptorCount = self->config.max_sampled_images;
 			texture_binding.binding = TEXTURE_BINDING;
-			texture_binding.descriptorType =
-				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			texture_binding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
 			texture_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 		}
 
 		VkDescriptorSetLayoutBinding storage_binding = {0};
 		{
-			storage_binding.descriptorCount = IMAGE_POOL_SIZE;
+			storage_binding.descriptorCount = self->config.max_storage_images;
 			storage_binding.binding = STORAGE_IMAGE_BINDING;
 			storage_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 			storage_binding.stageFlags =
 				VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 		}
-		VkDescriptorSetLayoutBinding bindings_array[] = {texture_binding,
-														 storage_binding};
+		VkDescriptorSetLayoutBinding sampler_binding = {0};
+		{
+			sampler_binding.descriptorCount = self->config.max_samplers;
+			sampler_binding.binding = SAMPLER_BINDING;
+			sampler_binding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+			sampler_binding.stageFlags =
+				VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+		}
+		VkDescriptorSetLayoutBinding bindings_array[3] = {
+			texture_binding, storage_binding, sampler_binding};
 
 		// Create descriptor set layout with indexing feature:
 		VkDescriptorBindingFlags binding_flags =
@@ -609,7 +606,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		{
 			layout_binding_flags.sType =
 				VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
-			layout_binding_flags.bindingCount = 2;
+			layout_binding_flags.bindingCount = countof(bindings_array);
 			layout_binding_flags.pBindingFlags = &binding_flags;
 		};
 
@@ -618,7 +615,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			layout_ci.sType =
 				VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 			layout_ci.pNext = &layout_binding_flags;
-			layout_ci.bindingCount = 2;
+			layout_ci.bindingCount = countof(bindings_array);
 			layout_ci.pBindings = bindings_array;
 			layout_ci.flags =
 				VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
@@ -673,7 +670,6 @@ void vulkan_destroy(gpu_api* self) {
 			vk_surface_destroy(&state->surface, state->instance);
 			vmaDestroyAllocator(state->allocator);
 			vk_sync_buffer_destroy(state->device, &state->sync_buffer);
-			vkDestroySampler(state->device, state->default_sampler, NULL);
 			vkDestroyDescriptorSetLayout(state->device,
 										 state->descriptor_layout, NULL);
 			vkDestroyDescriptorPool(state->device, state->descriptor_pool,
@@ -1318,7 +1314,8 @@ gpu_image_format vulkan_get_image_format(gpu_api* self, gpu_image gpu_img) {
 	return vk_to_gpu_image_format(data->format);
 }
 
-gpu_sampler vulkan_create_sampler(gpu_api* self, gpu_sampler_ci* ci) {
+gpu_sampler vulkan_create_sampler(gpu_api* self, gpu_sampler_ci* ci,
+								  uint32_t* out_shader_index) {
 	vk_api_state* state = self->state;
 	gpu_sampler ret = {0};
 
@@ -1347,7 +1344,14 @@ gpu_sampler vulkan_create_sampler(gpu_api* self, gpu_sampler_ci* ci) {
 	vk_handle_pool_handle vk_ret =
 		vk_handle_pool_new(state->handle_pool, &handle);
 
+	uint32_t index = vk_update_sampler_descriptor(state, vk_ret);
+	if (index == INVALID_DESCRIPTOR) {
+		LOG_ERR("vulkan_create_sampler: couldn't get sampler shader binding");
+		return ret;
+	}
+
 	ret.handle = vk_ret.raw_handle;
+	*out_shader_index = index;
 	return ret;
 }
 
@@ -1362,6 +1366,7 @@ void vulkan_destroy_sampler(gpu_api* self, gpu_sampler sampler_handle) {
 	}
 
 	vkDestroySampler(state->device, h->handle, NULL);
+	vk_handle_pool_release(state->handle_pool, to_vk_handle(sampler_handle));
 }
 
 gpu_shader vulkan_create_shader(gpu_api* self, gpu_shader_ci* ci) {
@@ -1685,29 +1690,30 @@ void vulkan_destroy_image(gpu_api* self, gpu_image handle) {
 	vk_image_pool_release(state->image_pool, to_vk_img(handle));
 }
 
-bool vulkan_create_image_view(gpu_api* self, gpu_image_view* out,
-							  gpu_image_view_ci* ci) {
+gpu_image_view vulkan_create_image_view(gpu_api* self, gpu_image_view_ci* ci) {
 	vk_api_state* state = self->state;
+
+	gpu_image_view out = {.handle = POOL_INVALID_HANDLE};
 
 	if (!self || !self->is_init || !ci) {
 		LOG_ERR("vulkan_create_image_view: invalid parameters");
-		return false;
+		return out;
 	}
 
 	vk_image_data* vk_img =
 		vk_image_pool_get(state->image_pool, to_vk_img(ci->image));
 	if (!vk_img) {
 		LOG_ERR("vulkan_create_image_view: invalid image");
-		return false;
+		return out;
 	}
 
 	if (ci->base_layer >= ci->layer_count) {
 		LOG_ERR("vulkan_create_image_view: invalid layers");
-		return false;
+		return out;
 	}
 	if (ci->base_level >= ci->level_count) {
 		LOG_ERR("vulkan_create_image_view: invalid levels");
-		return false;
+		return out;
 	}
 
 	uint16_t layer_count = ci->layer_count;
@@ -1722,19 +1728,19 @@ bool vulkan_create_image_view(gpu_api* self, gpu_image_view* out,
 	if (ci->type == GPU_IMAGE_VIEW_TEXTURE) {
 		if (ci->base_layer + layer_count > vk_img->layer_count) {
 			LOG_ERR("vulkan_create_image_view: invalid layers");
-			return false;
+			return out;
 		}
 
 		if (ci->base_level + level_count > vk_img->level_count) {
 			LOG_ERR("vulkan_create_image_view: invalid levels");
-			return false;
+			return out;
 		}
 
 	} else {
 		if (layer_count != 1 || level_count != 1) {
 			LOG_ERR(
 				"vulkan_create_image_view: layer and level count must be 1");
-			return false;
+			return out;
 		}
 	}
 
@@ -1772,7 +1778,7 @@ bool vulkan_create_image_view(gpu_api* self, gpu_image_view* out,
 	if (!(vk_img->usage_flags & want)) {
 		LOG_ERR(
 			"vulkan_create_image_view: image doesn't support this view type");
-		return false;
+		return out;
 	}
 
 	// We enforced non-textures to have single mip and level already
@@ -1793,7 +1799,7 @@ bool vulkan_create_image_view(gpu_api* self, gpu_image_view* out,
 	if (!check_result(
 			vkCreateImageView(state->device, &view_ci, NULL, &view))) {
 		LOG_ERR("vulkan_create_image_view: couldn't create vulkan image view");
-		return false;
+		return out;
 	}
 
 	vk_image_view_data data = {0};
@@ -1820,11 +1826,31 @@ bool vulkan_create_image_view(gpu_api* self, gpu_image_view* out,
 		LOG_INFO("vulkan_create_image_view: updating image descriptor");
 		if (!vk_update_image_descriptor(state, ret)) {
 			LOG_ERR("vulkan_create_image_view: couldn't write descriptor");
-			return false;
+			return out;
 		}
 	}
 
-	*out = (gpu_image_view){.handle = vk_image_view_pool_unwrap(ret)};
+	out.handle = vk_image_view_pool_unwrap(ret);
+	return out;
+}
+
+bool vulkan_get_image_view_shader_index(struct gpu_api* self,
+										gpu_image_view view, uint32_t* out) {
+	vk_api_state* state = self->state;
+	vk_image_view_data* data =
+		vk_image_view_pool_get(state->image_view_pool, to_vk_imgview(view));
+	if (!data || !data->view) {
+		LOG_ERR("vulkan_get_image_view_shader_index: invalid view handle");
+		return false;
+	}
+
+	if (data->type != GPU_IMAGE_VIEW_TEXTURE &&
+		data->type != GPU_IMAGE_VIEW_STORAGE) {
+		LOG_ERR("vulkan_get_image_view_shader_index: invalid view type");
+		return false;
+	}
+
+	*out = data->descriptor_index;
 	return true;
 }
 
@@ -2341,6 +2367,7 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->create_image = vulkan_create_image;
 		out->destroy_image = vulkan_destroy_image;
 		out->create_image_view = vulkan_create_image_view;
+		out->get_image_view_shader_index = vulkan_get_image_view_shader_index;
 		out->destroy_image_view = vulkan_destroy_image_view;
 		out->cmd_copy_to_image = vulkan_cmd_copy_to_image;
 		out->cmd_transition_image = vulkan_cmd_transition_image;
@@ -2372,5 +2399,3 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 gpu_pipeline gpu_pipeline_build(gpu_api* gpu, gpu_pipeline_builder* builder) {
 	return vulkan_create_pipeline(gpu, &builder->ci);
 }
-
-#endif // !GRAPHICS_VULKAN_H

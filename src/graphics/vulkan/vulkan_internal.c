@@ -536,17 +536,16 @@ bool vk_update_image_descriptor(vk_api_state* state,
 	vk_image_view_data* view_data =
 		vk_image_view_pool_get(state->image_view_pool, view);
 	if (!view_data || !has_image_descriptor(view_data->type)) {
-		LOG_ERR("vk_update_image_descriptor: invalid image view: %u");
+		LOG_ERR("vk_update_image_descriptor: invalid image view");
 		return false;
 	}
 
 	img_info.imageView = view_data->view;
 	VkDescriptorType type = 0;
-	uint32_t binding = 0; // [TODO]: add binding for storage images
+	uint32_t binding = 0;
 	if (view_data->type == GPU_IMAGE_VIEW_TEXTURE) {
 		img_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		img_info.sampler = state->default_sampler;
-		type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
 		binding = TEXTURE_BINDING;
 	} else {
 		img_info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
@@ -567,7 +566,36 @@ bool vk_update_image_descriptor(vk_api_state* state,
 	}
 
 	vkUpdateDescriptorSets(state->device, 1, &w, 0, NULL);
+	view_data->descriptor_index = array_index;
+
 	return true;
+}
+
+uint32_t vk_update_sampler_descriptor(vk_api_state* state,
+									  vk_handle_pool_handle handle) {
+	VkDescriptorImageInfo img_info = {0};
+
+	vk_opaque_handle* data = vk_handle_pool_get(state->handle_pool, handle);
+	if (!data || data->type != VK_OBJECT_TYPE_SAMPLER) {
+		LOG_ERR("vk_update_sampler_descriptor: invalid handle");
+		return INVALID_DESCRIPTOR;
+	}
+
+	img_info.sampler = (VkSampler)data->handle;
+	uint32_t array_index = pool_handle_index(handle.raw_handle);
+	VkWriteDescriptorSet w = {0};
+	{
+		w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		w.descriptorCount = 1;
+		w.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+		w.dstSet = state->descriptor;
+		w.dstArrayElement = array_index;
+		w.dstBinding = SAMPLER_BINDING;
+		w.pImageInfo = &img_info;
+	}
+
+	vkUpdateDescriptorSets(state->device, 1, &w, 0, NULL);
+	return array_index;
 }
 
 bool vk_submit_frame_cmd(vk_api_state* state, gpu_frame* frame) {

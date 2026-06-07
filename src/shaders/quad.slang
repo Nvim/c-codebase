@@ -14,6 +14,7 @@ struct UniformData {
 	Vertex* vertex_buffer;
 	float time;
 	uint image_index;
+	uint sampler_index;
 };
 
 // Push constant range is the same for both vertex & fragment stages for now
@@ -49,17 +50,27 @@ struct FSOutput {
 	float4 color : SV_Target0;
 };
 
-struct FSInput {
-	Sampler2D[] Texture;
-};
-ParameterBlock<FSInput> fs_input;
+// [NOTE]: need to find a way to make bindings more portable, not a concern for now
+[[vk::binding(0, 0)]]
+Texture2D[] textures;
+
+[[vk::binding(1, 0)]]
+RWTexture2D<float4>[] images;
+
+[[vk::binding(2, 0)]]
+SamplerState[] samplers;
 
 [[shader("pixel")]]
 FSOutput fragMain(VSOutput input, uniform VSInput constants) {
 	FSOutput ret;
 
 	uint tex_idx = constants.uniform[0].image_index;
-	ret.color = fs_input.Texture[tex_idx].Sample(input.uv);
+	uint sampler_idx = constants.uniform[0].sampler_index;
+
+	Texture2D tex = textures[tex_idx];
+	SamplerState sampler = samplers[sampler_idx];
+
+	ret.color = tex.Sample(sampler, input.uv);
 
 	return ret;
 }

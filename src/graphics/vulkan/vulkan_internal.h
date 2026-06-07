@@ -20,6 +20,7 @@ ARRAY_DEFINE_TYPE(VkSemaphore, vk_sem_array)
 
 #define TEXTURE_BINDING 0
 #define STORAGE_IMAGE_BINDING 1
+#define SAMPLER_BINDING 2
 
 /* ===========================================================================
  * Resource pools
@@ -62,13 +63,14 @@ typedef struct {
 } vk_image_view_infos;
 
 typedef struct vk_image_view_data {
-	vk_image_pool_handle image;
 	VkImageView view;
-	gpu_image_view_type type;
 	union {
-		vk_texture_view_infos texture_info;
-		vk_image_view_infos view_info;
+		vk_texture_view_infos texture_info; // Texture view only
+		vk_image_view_infos view_info;		// All other image views
 	} data;
+	vk_image_pool_handle image;
+	gpu_image_view_type type;
+	uint32_t descriptor_index; // Only for Texture & Storage view
 } vk_image_view_data;
 POOL_DEFINE_TYPE(vk_image_view_data, vk_image_view_pool)
 #define VK_IMGVIEWPOOL_INVALID (vk_image_view_pool_handle){.raw_handle = 0}
@@ -279,8 +281,6 @@ typedef struct vk_api_state {
 	VkCommandPool command_pool; // [TODO]: one pool per frame?
 
 	VkDescriptorPool descriptor_pool;
-	// [TODO]: temp
-	VkSampler default_sampler;
 	VkDescriptorSetLayout descriptor_layout;
 	VkDescriptorSet descriptor;
 
@@ -426,8 +426,12 @@ bool vk_transition_to_present(vk_api_state* state, gpu_frame* frame);
 
 bool has_image_descriptor(gpu_image_view_type view_type);
 
+#define INVALID_DESCRIPTOR UINT32_MAX
 bool vk_update_image_descriptor(vk_api_state* state,
 								vk_image_view_pool_handle view);
+
+uint32_t vk_update_sampler_descriptor(vk_api_state* state,
+									  vk_handle_pool_handle handle);
 
 typedef struct vk_buffer_barrier_info {
 	VkAccessFlags2 access;

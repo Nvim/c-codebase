@@ -27,6 +27,7 @@ typedef struct {
 	gpu_device_address vertex_buffer_addr;
 	float time;
 	uint32_t image_index;
+	uint32_t sampler_index;
 } uniform_data;
 
 // clang-format off
@@ -203,7 +204,6 @@ int main(void) {
 	ASSERT(mret.ok);
 	uniform_data* uniform = mret.ptr;
 	{
-		uniform->image_index = pool_handle_index(test_image.handle);
 		uniform->time = 0.f;
 		uniform->vertex_buffer_addr = vertex_addr;
 	};
@@ -308,14 +308,11 @@ int main(void) {
 		gpu.destroy_fence(&gpu, fence);
 	}
 
-	{ // [TODO]: temp
-		gpu_sampler_ci ci = {0};
-		gpu_sampler sampler = gpu.create_sampler(&gpu, &ci);
-		gpu.destroy_sampler(&gpu, sampler);
-	}
+	gpu_sampler sampler;
+	gpu_sampler_ci ci = {0};
+	sampler = gpu.create_sampler(&gpu, &ci, &uniform->sampler_index);
 
 	// Create texture so image gets a shader binding
-	gpu_image_view texture_view;
 	gpu_image_view_ci view_ci = {0};
 	{
 		view_ci.image = test_image;
@@ -325,8 +322,10 @@ int main(void) {
 		view_ci.layer_count = GPU_COUNT_REMAINING;
 		view_ci.level_count = GPU_COUNT_REMAINING;
 	}
-
-	ASSERT(gpu.create_image_view(&gpu, &texture_view, &view_ci));
+	gpu_image_view texture_view = gpu.create_image_view(&gpu, &view_ci);
+	ASSERT(check_handle(texture_view.handle));
+	ASSERT(gpu.get_image_view_shader_index(&gpu, texture_view,
+										   &uniform->image_index));
 
 	double t_prev_s = platform_get_time_s();
 	double delta_ms = 0.0f;
@@ -396,6 +395,7 @@ int main(void) {
 	gpu.destroy_buffer(&gpu, vertex_buffer);
 	gpu.destroy_buffer(&gpu, index_buffer);
 	gpu.destroy_buffer(&gpu, indirect_buffer);
+	gpu.destroy_sampler(&gpu, sampler);
 	gpu.destroy_pipeline(&gpu, pipeline);
 
 	gpu.destroy(&gpu);

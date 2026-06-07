@@ -359,20 +359,6 @@ typedef struct gpu_image_view_ci {
 	uint16_t level_count; // TEXTURE only
 } gpu_image_view_ci;
 
-/**
- * @typedef gpu_texture
- * @brief Texture is a non-owning view into an image, coupled with a sampler.
- * Both are created separately and owned by API, so no resource management on
- * texture side.
- * For now, textures will be created over an image's full view (all mip
- * levels+array layers), I'm just future-proofing here.
- *
- */
-typedef struct gpu_texture {
-	gpu_image_view image; // Must be TEXTURE
-	gpu_sampler sampler;
-} gpu_texture;
-
 typedef enum {
 	GPU_BUFFER_USAGE_INDEX,
 	GPU_BUFFER_USAGE_STORAGE,
@@ -643,8 +629,9 @@ typedef struct gpu_api {
 	/* == Images =============================================================*/
 	gpu_image (*create_image)(struct gpu_api*, gpu_image_ci*);
 	void (*destroy_image)(struct gpu_api*, gpu_image);
-	bool (*create_image_view)(struct gpu_api*, gpu_image_view* out,
-							  gpu_image_view_ci*);
+	gpu_image_view (*create_image_view)(struct gpu_api*, gpu_image_view_ci*);
+	bool (*get_image_view_shader_index)(struct gpu_api*, gpu_image_view,
+										uint32_t* out);
 	void (*destroy_image_view)(struct gpu_api*, gpu_image_view);
 	bool (*cmd_copy_to_image)(struct gpu_api*, gpu_command_buffer,
 							  gpu_image_copy_info* info);
@@ -658,7 +645,8 @@ typedef struct gpu_api {
 								 gpu_image_state new_state);
 
 	/* == Samplers ===========================================================*/
-	gpu_sampler (*create_sampler)(struct gpu_api*, gpu_sampler_ci*);
+	gpu_sampler (*create_sampler)(struct gpu_api*, gpu_sampler_ci*,
+								  uint32_t* out_shader_index);
 	void (*destroy_sampler)(struct gpu_api*, gpu_sampler);
 
 	/* == Command Buffer and Sync ============================================*/
