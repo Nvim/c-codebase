@@ -297,6 +297,20 @@ typedef enum gpu_sampler_filter_mode {
 	GPU_SAMPLER_FILTER_LINEAR,
 } gpu_sampler_filter_mode;
 
+/**
+ * @typedef gpu_image_blit_info
+ * @brief Specifies info about an image blit operation. Assumes full layer at
+ * the same time, no offset.
+ *
+ */
+typedef struct gpu_image_blit_info {
+	gpu_image src;
+	gpu_image_region src_region;
+	gpu_image dst;
+	gpu_image_region dst_region;
+	gpu_sampler_filter_mode filter;
+} gpu_image_blit_info;
+
 typedef enum gpu_sampler_address_mode {
 	GPU_SAMPLER_ADRESS_REPEAT,
 	GPU_SAMPLER_ADRESS_REPEAT_MIRROR,
@@ -635,6 +649,8 @@ typedef struct gpu_api {
 	void (*destroy_image_view)(struct gpu_api*, gpu_image_view);
 	bool (*cmd_copy_to_image)(struct gpu_api*, gpu_command_buffer,
 							  gpu_image_copy_info* info);
+	bool (*cmd_blit_to_image)(struct gpu_api*, gpu_command_buffer,
+							  gpu_image_blit_info* info);
 
 	/**
 	 * @brief Specify a new usage for image. Image has to have been created

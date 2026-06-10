@@ -1926,6 +1926,7 @@ bool vulkan_cmd_copy_to_image(struct gpu_api* self, gpu_command_buffer cmd,
 	vk_image_barrier_info to =
 		gpu_state_to_vk_image_barrier[GPU_IMAGE_STATE_TRANSFER_DST];
 	vk_image_barrier(cmd_buf, data->image, from, to);
+	data->gpu_state = GPU_IMAGE_STATE_TRANSFER_DST;
 
 	VkImageAspectFlags aspect = 0;
 	if (data->usage_flags & (VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) {
@@ -1984,6 +1985,140 @@ bool vulkan_cmd_copy_to_image(struct gpu_api* self, gpu_command_buffer cmd,
 	vkCmdCopyBufferToImage2(cmd_buf, &copy_ci);
 
 #undef MAX_REGIONS
+	return true;
+}
+
+// Fills out array. Assumed to be an array of 2 VkExtent3D.
+static void _get_blit_offsets(VkOffset3D* out, uint32_t width, uint32_t height,
+							  gpu_image_region* reg) {
+	uint32_t mip_w = MAX(1u, width >> reg->level);
+	uint32_t mip_h = MAX(1u, height >> reg->level);
+	out[0] = (VkOffset3D){0};
+	out[1] = (VkOffset3D){
+		.x = mip_w,
+		.y = mip_h,
+		.z = 1,
+	};
+}
+
+static void _get_blit_subresource(VkImageSubresourceLayers* out,
+								  VkImageUsageFlags flags,
+								  gpu_image_region* reg) {
+	VkImageAspectFlags aspect = 0;
+	if (flags & (VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) {
+		aspect = VK_IMAGE_ASPECT_DEPTH_BIT; // [TODO]: stencil?
+	} else {
+		aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+	}
+
+	*out = (VkImageSubresourceLayers){
+		.aspectMask = aspect,
+		.mipLevel = reg->level,
+		.baseArrayLayer = reg->layer,
+		.layerCount = 1,
+	};
+}
+
+bool vulkan_cmd_blit_to_image(gpu_api* self, gpu_command_buffer cmd,
+							  gpu_image_blit_info* info) {
+
+	vk_api_state* state = self->state;
+
+	if (!info) {
+		LOG_ERR("vulkan_cmd_blit_to_image: parameters");
+		return false;
+	}
+
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
+	if (cmd_data->state != CMDBUF_RECORDING) {
+		LOG_ERR("vulkan_cmd_blit_to_image: invalid command buffer state");
+		return false;
+	};
+	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
+
+	vk_image_data* dst_data =
+		vk_image_pool_get(state->image_pool, to_vk_img(info->dst));
+	if (!dst_data) {
+		LOG_ERR("vulkan_cmd_blit_to_image: invalid dest image handle");
+		return false;
+	}
+	vk_image_data* src_data =
+		vk_image_pool_get(state->image_pool, to_vk_img(info->src));
+	if (!src_data) {
+		LOG_ERR("vulkan_cmd_blit_to_image: invalid src image handle");
+		return false;
+	}
+
+	// Validation time
+	if (dst_data->vk_image_flags & IMAGE_FLAGS_SWAPCHAIN) {
+		LOG_ERR("vulkan_cmd_blit_to_image: can't blit to swapchain image");
+		return false;
+	}
+
+	if (!(src_data->usage_flags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) ||
+		!(dst_data->usage_flags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)) {
+		LOG_ERR("vulkan_cmd_blit_to_image: images are missing transfer usage "
+				"flags");
+		return false;
+	}
+
+	if (info->src_region.layer >= src_data->layer_count ||
+		info->src_region.level >= src_data->level_count) {
+		LOG_ERR("vulkan_cmd_blit_to_image: invalid src layer/level count");
+		return false;
+	}
+
+	if (info->dst_region.layer >= dst_data->layer_count ||
+		info->dst_region.level >= dst_data->level_count) {
+		LOG_ERR("vulkan_cmd_blit_to_image: invalid dst layer/level count");
+		return false;
+	}
+
+	// Transition source & destination:
+	vk_image_barrier(
+		cmd_buf, src_data->image,
+		gpu_state_to_vk_image_barrier[src_data->gpu_state],
+		gpu_state_to_vk_image_barrier[GPU_IMAGE_STATE_TRANSFER_SRC]);
+	src_data->gpu_state = GPU_IMAGE_STATE_TRANSFER_SRC;
+
+	vk_image_barrier(
+		cmd_buf, dst_data->image,
+		gpu_state_to_vk_image_barrier[dst_data->gpu_state],
+		gpu_state_to_vk_image_barrier[GPU_IMAGE_STATE_TRANSFER_DST]);
+	dst_data->gpu_state = GPU_IMAGE_STATE_TRANSFER_DST;
+
+	VkImageBlit2 reg = {0};
+	{
+		reg.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2;
+
+		_get_blit_subresource(&reg.srcSubresource, src_data->usage_flags,
+							  &info->src_region);
+		_get_blit_offsets(reg.srcOffsets, src_data->extent.width,
+						  src_data->extent.height, &info->src_region);
+
+		_get_blit_subresource(&reg.dstSubresource, dst_data->usage_flags,
+							  &info->dst_region);
+		_get_blit_offsets(reg.dstOffsets, dst_data->extent.width,
+						  dst_data->extent.height, &info->dst_region);
+	}
+
+	VkBlitImageInfo2 blit_info = {0};
+	{
+		blit_info.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2;
+
+		blit_info.srcImage = src_data->image;
+		blit_info.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+		blit_info.dstImage = dst_data->image;
+		blit_info.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+
+		blit_info.filter = gpu_to_vk_filter(info->filter);
+		blit_info.pRegions = &reg;
+		blit_info.regionCount = 1;
+	}
+
+	vkCmdBlitImage2(cmd_buf, &blit_info);
 	return true;
 }
 
@@ -2370,6 +2505,7 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->get_image_view_shader_index = vulkan_get_image_view_shader_index;
 		out->destroy_image_view = vulkan_destroy_image_view;
 		out->cmd_copy_to_image = vulkan_cmd_copy_to_image;
+		out->cmd_blit_to_image = vulkan_cmd_blit_to_image;
 		out->cmd_transition_image = vulkan_cmd_transition_image;
 
 		out->create_sampler = vulkan_create_sampler;

@@ -137,6 +137,7 @@ int main(void) {
 	ASSERT(img_read.ok && img_read.channels == 4);
 	arena_clear_scratch(scratch);
 
+	gpu_image blitted;
 	gpu_image test_image;
 	{ // [TODO]: temp
 		gpu_image_ci img_ci = {0};
@@ -269,8 +270,6 @@ int main(void) {
 			.regions = regions,
 		};
 		ASSERT(gpu.cmd_copy_to_image(&gpu, cmd, &img_copy_info));
-		gpu.cmd_transition_image(&gpu, cmd, test_image,
-								 GPU_IMAGE_STATE_SHADER_READ);
 		offset += img_read.channels * u8_array_size(img_read.bytes);
 
 		gpu_buffer_copy_info buf_copy = {0};
@@ -299,6 +298,37 @@ int main(void) {
 			buf_copy.dst = indirect_buffer;
 		}
 		ASSERT(gpu.cmd_copy_to_buffer(&gpu, cmd, &buf_copy));
+
+		{ // TEMP: test image blit
+			gpu_image_ci img_ci = {0};
+			img_ci.dimensions = (gpu_image_extent){.width = img_read.width,
+												   .height = img_read.height};
+			img_ci.format = IMAGE_FORMAT_RGBA_UNORM;
+			img_ci.type = GPU_IMAGE_TYPE_2D;
+			img_ci.usage = GPU_IMAGE_USAGE_SAMPLED;
+			img_ci.array_layers = 1;
+			img_ci.mip_levels = 1;
+
+			blitted = gpu.create_image(&gpu, &img_ci);
+			ASSERT(check_handle(blitted.handle));
+
+			gpu_image_region region = {.layer = 0, .level = 0};
+
+			gpu_image_blit_info blit_ci = {0};
+			{
+				blit_ci.src_region = region;
+				blit_ci.dst_region = region;
+				blit_ci.filter = GPU_SAMPLER_FILTER_LINEAR;
+				blit_ci.src = test_image;
+				blit_ci.dst = blitted;
+			}
+
+			ASSERT(gpu.cmd_blit_to_image(&gpu, cmd, &blit_ci));
+			// It works in renderdoc trust me bro
+		}
+
+		gpu.cmd_transition_image(&gpu, cmd, test_image,
+								 GPU_IMAGE_STATE_SHADER_READ);
 
 		gpu_fence fence = gpu.create_fence(&gpu, false);
 		ASSERT(gpu.submit_command_buffer_fence(&gpu, cmd, fence));
@@ -390,6 +420,7 @@ int main(void) {
 	gpu.wait_idle(&gpu);
 	gpu.destroy_image_view(&gpu, texture_view);
 	gpu.destroy_image(&gpu, test_image);
+	gpu.destroy_image(&gpu, blitted);
 	gpu.destroy_buffer(&gpu, uniform_buffer);
 	gpu.destroy_buffer(&gpu, staging_buffer);
 	gpu.destroy_buffer(&gpu, vertex_buffer);
