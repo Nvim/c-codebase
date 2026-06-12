@@ -257,6 +257,55 @@ static bool validate_gpu_config(gpu_api_config* config) {
 	return true;
 }
 
+typedef struct _memory_lookup_result {
+	uint64_t shared;
+	// uint64_t total; [TODO]
+} _memory_lookup_result;
+
+static _memory_lookup_result
+_memory_lookup(UNUSED arena_t* scratch,
+			   VkPhysicalDeviceMemoryProperties* props) {
+	_memory_lookup_result ret = {0};
+	u8_array seen = u8_array_create(scratch, props->memoryHeapCount);
+	if (!seen.raw) { return ret; }
+	u8_array_clear(seen);
+
+	LOG_DEBUG("looking up %u memory heaps (%u types)", props->memoryHeapCount,
+			  props->memoryTypeCount);
+	for (uint32_t i = 0; i < props->memoryTypeCount; ++i) {
+		VkMemoryType mem = props->memoryTypes[i];
+		VkMemoryPropertyFlags flags = mem.propertyFlags;
+
+		uint8_t* already_seen;
+		ASSERT(u8_array_at(seen, &already_seen, mem.heapIndex));
+
+		VkMemoryHeap heap = props->memoryHeaps[mem.heapIndex];
+
+		bool device_local = (flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+		bool host_visible = (flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+		bool host_coherent = (flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+		bool host_cached = (flags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+
+		if (device_local) {
+			if (host_visible) {
+				if (!*already_seen) { ret.shared += heap.size; }
+				*already_seen = true;
+				LOG_DEBUG("[#%u](DEVICE_LOCAL|HOST_VISIBLE): %lu - coherent: "
+						  "%u, cached: %u",
+						  mem.heapIndex, heap.size, host_coherent, host_cached);
+			} else {
+				LOG_DEBUG("[#%u](DEVICE_LOCAL): %lu", mem.heapIndex, heap.size);
+			}
+		} else {
+			LOG_DEBUG("[#%u](HOST_LOCAL): %lu - coherent: "
+					  "%u, cached: %u",
+					  mem.heapIndex, heap.size, host_coherent, host_cached);
+		}
+	}
+
+	return ret;
+}
+
 void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 					   arena_t* scratch) {
 	if (!self || !arena || !scratch || !window) {
@@ -327,11 +376,6 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		state->queue_family_idx = dev_result.queue_index;
 		state->device_props = dev_result.device_props;
 
-		state->memory_props.sType =
-			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
-		vkGetPhysicalDeviceMemoryProperties2(state->physical_device,
-											 &state->memory_props);
-
 		// Set max limits according to props
 		VkPhysicalDeviceDescriptorIndexingProperties p =
 			dev_result.descriptor_indexing_props;
@@ -376,6 +420,25 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		LOG_INFO("vulkan_initialize: max buffer range: %lu", state->max_buffer_range);
 		LOG_INFO("vulkan_initialize: max push constant size: %lu", state->push_constant_size);
 		// clang-format on
+
+		// Search available memory types for Device Local + Host Visible amount
+		state->memory_props.sType =
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
+		vkGetPhysicalDeviceMemoryProperties2(state->physical_device,
+											 &state->memory_props);
+
+		LOG_INFO("======= MEMORY LOOKUP ========");
+		_memory_lookup_result r =
+			_memory_lookup(scratch, &state->memory_props.memoryProperties);
+		// [TODO]: total
+		// if (!r.total) {
+		// 	LOG_ERR("vulkan_initialize: couldn't get memory info");
+		// 	return;
+		// }
+		// state->total_memory = r.total;
+		state->shared_memory = r.shared;
+		LOG_INFO("SHARED: %lu. TOTAL: %lu", r.shared, 0); // [TODO]: total
+		LOG_INFO("==============================");
 	}
 
 	{ // Init resource pools:

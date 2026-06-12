@@ -273,6 +273,8 @@ typedef struct vk_api_state {
 	uint64_t max_buffer_size;
 	uint64_t max_buffer_range;
 	uint64_t push_constant_size;
+	uint64_t shared_memory; // Total amount of device local+host visible memory
+	// uint64_t total_memory; // [TODO] Total amount of memory
 
 	// Base handles
 	VkDevice device;
