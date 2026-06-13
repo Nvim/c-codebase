@@ -2,6 +2,7 @@
 #include <core/log.h>
 #include <filesystem/filesystem.h>
 #include <graphics/graphics.h>
+#include <graphics/text_renderer.h>
 #include <loaders/qoi_loader.h>
 #include <platform/platform.h>
 
@@ -360,6 +361,19 @@ int main(void) {
 	ASSERT(gpu.get_image_view_shader_index(&gpu, texture_view,
 										   &uniform->image_index));
 
+	// Text renderer test:
+	text_renderer_t* text_renderer = text_renderer_init(&gpu, arena);
+	font_atlas_info atlas_ci = {0};
+	{
+		// TODO
+		atlas_ci.glyph_size = (gpu_image_extent){5, 7};
+		atlas_ci.first_char = 0;
+		atlas_ci.last_char = 128;
+	}
+	ASSERT(text_renderer_load_atlas_from_file(
+		text_renderer, scratch.arena, str("runtime/fonts/oldschool.qoi"),
+		atlas_ci));
+
 	double t_prev_s = platform_get_time_s();
 	double delta_ms = 0.0f;
 
@@ -421,6 +435,7 @@ int main(void) {
 	}
 
 	gpu.wait_idle(&gpu);
+	text_renderer_destroy(text_renderer);
 	gpu.destroy_image_view(&gpu, texture_view);
 	gpu.destroy_image(&gpu, test_image);
 	gpu.destroy_image(&gpu, blitted);

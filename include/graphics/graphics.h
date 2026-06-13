@@ -41,6 +41,10 @@ typedef enum gpu_image_format {
 	IMAGE_FORMAT_BGR_UNORM,
 	IMAGE_FORMAT_BGR_SNORM,
 	IMAGE_FORMAT_BGR_SRGB,
+
+	IMAGE_FORMAT_R_UNORM,
+	IMAGE_FORMAT_R_SNORM,
+	IMAGE_FORMAT_R_SRGB,
 	// TODO: add 16 & 32 bit HDR and depth formats
 	IMAGE_FORMAT_D16,
 } gpu_image_format;

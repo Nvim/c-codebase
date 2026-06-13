@@ -860,6 +860,10 @@ VkFormat gpu_to_vk_image_format(gpu_image_format f) {
 	case IMAGE_FORMAT_BGR_SNORM: return VK_FORMAT_B8G8R8_SNORM;
 	case IMAGE_FORMAT_BGR_SRGB: return VK_FORMAT_B8G8R8_SRGB;
 
+	case IMAGE_FORMAT_R_UNORM: return VK_FORMAT_R8_UNORM;
+	case IMAGE_FORMAT_R_SNORM: return VK_FORMAT_R8_SNORM;
+	case IMAGE_FORMAT_R_SRGB: return VK_FORMAT_R8_SRGB;
+
 	case IMAGE_FORMAT_D16: return VK_FORMAT_D16_UNORM;
 	}
 }
@@ -879,6 +883,10 @@ gpu_image_format vk_to_gpu_image_format(VkFormat f) {
 	case VK_FORMAT_B8G8R8_UNORM: return IMAGE_FORMAT_BGR_UNORM;
 	case VK_FORMAT_B8G8R8_SNORM: return IMAGE_FORMAT_BGR_SNORM;
 	case VK_FORMAT_B8G8R8_SRGB: return IMAGE_FORMAT_BGR_SRGB;
+
+	case VK_FORMAT_R8_UNORM: return IMAGE_FORMAT_R_UNORM;
+	case VK_FORMAT_R8_SNORM: return IMAGE_FORMAT_R_SNORM;
+	case VK_FORMAT_R8_SRGB: return IMAGE_FORMAT_R_SRGB;
 
 	case VK_FORMAT_D16_UNORM: return IMAGE_FORMAT_D16;
 	default: ASSERT(false); return IMAGE_FORMAT_RGB_UNORM;

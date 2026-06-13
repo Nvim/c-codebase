@@ -1,0 +1,34 @@
+// Project tasks configuration. See https://zed.dev/docs/tasks for documentation.
+//
+// Example:
+[
+	{
+		"label": "Build vk",
+		"command": "cmake",
+		"args": ["--build", "build", "--target", "vk"],
+		"env": {},
+		"use_new_terminal": false,
+		"allow_concurrent_runs": false,
+		"reveal": "always",
+		"reveal_target": "dock",
+		"hide": "on_success",
+		"shell": "system",
+		"show_summary": true,
+		"show_command": true,
+		"save": "none",
+	},
+	{
+		"label": "Run vk",
+		"command": "build/runtime/vk",
+		"env": {},
+		"use_new_terminal": false,
+		"allow_concurrent_runs": false,
+		"reveal": "always",
+		"reveal_target": "dock",
+		"hide": "never",
+		"shell": "system",
+		"show_summary": true,
+		"show_command": true,
+		"save": "none",
+	},
+]
