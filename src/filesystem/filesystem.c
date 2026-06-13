@@ -4,6 +4,31 @@
 
 #include <string.h>
 
+string fs_format_memory_size(arena_t* arena, size_t size) {
+	string ret = str("ERROR");
+	if (!arena) {
+		LOG_ERR("fs_format_memory_size: invalid parameters");
+		return ret;
+	}
+
+	static string const units[4] = {str("bytes"), str("KiB"), str("MiB"),
+									str("GiB")};
+	uint32_t i = 0;
+	double s = size;
+	for (; i < countof(units); i++) {
+		if (s < 1000) { break; }
+		s /= 1000;
+	}
+
+	if (!string_create_fmt(arena, &ret, "%.2f " STR_FMT, s,
+						   STR_FMT_ARGS(units[i]))) {
+		LOG_ERR("fs_format_memory_size: couldn't create string");
+		return str("ERROR");
+	}
+
+	return ret;
+}
+
 fs_file_read_result fs_read_all_file(arena_t* arena, path pth) {
 	fs_file_read_result result = {0};
 

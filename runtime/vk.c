@@ -64,7 +64,7 @@ int main(void) {
 		arena_ci.initial_size = 8 * MEMORY_MIB;
 		arena_ci.max_size = 64 * MEMORY_MIB;
 		arena_ci.alignment = 8;
-		arena_ci.flags = ARENA_LOG | ARENA_GROWING;
+		arena_ci.flags = ARENA_GROWING;
 	}
 	arena_t* arena = arena_create_from_config(arena_ci);
 	ASSERT(arena);
@@ -84,6 +84,9 @@ int main(void) {
 	ASSERT(gpu_create_api(gpu_ci, &gpu));
 	gpu.initialize(&gpu, win, arena, scratch.arena);
 	ASSERT(gpu.is_init);
+
+	gpu_memory_info mem_info = gpu.get_memory_info(&gpu);
+	LOG_DEBUG("shared memory ratio: %f", mem_info.ratio);
 
 	arena_clear_scratch(scratch);
 

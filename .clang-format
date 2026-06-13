@@ -22,3 +22,4 @@ IncludeCategories:
       Priority: 20
 PointerAlignment: Left
 QualifierAlignment: Right
+OneLineFormatOffRegex: ^(// NOLINT|// clang-format-ignore)$

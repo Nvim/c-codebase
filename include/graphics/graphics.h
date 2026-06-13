@@ -472,6 +472,20 @@ typedef struct gpu_frame_result {
 	gpu_frame frame;
 } gpu_frame_result;
 
+/**
+ * @typedef gpu_memory_info
+ * @brief Return type for memory info query. Renderer uses this to determine
+ * wether it's worth it to use transfers.
+ * Many devices (mine at least) have a ratio of 100%, so uploading per-frame
+ * data with transfers is pointless and slower.
+ *
+ */
+typedef struct gpu_memory_info {
+	uint64_t device_memory; // GPU only, requires transfers
+	uint64_t shared_memory; // GPU local, can be CPU-mapped
+	double ratio;			// Ratio of shared memory relative to device memory
+} gpu_memory_info;
+
 /* ========================================================================== */
 typedef enum gpu_present_mode {
 	GPU_PRESENT_MODE_IMMEDIATE,
@@ -546,6 +560,8 @@ typedef struct gpu_api {
 	void (*destroy)(struct gpu_api*);
 
 	void (*wait_idle)(struct gpu_api*);
+
+	gpu_memory_info (*get_memory_info)(struct gpu_api*);
 
 	/* == Frame Flow ======================================================== */
 	/**

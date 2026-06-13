@@ -420,7 +420,7 @@ bool arena_pool_init(void) {
 		.flags = ARENA_GROWING,
 	};
 #ifdef _DEBUG
-	ci.flags |= ARENA_LOG;
+	// ci.flags |= ARENA_LOG;
 #endif
 	for (size_t i = 0; i < ARENA_POOL_SIZE; ++i) {
 		g_arena_pool.arenas[i] = arena_create_from_config(ci);

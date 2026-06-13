@@ -6,6 +6,15 @@
 #include <strings/path.h>
 #include <visibility.h>
 
+/**
+ * @brief Returns formatted version of a size in bytes/KiB/MiB/GiB.
+ *
+ * @param arena Arena to allocate the resulting string
+ * @param size The size to format
+ * @return Formatted string
+ */
+LIB_EXPORT string fs_format_memory_size(arena_t* arena, size_t size);
+
 typedef struct fs_file_read_result {
 	bool ok;
 	u8_array bytes;

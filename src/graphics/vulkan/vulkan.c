@@ -259,16 +259,19 @@ static bool validate_gpu_config(gpu_api_config* config) {
 
 typedef struct _memory_lookup_result {
 	uint64_t shared;
-	// uint64_t total; [TODO]
+	uint64_t device_total;
 } _memory_lookup_result;
 
 static _memory_lookup_result
 _memory_lookup(UNUSED arena_t* scratch,
 			   VkPhysicalDeviceMemoryProperties* props) {
 	_memory_lookup_result ret = {0};
-	u8_array seen = u8_array_create(scratch, props->memoryHeapCount);
-	if (!seen.raw) { return ret; }
-	u8_array_clear(seen);
+
+	u8_array shared_seen = u8_array_create(scratch, props->memoryHeapCount);
+	u8_array device_seen = u8_array_create(scratch, props->memoryHeapCount);
+	if (!shared_seen.raw || !device_seen.raw) { return ret; }
+	u8_array_clear(shared_seen);
+	u8_array_clear(device_seen);
 
 	LOG_DEBUG("looking up %u memory heaps (%u types)", props->memoryHeapCount,
 			  props->memoryTypeCount);
@@ -276,8 +279,10 @@ _memory_lookup(UNUSED arena_t* scratch,
 		VkMemoryType mem = props->memoryTypes[i];
 		VkMemoryPropertyFlags flags = mem.propertyFlags;
 
-		uint8_t* already_seen;
-		ASSERT(u8_array_at(seen, &already_seen, mem.heapIndex));
+		uint8_t* skip_shared;
+		uint8_t* skip_device;
+		ASSERT(u8_array_at(shared_seen, &skip_shared, mem.heapIndex));
+		ASSERT(u8_array_at(device_seen, &skip_device, mem.heapIndex));
 
 		VkMemoryHeap heap = props->memoryHeaps[mem.heapIndex];
 
@@ -286,20 +291,29 @@ _memory_lookup(UNUSED arena_t* scratch,
 		bool host_coherent = (flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 		bool host_cached = (flags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
 
+		/**
+		 * [NOTE]: We label memory as shared only if it is host coherent.
+		 * Technically we could use non-coherent, but it would require specific
+		 * logic everywhere for flushing. I ain't doin that
+		 */
+		if (device_local && host_visible && host_coherent) {
+			if (!*skip_shared) { ret.shared += heap.size; }
+			*skip_shared = true;
+		}
+
 		if (device_local) {
-			if (host_visible) {
-				if (!*already_seen) { ret.shared += heap.size; }
-				*already_seen = true;
-				LOG_DEBUG("[#%u](DEVICE_LOCAL|HOST_VISIBLE): %lu - coherent: "
-						  "%u, cached: %u",
-						  mem.heapIndex, heap.size, host_coherent, host_cached);
-			} else {
-				LOG_DEBUG("[#%u](DEVICE_LOCAL): %lu", mem.heapIndex, heap.size);
-			}
+			if (!*skip_device) { ret.device_total += heap.size; }
+			*skip_device = true;
+		}
+
+		// Logging:
+		if (device_local && host_visible) {
+			LOG_DEBUG("[#%u](DEVICE_LOCAL|HOST_VISIBLE): " STR_FMT " - coherent: %u, cached: %u", mem.heapIndex, STR_FMT_ARGS(fs_format_memory_size(scratch, heap.size)), host_coherent, host_cached); // clang-format-ignore
+		} else if (device_local) {
+			LOG_DEBUG("[#%u](DEVICE_LOCAL): " STR_FMT, mem.heapIndex,
+					  STR_FMT_ARGS(fs_format_memory_size(scratch, heap.size)));
 		} else {
-			LOG_DEBUG("[#%u](HOST_LOCAL): %lu - coherent: "
-					  "%u, cached: %u",
-					  mem.heapIndex, heap.size, host_coherent, host_cached);
+			LOG_DEBUG("[#%u](HOST_LOCAL): " STR_FMT " - coherent: %u, cached: %u", mem.heapIndex, STR_FMT_ARGS(fs_format_memory_size(scratch, heap.size)), host_coherent, host_cached);  // clang-format-ignore
 		}
 	}
 
@@ -416,9 +430,9 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		LOG_INFO("vulkan_initialize: max sampled images: %u", cfg->max_sampled_images);
 		LOG_INFO("vulkan_initialize: max storage images: %u", cfg->max_storage_images);
 		LOG_INFO("vulkan_initialize: max samplers: %u", cfg->max_samplers);
-		LOG_INFO("vulkan_initialize: max buffer size: %lu", state->max_buffer_size);
-		LOG_INFO("vulkan_initialize: max buffer range: %lu", state->max_buffer_range);
-		LOG_INFO("vulkan_initialize: max push constant size: %lu", state->push_constant_size);
+		LOG_INFO("vulkan_initialize: max buffer size: " STR_FMT, STR_FMT_ARGS(fs_format_memory_size(scratch, state->max_buffer_size)));
+		LOG_INFO("vulkan_initialize: max buffer range: " STR_FMT, STR_FMT_ARGS(fs_format_memory_size(scratch, state->max_buffer_range)));
+		LOG_INFO("vulkan_initialize: max push constant size: " STR_FMT, STR_FMT_ARGS(fs_format_memory_size(scratch, state->push_constant_size)));
 		// clang-format on
 
 		// Search available memory types for Device Local + Host Visible amount
@@ -430,14 +444,14 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		LOG_INFO("======= MEMORY LOOKUP ========");
 		_memory_lookup_result r =
 			_memory_lookup(scratch, &state->memory_props.memoryProperties);
-		// [TODO]: total
-		// if (!r.total) {
-		// 	LOG_ERR("vulkan_initialize: couldn't get memory info");
-		// 	return;
-		// }
-		// state->total_memory = r.total;
+		if (!r.device_total) {
+			LOG_ERR("vulkan_initialize: couldn't get memory info");
+			return;
+		}
+		state->device_memory = r.device_total;
 		state->shared_memory = r.shared;
-		LOG_INFO("SHARED: %lu. TOTAL: %lu", r.shared, 0); // [TODO]: total
+		state->shared_memory_ratio = r.shared / (double)r.device_total;
+		LOG_INFO("SHARED: " STR_FMT ". TOTAL: " STR_FMT " (%.2f %)", STR_FMT_ARGS(fs_format_memory_size(scratch, r.shared)), STR_FMT_ARGS(fs_format_memory_size(scratch, r.device_total)), state->shared_memory_ratio*100); // clang-format-ignore
 		LOG_INFO("==============================");
 	}
 
@@ -714,7 +728,8 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	LOG_DEBUG("vulkan_initialize: Using queue family: '%u'",
 			  state->queue_family_idx);
 	size_t alloc = arena_get_usage(state->arena) - arena_base_usage;
-	LOG_INFO("vulkan_initialize: allocated %lu bytes for gpu api", alloc);
+	LOG_INFO("vulkan_initialize: allocated " STR_FMT " for gpu api",
+			 STR_FMT_ARGS(fs_format_memory_size(scratch, alloc)));
 }
 
 void vulkan_destroy(gpu_api* self) {
@@ -743,6 +758,16 @@ void vulkan_destroy(gpu_api* self) {
 		vkDestroyInstance(state->instance, NULL);
 	}
 	LOG_DEBUG("vulkan_destroy: destroyed vulkan api");
+}
+
+gpu_memory_info vulkan_get_memory_info(gpu_api* self) {
+	ASSERT(self->is_init && self->state);
+	vk_api_state* state = self->state;
+	return (gpu_memory_info){
+		.device_memory = state->device_memory,
+		.shared_memory = state->shared_memory,
+		.ratio = state->shared_memory_ratio,
+	};
 }
 
 void vulkan_wait_idle(gpu_api* self) {
@@ -2528,6 +2553,7 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 
 		out->initialize = vulkan_initialize;
 		out->destroy = vulkan_destroy;
+		out->get_memory_info = vulkan_get_memory_info;
 		out->wait_idle = vulkan_wait_idle;
 
 		/* == Frame Flow ==================================================== */
