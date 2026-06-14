@@ -709,6 +709,7 @@ typedef struct gpu_api {
 	void (*destroy_semaphore)(struct gpu_api*);
 
 	/* == Getters =========================================================== */
+	gpu_image_extent (*get_framebuffer_extent)(struct gpu_api*);
 	gpu_image_extent (*get_image_extent)(struct gpu_api*, gpu_image);
 	gpu_image_format (*get_image_format)(struct gpu_api*, gpu_image);
 } gpu_api;

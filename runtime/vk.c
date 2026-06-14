@@ -366,10 +366,11 @@ int main(void) {
 	ASSERT(text_renderer);
 	font_atlas_info atlas_ci = {0};
 	{
-		// TODO
-		atlas_ci.glyph_size = (gpu_image_extent){5, 7};
-		atlas_ci.first_char = 0;
-		atlas_ci.last_char = 128;
+		atlas_ci.glyph_size = (gpu_image_extent){10, 14};
+		atlas_ci.pad_x = 2;
+		atlas_ci.pad_y = 2;
+		atlas_ci.first_char = ' ';
+		atlas_ci.last_char = '~';
 	}
 	ASSERT(text_renderer_load_atlas_from_file(
 		text_renderer, scratch.arena, str("runtime/fonts/oldschool.qoi"),
@@ -398,6 +399,10 @@ int main(void) {
 
 		uniform->time = t_prev_s;
 
+		ASSERT(text_renderer_add_text(
+			text_renderer, str("It ain't much, but it's honest work"), 150,
+			250));
+
 		gpu_color_target color_target = {
 			.clear_color = (gpu_color){.floats = {.3f, .7f, .2f, 1.f}},
 			.load_op = GPU_LOAD_OP_CLEAR,
@@ -421,6 +426,7 @@ int main(void) {
 		gpu.cmd_draw_indirect_indexed(
 			&gpu, cmd, indirect_buffer, 0, 1,
 			sizeof(gpu_cmd_indirect_indexed_draw_command));
+		text_renderer_draw(text_renderer, cmd, color_target.target);
 		gpu.cmd_end_rendering(&gpu, cmd);
 		ASSERT(gpu.end_frame(&gpu, &frame));
 		double t_now_s = platform_get_time_s();

@@ -215,7 +215,8 @@ static VkDevice _create_device(VkPhysicalDevice physical_device,
 	}
 
 	VkPhysicalDeviceFeatures vk_10_features = {.samplerAnisotropy = VK_TRUE,
-											   .shaderInt64 = VK_TRUE};
+											   .shaderInt64 = VK_TRUE,
+											   .multiDrawIndirect = VK_TRUE};
 
 	static char const* required_exts[1] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 	static float const qfpriorities = 1.0f;
@@ -1393,6 +1394,17 @@ gpu_image_extent vulkan_get_image_extent(gpu_api* self, gpu_image gpu_img) {
 		vk_image_pool_get(state->image_pool, to_vk_img(gpu_img));
 	ASSERT(data);
 	return vk_to_gpu_image_extent(data->extent);
+}
+
+/**
+ * [NOTE] Technically wrong, framebuffer doesn't necessarily span all surface.
+ * Will do for now.
+ */
+gpu_image_extent vulkan_get_framebuffer_extent(gpu_api* self) {
+	vk_api_state* state = self->state;
+	VkExtent2D ext = state->surface.capabilities.currentExtent;
+
+	return (gpu_image_extent){ext.width, ext.height};
 }
 
 gpu_image_format vulkan_get_image_format(gpu_api* self, gpu_image gpu_img) {
@@ -2615,6 +2627,7 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->destroy_semaphore = NULL;
 
 		/* == Getters ======================================================= */
+		out->get_framebuffer_extent = vulkan_get_framebuffer_extent;
 		out->get_image_extent = vulkan_get_image_extent;
 		out->get_image_format = vulkan_get_image_format;
 	}

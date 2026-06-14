@@ -10,8 +10,10 @@ LIB_EXPORT void text_renderer_set_scale(text_renderer_t* renderer, float scale);
 
 typedef struct font_atlas_info {
 	gpu_image_extent glyph_size;
-	uint32_t first_char; // First char in ASCII table
-	uint32_t last_char;	 // Last char in ASCII table
+	uint8_t first_char; // First char in ASCII table
+	uint8_t last_char;	// Last char in ASCII table
+	uint8_t pad_x;		// Left/Right padding around char
+	uint8_t pad_y;		// Top/Bottom padding around char
 } font_atlas_info;
 
 // [TODO]: asset system -> asset handle version
@@ -27,4 +29,6 @@ LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer, string text,
  * This is more convenient, but I should support drawing on any command
  * buffer+image view
  */
-LIB_EXPORT bool text_renderer_draw(text_renderer_t* renderer, gpu_frame cmd);
+LIB_EXPORT bool text_renderer_draw(text_renderer_t* renderer,
+								   gpu_command_buffer cmd,
+								   gpu_image_view target);

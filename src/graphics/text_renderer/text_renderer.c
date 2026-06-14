@@ -7,6 +7,7 @@
 typedef struct buffered_buffer {
 	gpu_buffer buffers[GPU_MAX_BUFFERING];
 	gpu_device_address addresses[GPU_MAX_BUFFERING];
+	void* maps[GPU_MAX_BUFFERING];
 	uint8_t count;
 	uint8_t current;
 } buffered_buffer;
@@ -15,6 +16,8 @@ bool buffered_buffer_init(buffered_buffer* out, gpu_api* gpu, gpu_buffer_ci* ci,
 						  uint8_t count, bool get_addresses) {
 	if (!count || count > GPU_MAX_BUFFERING) { return false; }
 	memset(out, 0, sizeof(*out));
+
+	bool map = (ci->memory_preference & GPU_BUFFER_MEMORY_MAPPED);
 
 	bool good = true;
 	uint8_t i = 0;
@@ -34,6 +37,16 @@ bool buffered_buffer_init(buffered_buffer* out, gpu_api* gpu, gpu_buffer_ci* ci,
 			}
 			out->addresses[i] = ret.address;
 		}
+
+		if (map) {
+			gpu_buffer_map_result mret = gpu->buffer_get_mapped(gpu, b);
+			if (!mret.ok) {
+				good = false;
+				break;
+			}
+			out->maps[i] = mret.ptr;
+		}
+
 		out->buffers[i] = b;
 	}
 
@@ -41,6 +54,7 @@ bool buffered_buffer_init(buffered_buffer* out, gpu_api* gpu, gpu_buffer_ci* ci,
 		for (uint8_t j = 0; j < i; j++) {
 			gpu->destroy_buffer(gpu, out->buffers[i]);
 		}
+		memset(out, 0, sizeof(*out));
 		return false;
 	}
 
@@ -60,6 +74,10 @@ gpu_device_address buffered_buffer_get_addr(buffered_buffer* bufs) {
 	return bufs->addresses[bufs->current];
 }
 
+void* buffered_buffer_get_mapped(buffered_buffer* bufs) {
+	return bufs->maps[bufs->current];
+}
+
 void buffered_buffer_destroy(buffered_buffer* bufs, gpu_api* gpu) {
 	for (uint8_t i = 0; i < bufs->count; ++i) {
 		gpu->destroy_buffer(gpu, bufs->buffers[i]);
@@ -69,7 +87,7 @@ void buffered_buffer_destroy(buffered_buffer* bufs, gpu_api* gpu) {
 typedef struct text_renderer {
 	gpu_api* gpu;
 	gpu_image_extent atlas_size;
-	gpu_image_extent glyph_size;
+	font_atlas_info atlas_info;
 	float scale;
 	bool is_init;
 
@@ -77,10 +95,17 @@ typedef struct text_renderer {
 	gpu_buffer staging;
 	gpu_image atlas;
 	gpu_pipeline pipeline;
+	gpu_sampler sampler;
 	gpu_image_view atlas_texture;
 	uint32_t atlas_binding;
-	buffered_buffer draw_buffers;
+	uint32_t sampler_binding;
+	// buffered_buffer draw_buffers;
 	buffered_buffer vertex_buffers;
+	buffered_buffer uniform_buffers;
+
+	// Current frame state:
+	uint32_t vertex_count;
+	uint32_t draw_count;
 } text_renderer;
 
 typedef struct vertex {
@@ -89,6 +114,12 @@ typedef struct vertex {
 	float u;
 	float v;
 } vertex;
+
+typedef struct uniform {
+	gpu_device_address vertex_buffer;
+	uint32_t image_index;
+	uint32_t sampler_index;
+} uniform;
 
 text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 	if (!arena || !gpu || !gpu->is_init) {
@@ -170,7 +201,7 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 	gpu_buffer_ci indirect_ci = {0};
 	{
 		indirect_ci.usage = GPU_BUFFER_USAGE_INDIRECT;
-		indirect_ci.size = MAX_CHARS * sizeof(gpu_indirect_draw_command);
+		indirect_ci.size = MAX_CHARS * sizeof(gpu_indirect_draw_command) * 2;
 		indirect_ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
 	}
 	gpu_buffer_ci vertex_ci = {0};
@@ -179,27 +210,59 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 		vertex_ci.size = MAX_CHARS * sizeof(vertex) * 6; // 6 vertices per char
 		vertex_ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
 	}
-
-	if (!buffered_buffer_init(&ret->draw_buffers, gpu, &indirect_ci,
-							  gpu->config.frames_in_flight, false)) {
-		LOG_ERR("text_renderer_init: couldn't create draw buffers");
-		arena_restore_checkpoint(arena, checkpoint, true);
-		gpu->destroy_buffer(gpu, staging);
-		return NULL;
+	gpu_buffer_ci uniform_ci = {0};
+	{
+		uniform_ci.usage = GPU_BUFFER_USAGE_STORAGE;
+		uniform_ci.size = sizeof(uniform);
+		uniform_ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
 	}
+
+	// if (!buffered_buffer_init(&ret->draw_buffers, gpu, &indirect_ci,
+	// 						  gpu->config.frames_in_flight, false)) {
+	// 	LOG_ERR("text_renderer_init: couldn't create draw buffers");
+	// 	arena_restore_checkpoint(arena, checkpoint, true);
+	// 	gpu->destroy_buffer(gpu, staging);
+	// 	return NULL;
+	// }
 
 	if (!buffered_buffer_init(&ret->vertex_buffers, gpu, &vertex_ci,
 							  gpu->config.frames_in_flight, true)) {
 		LOG_ERR("text_renderer_init: couldn't create vertex buffers");
 		arena_restore_checkpoint(arena, checkpoint, true);
 		gpu->destroy_buffer(gpu, staging);
-		buffered_buffer_destroy(&ret->draw_buffers, gpu);
+		// buffered_buffer_destroy(&ret->draw_buffers, gpu);
+		return NULL;
+	}
+
+	if (!buffered_buffer_init(&ret->uniform_buffers, gpu, &uniform_ci,
+							  gpu->config.frames_in_flight, true)) {
+		LOG_ERR("text_renderer_init: couldn't create uniform buffers");
+		arena_restore_checkpoint(arena, checkpoint, true);
+		gpu->destroy_buffer(gpu, staging);
+		// buffered_buffer_destroy(&ret->draw_buffers, gpu);
+		buffered_buffer_destroy(&ret->vertex_buffers, gpu);
+		return NULL;
+	}
+
+	/* == Sampler == */
+	gpu_sampler_ci ci = {0};
+	uint32_t sampler_index;
+	gpu_sampler s = gpu->create_sampler(gpu, &ci, &sampler_index);
+	if (!check_handle(s.handle)) {
+		LOG_ERR("text_renderer_init: couldn't create sampler");
+		arena_restore_checkpoint(arena, checkpoint, true);
+		gpu->destroy_buffer(gpu, staging);
+		// buffered_buffer_destroy(&ret->draw_buffers, gpu);
+		buffered_buffer_destroy(&ret->vertex_buffers, gpu);
+		buffered_buffer_destroy(&ret->uniform_buffers, gpu);
 		return NULL;
 	}
 
 	ret->gpu = gpu;
 	ret->staging = staging;
 	ret->pipeline = pipeline;
+	ret->sampler = s;
+	ret->sampler_binding = sampler_index;
 	ret->scale = 1.f;
 	ret->is_init = false;
 
@@ -348,8 +411,7 @@ LIB_EXPORT bool text_renderer_load_atlas_from_file(text_renderer_t* renderer,
 
 	{
 		r->atlas_size = (gpu_image_extent){img_read.width, img_read.height};
-		r->glyph_size = atlas_info.glyph_size;
-		r->glyph_size = atlas_info.glyph_size;
+		r->atlas_info = atlas_info;
 		r->atlas = img;
 		r->atlas_texture = view;
 		r->atlas_binding = tex_bind;
@@ -383,6 +445,117 @@ void text_renderer_destroy(text_renderer_t* renderer) {
 	gpu->destroy_image_view(gpu, r->atlas_texture);
 	gpu->destroy_image(gpu, r->atlas);
 	gpu->destroy_pipeline(gpu, r->pipeline);
-	buffered_buffer_destroy(&r->draw_buffers, gpu);
+	gpu->destroy_sampler(gpu, r->sampler);
+	// buffered_buffer_destroy(&r->draw_buffers, gpu);
 	buffered_buffer_destroy(&r->vertex_buffers, gpu);
+	buffered_buffer_destroy(&r->uniform_buffers, gpu);
+}
+
+LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer, string text,
+									   UNUSED uint32_t x, UNUSED uint32_t y) {
+	text_renderer* r = (text_renderer*)renderer;
+	gpu_api* gpu = r->gpu;
+
+	UNUSED gpu_image_extent framebuffer_size = gpu->get_framebuffer_extent(gpu);
+	font_atlas_info info = r->atlas_info;
+
+	uint32_t char_width = info.glyph_size.width + (info.pad_x * 2);
+	uint32_t char_height = info.glyph_size.height + (info.pad_y * 2);
+
+	uint32_t cols = r->atlas_size.width / char_width;
+	UNUSED uint32_t lines = r->atlas_size.height / char_height;
+	vertex* verts = buffered_buffer_get_mapped(&r->vertex_buffers);
+
+	// gpu_indirect_draw_command* draws =
+	// 	buffered_buffer_get_mapped(&r->draw_buffers);
+
+	char c;
+	uint64_t vert_idx = 0; // 6 per char
+	uint64_t draw_idx = 0; // 2 per char
+	for (uint64_t i = 0; i < text.len; ++i) {
+		c = text.str[i];
+
+		if (c < info.first_char || c > info.last_char) {
+			LOG_WARN("text_renderer_add_text: char isn't in atlas: %c (%u)", c, c); // clang-format-ignore
+			continue;
+		}
+
+		char cc = c - info.first_char;
+
+		// Coords in atlas:
+		uint32_t line = cc / cols;
+		uint32_t col = cc % cols;
+
+		uint32_t u0u = col * char_width + info.pad_x;
+		uint32_t v0u = line * char_height + info.pad_y;
+		uint32_t u1u = u0u + char_width;
+		uint32_t v1u = v0u + char_height;
+		// LOG_DEBUG("%c (%u -> %u): ATLAS: {%u, %u}, UV: {%u, %u}", c, c, cc,
+		// col, line, u0u, v0u);
+		float u0 = u0u / (float)r->atlas_size.width;
+		float v0 = v0u / (float)r->atlas_size.height;
+		float u1 = u1u / (float)r->atlas_size.width;
+		float v1 = v1u / (float)r->atlas_size.height;
+
+		float x0_ndc = (x / (float)framebuffer_size.width) * 2.f - 1.f;
+		float y0_ndc = (y / (float)framebuffer_size.height) * 2.f - 1.f;
+
+		float x1_ndc = x0_ndc + (char_width / (float)framebuffer_size.width);
+		float y1_ndc = y0_ndc + (char_height / (float)framebuffer_size.height);
+
+		x += info.glyph_size.width;
+
+		verts[vert_idx + 0] = (vertex){x0_ndc, y0_ndc, u0, v0}; // top left
+		verts[vert_idx + 1] = (vertex){x0_ndc, y1_ndc, u0, v1}; // bot left
+		verts[vert_idx + 2] = (vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
+
+		verts[vert_idx + 3] = (vertex){x0_ndc, y0_ndc, u0, v0}; // top left
+		verts[vert_idx + 4] = (vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
+		verts[vert_idx + 5] = (vertex){x1_ndc, y0_ndc, u1, v0}; // top right
+
+		// fill out draw buffer
+		vert_idx += 6;
+	}
+
+	// LOG_DEBUG("text_renderer_add_text: added %u draws (%u vertices)",
+	// draw_idx, vert_idx);
+	r->vertex_count += vert_idx;
+	r->draw_count += draw_idx;
+
+	return true;
+}
+
+static void _advance_buffers(text_renderer* r) {
+	// buffered_buffer_advance(&r->draw_buffers);
+	buffered_buffer_advance(&r->vertex_buffers);
+	buffered_buffer_advance(&r->uniform_buffers);
+}
+
+LIB_EXPORT bool text_renderer_draw(text_renderer_t* renderer,
+								   gpu_command_buffer cmd,
+								   UNUSED gpu_image_view target) {
+	text_renderer* r = (text_renderer*)renderer;
+	gpu_api* gpu = r->gpu;
+
+	// gpu_buffer draw_buffer = buffered_buffer_get(&r->draw_buffers);
+	gpu_device_address verts = buffered_buffer_get_addr(&r->vertex_buffers);
+	gpu_device_address u = buffered_buffer_get_addr(&r->uniform_buffers);
+	uniform* frame_data = buffered_buffer_get_mapped(&r->uniform_buffers);
+
+	frame_data->image_index = r->atlas_binding;
+	frame_data->sampler_index = r->sampler_binding;
+	frame_data->vertex_buffer = verts;
+
+	gpu_per_frame_data pc = {.frame_buffer_address = u};
+	gpu->cmd_bind_pipeline(gpu, cmd, r->pipeline, &pc);
+
+	// LOG_DEBUG("text_renderer_draw: drawing %u draws", r->draw_count);
+	gpu->cmd_draw(gpu, cmd, r->vertex_count, 1, 0, 0);
+	// gpu->cmd_draw_indirect(gpu, cmd, draw_buffer, 0, r->draw_count,
+	// 					   sizeof(gpu_indirect_draw_command));
+
+	_advance_buffers(r);
+	r->draw_count = 0;
+	r->vertex_count = 0;
+	return true;
 }
