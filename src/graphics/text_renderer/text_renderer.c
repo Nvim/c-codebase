@@ -1,5 +1,70 @@
 #include <graphics/text_renderer.h>
 #include <loaders/qoi_loader.h>
+#include <string.h>
+
+#define MAX_CHARS 8192
+
+typedef struct buffered_buffer {
+	gpu_buffer buffers[GPU_MAX_BUFFERING];
+	gpu_device_address addresses[GPU_MAX_BUFFERING];
+	uint8_t count;
+	uint8_t current;
+} buffered_buffer;
+
+bool buffered_buffer_init(buffered_buffer* out, gpu_api* gpu, gpu_buffer_ci* ci,
+						  uint8_t count, bool get_addresses) {
+	if (!count || count > GPU_MAX_BUFFERING) { return false; }
+	memset(out, 0, sizeof(*out));
+
+	bool good = true;
+	uint8_t i = 0;
+	for (; i < count; i++) {
+		gpu_buffer b = gpu->create_buffer(gpu, ci);
+		if (!check_handle(b.handle)) {
+			good = false;
+			break;
+		}
+
+		if (get_addresses) {
+			gpu_buffer_device_address_result ret =
+				gpu->buffer_get_device_address(gpu, b);
+			if (!ret.ok) {
+				good = false;
+				break;
+			}
+			out->addresses[i] = ret.address;
+		}
+		out->buffers[i] = b;
+	}
+
+	if (!good) {
+		for (uint8_t j = 0; j < i; j++) {
+			gpu->destroy_buffer(gpu, out->buffers[i]);
+		}
+		return false;
+	}
+
+	out->count = count;
+	return true;
+}
+
+void buffered_buffer_advance(buffered_buffer* bufs) {
+	bufs->current = (bufs->current + 1) % bufs->count;
+}
+
+gpu_buffer buffered_buffer_get(buffered_buffer* bufs) {
+	return bufs->buffers[bufs->current];
+}
+
+gpu_device_address buffered_buffer_get_addr(buffered_buffer* bufs) {
+	return bufs->addresses[bufs->current];
+}
+
+void buffered_buffer_destroy(buffered_buffer* bufs, gpu_api* gpu) {
+	for (uint8_t i = 0; i < bufs->count; ++i) {
+		gpu->destroy_buffer(gpu, bufs->buffers[i]);
+	}
+}
 
 typedef struct text_renderer {
 	gpu_api* gpu;
@@ -11,9 +76,19 @@ typedef struct text_renderer {
 	// GPU Resources:
 	gpu_buffer staging;
 	gpu_image atlas;
+	gpu_pipeline pipeline;
 	gpu_image_view atlas_texture;
 	uint32_t atlas_binding;
+	buffered_buffer draw_buffers;
+	buffered_buffer vertex_buffers;
 } text_renderer;
+
+typedef struct vertex {
+	float x;
+	float y;
+	float u;
+	float v;
+} vertex;
 
 text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 	if (!arena || !gpu || !gpu->is_init) {
@@ -28,6 +103,7 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 		return NULL;
 	}
 
+	/* == Staging == */
 	gpu_buffer_ci staging_ci = {0};
 	{
 		staging_ci.size = 32 * MEMORY_MIB;
@@ -41,10 +117,89 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 		return NULL;
 	}
 
-	// [TODO]: Load shaders and create pipeline
+	/* == Shaders == */
+	gpu_shader vs = {0}, fs = {0};
+	{ // Vertex shader
+		fs_file_read_result res =
+			fs_read_all_file(arena, str("build/shaders/text.slang.vert.spirv"));
+		ASSERT(res.ok);
+		gpu_shader_ci vs_ci = {0};
+		vs_ci.type = GPU_SHADER_VERTEX;
+		vs_ci.code = res.bytes;
+		vs_ci.debug_name = str("text_vs");
+		vs = gpu->create_shader(gpu, &vs_ci);
+	}
+	{ // Fragment shader
+		fs_file_read_result res =
+			fs_read_all_file(arena, str("build/shaders/text.slang.frag.spirv"));
+		ASSERT(res.ok);
+		gpu_shader_ci fs_ci = {0};
+		fs_ci.type = GPU_SHADER_FRAGMENT;
+		fs_ci.code = res.bytes;
+		fs_ci.debug_name = str("text_fs");
+		fs = gpu->create_shader(gpu, &fs_ci);
+	}
+
+	if (!check_handle(vs.handle) || !check_handle(fs.handle)) {
+		LOG_ERR("text_renderer_init: couldn't create shaders");
+		arena_restore_checkpoint(arena, checkpoint, true);
+		return NULL;
+	}
+
+	/* == Pipeline == */
+	gpu_pipeline pipeline;
+	{
+		gpu_pipeline_builder builder = {0};
+		gpu_pipeline_builder_create(&builder);
+		set_vertex_shader(&builder, vs);
+		set_fragment_shader(&builder, fs);
+		add_color_target(&builder, gpu->config.target_image_format, false);
+		pipeline = gpu_pipeline_build(gpu, &builder);
+	}
+	gpu->destroy_shader(gpu, vs);
+	gpu->destroy_shader(gpu, fs);
+	if (!check_handle(pipeline.handle)) {
+		LOG_ERR("text_renderer_init: couldn't build pipeline");
+		arena_restore_checkpoint(arena, checkpoint, true);
+		gpu->destroy_buffer(gpu, staging);
+		return NULL;
+	}
+
+	/*  == Buffers == */
+	// [TODO]: Support copy flow. This assumes shared memory
+	gpu_buffer_ci indirect_ci = {0};
+	{
+		indirect_ci.usage = GPU_BUFFER_USAGE_INDIRECT;
+		indirect_ci.size = MAX_CHARS * sizeof(gpu_indirect_draw_command);
+		indirect_ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
+	}
+	gpu_buffer_ci vertex_ci = {0};
+	{
+		vertex_ci.usage = GPU_BUFFER_USAGE_STORAGE;
+		vertex_ci.size = MAX_CHARS * sizeof(vertex) * 6; // 6 vertices per char
+		vertex_ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
+	}
+
+	if (!buffered_buffer_init(&ret->draw_buffers, gpu, &indirect_ci,
+							  gpu->config.frames_in_flight, false)) {
+		LOG_ERR("text_renderer_init: couldn't create draw buffers");
+		arena_restore_checkpoint(arena, checkpoint, true);
+		gpu->destroy_buffer(gpu, staging);
+		return NULL;
+	}
+
+	if (!buffered_buffer_init(&ret->vertex_buffers, gpu, &vertex_ci,
+							  gpu->config.frames_in_flight, true)) {
+		LOG_ERR("text_renderer_init: couldn't create vertex buffers");
+		arena_restore_checkpoint(arena, checkpoint, true);
+		gpu->destroy_buffer(gpu, staging);
+		buffered_buffer_destroy(&ret->draw_buffers, gpu);
+		return NULL;
+	}
 
 	ret->gpu = gpu;
 	ret->staging = staging;
+	ret->pipeline = pipeline;
 	ret->scale = 1.f;
 	ret->is_init = false;
 
@@ -227,4 +382,7 @@ void text_renderer_destroy(text_renderer_t* renderer) {
 
 	gpu->destroy_image_view(gpu, r->atlas_texture);
 	gpu->destroy_image(gpu, r->atlas);
+	gpu->destroy_pipeline(gpu, r->pipeline);
+	buffered_buffer_destroy(&r->draw_buffers, gpu);
+	buffered_buffer_destroy(&r->vertex_buffers, gpu);
 }

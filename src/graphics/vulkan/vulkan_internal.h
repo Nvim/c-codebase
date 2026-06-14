@@ -16,8 +16,6 @@ ARRAY_DEFINE_TYPE(VkImage, vk_image_array)
 ARRAY_DEFINE_TYPE(VkImageView, vk_image_view_array)
 ARRAY_DEFINE_TYPE(VkSemaphore, vk_sem_array)
 
-#define VK_MAX_BUFFERING 4
-
 #define TEXTURE_BINDING 0
 #define STORAGE_IMAGE_BINDING 1
 #define SAMPLER_BINDING 2
@@ -235,7 +233,7 @@ typedef struct vk_render_sync {
 } vk_render_sync;
 
 typedef struct vk_sync_buffer {
-	vk_render_sync frames[VK_MAX_BUFFERING];
+	vk_render_sync frames[GPU_MAX_BUFFERING];
 	uint32_t frames_in_flight;
 } vk_sync_buffer;
 

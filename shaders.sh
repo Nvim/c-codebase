@@ -14,3 +14,6 @@ SLANG_OPTS="-profile glsl_450 -target spirv"
 
 slangc "${SRC_DIR}/quad.slang" $SLANG_OPTS -o "${OUT_DIR}/quad.slang.vert.spirv" -entry vertMain -stage vertex
 slangc "${SRC_DIR}/quad.slang" $SLANG_OPTS -o "${OUT_DIR}/quad.slang.frag.spirv" -entry fragMain -stage pixel
+
+slangc "${SRC_DIR}/text.slang" $SLANG_OPTS -o "${OUT_DIR}/text.slang.vert.spirv" -entry vertMain -stage vertex
+slangc "${SRC_DIR}/text.slang" $SLANG_OPTS -o "${OUT_DIR}/text.slang.frag.spirv" -entry fragMain -stage pixel

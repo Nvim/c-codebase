@@ -363,6 +363,7 @@ int main(void) {
 
 	// Text renderer test:
 	text_renderer_t* text_renderer = text_renderer_init(&gpu, arena);
+	ASSERT(text_renderer);
 	font_atlas_info atlas_ci = {0};
 	{
 		// TODO

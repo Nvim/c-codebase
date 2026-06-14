@@ -248,9 +248,10 @@ static VkDevice _create_device(VkPhysicalDevice physical_device,
 	return device;
 }
 
+// [TODO]: move this to graphics.c
 static bool validate_gpu_config(gpu_api_config* config) {
 	if (!config->frames_in_flight ||
-		config->frames_in_flight > VK_MAX_BUFFERING) {
+		config->frames_in_flight > GPU_MAX_BUFFERING) {
 		LOG_ERR("validate_gpu_config: invalid buffering amount");
 		return false;
 	}

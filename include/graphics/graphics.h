@@ -27,6 +27,8 @@ typedef struct { pool_handle handle; } gpu_semaphore;
 
 typedef uint64_t gpu_device_address;
 
+#define GPU_MAX_BUFFERING 3
+
 typedef enum gpu_image_format {
 	IMAGE_FORMAT_RGBA_UNORM,
 	IMAGE_FORMAT_RGBA_SNORM,
@@ -500,7 +502,7 @@ typedef enum gpu_present_mode {
 typedef struct gpu_api_config {
 	gpu_api_type type;
 	char const* app_name;
-	uint32_t frames_in_flight;
+	uint32_t frames_in_flight; // must be less than GPU_MAX_BUFFERING
 	gpu_image_format target_image_format;
 	gpu_present_mode present_mode;
 
