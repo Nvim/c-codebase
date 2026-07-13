@@ -99,13 +99,11 @@ typedef struct text_renderer {
 	gpu_image_view atlas_texture;
 	uint32_t atlas_binding;
 	uint32_t sampler_binding;
-	// buffered_buffer draw_buffers;
 	buffered_buffer vertex_buffers;
 	buffered_buffer uniform_buffers;
 
 	// Current frame state:
 	uint32_t vertex_count;
-	uint32_t draw_count;
 } text_renderer;
 
 typedef struct vertex {
@@ -217,20 +215,11 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 		uniform_ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
 	}
 
-	// if (!buffered_buffer_init(&ret->draw_buffers, gpu, &indirect_ci,
-	// 						  gpu->config.frames_in_flight, false)) {
-	// 	LOG_ERR("text_renderer_init: couldn't create draw buffers");
-	// 	arena_restore_checkpoint(arena, checkpoint, true);
-	// 	gpu->destroy_buffer(gpu, staging);
-	// 	return NULL;
-	// }
-
 	if (!buffered_buffer_init(&ret->vertex_buffers, gpu, &vertex_ci,
 							  gpu->config.frames_in_flight, true)) {
 		LOG_ERR("text_renderer_init: couldn't create vertex buffers");
 		arena_restore_checkpoint(arena, checkpoint, true);
 		gpu->destroy_buffer(gpu, staging);
-		// buffered_buffer_destroy(&ret->draw_buffers, gpu);
 		return NULL;
 	}
 
@@ -239,7 +228,6 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 		LOG_ERR("text_renderer_init: couldn't create uniform buffers");
 		arena_restore_checkpoint(arena, checkpoint, true);
 		gpu->destroy_buffer(gpu, staging);
-		// buffered_buffer_destroy(&ret->draw_buffers, gpu);
 		buffered_buffer_destroy(&ret->vertex_buffers, gpu);
 		return NULL;
 	}
@@ -252,7 +240,6 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 		LOG_ERR("text_renderer_init: couldn't create sampler");
 		arena_restore_checkpoint(arena, checkpoint, true);
 		gpu->destroy_buffer(gpu, staging);
-		// buffered_buffer_destroy(&ret->draw_buffers, gpu);
 		buffered_buffer_destroy(&ret->vertex_buffers, gpu);
 		buffered_buffer_destroy(&ret->uniform_buffers, gpu);
 		return NULL;
@@ -446,7 +433,6 @@ void text_renderer_destroy(text_renderer_t* renderer) {
 	gpu->destroy_image(gpu, r->atlas);
 	gpu->destroy_pipeline(gpu, r->pipeline);
 	gpu->destroy_sampler(gpu, r->sampler);
-	// buffered_buffer_destroy(&r->draw_buffers, gpu);
 	buffered_buffer_destroy(&r->vertex_buffers, gpu);
 	buffered_buffer_destroy(&r->uniform_buffers, gpu);
 }
@@ -466,12 +452,8 @@ LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer, string text,
 	UNUSED uint32_t lines = r->atlas_size.height / char_height;
 	vertex* verts = buffered_buffer_get_mapped(&r->vertex_buffers);
 
-	// gpu_indirect_draw_command* draws =
-	// 	buffered_buffer_get_mapped(&r->draw_buffers);
-
 	char c;
 	uint64_t vert_idx = 0; // 6 per char
-	uint64_t draw_idx = 0; // 2 per char
 	for (uint64_t i = 0; i < text.len; ++i) {
 		c = text.str[i];
 
@@ -513,20 +495,15 @@ LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer, string text,
 		verts[vert_idx + 4] = (vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
 		verts[vert_idx + 5] = (vertex){x1_ndc, y0_ndc, u1, v0}; // top right
 
-		// fill out draw buffer
 		vert_idx += 6;
 	}
 
-	// LOG_DEBUG("text_renderer_add_text: added %u draws (%u vertices)",
-	// draw_idx, vert_idx);
 	r->vertex_count += vert_idx;
-	r->draw_count += draw_idx;
 
 	return true;
 }
 
 static void _advance_buffers(text_renderer* r) {
-	// buffered_buffer_advance(&r->draw_buffers);
 	buffered_buffer_advance(&r->vertex_buffers);
 	buffered_buffer_advance(&r->uniform_buffers);
 }
@@ -537,7 +514,6 @@ LIB_EXPORT bool text_renderer_draw(text_renderer_t* renderer,
 	text_renderer* r = (text_renderer*)renderer;
 	gpu_api* gpu = r->gpu;
 
-	// gpu_buffer draw_buffer = buffered_buffer_get(&r->draw_buffers);
 	gpu_device_address verts = buffered_buffer_get_addr(&r->vertex_buffers);
 	gpu_device_address u = buffered_buffer_get_addr(&r->uniform_buffers);
 	uniform* frame_data = buffered_buffer_get_mapped(&r->uniform_buffers);
@@ -549,13 +525,9 @@ LIB_EXPORT bool text_renderer_draw(text_renderer_t* renderer,
 	gpu_per_frame_data pc = {.frame_buffer_address = u};
 	gpu->cmd_bind_pipeline(gpu, cmd, r->pipeline, &pc);
 
-	// LOG_DEBUG("text_renderer_draw: drawing %u draws", r->draw_count);
 	gpu->cmd_draw(gpu, cmd, r->vertex_count, 1, 0, 0);
-	// gpu->cmd_draw_indirect(gpu, cmd, draw_buffer, 0, r->draw_count,
-	// 					   sizeof(gpu_indirect_draw_command));
 
 	_advance_buffers(r);
-	r->draw_count = 0;
 	r->vertex_count = 0;
 	return true;
 }
