@@ -651,6 +651,8 @@ typedef struct gpu_api {
 	bool (*cmd_copy_to_buffer)(struct gpu_api*, gpu_command_buffer,
 							   gpu_buffer_copy_info* info);
 
+	void (*cmd_full_pipeline_barrier)(struct gpu_api*, gpu_command_buffer);
+
 	/**
 	 * @brief Record a buffer memory barrier command.
 	 *

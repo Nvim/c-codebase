@@ -595,4 +595,6 @@ VkAttachmentStoreOp gpu_to_vk_store_op(gpu_target_store_op op);
 
 VkAttachmentLoadOp gpu_to_vk_load_op(gpu_target_load_op op);
 
+VkClearColorValue gpu_to_vk_color(gpu_color col);
+
 #endif // !VULKAN_UTIL_H

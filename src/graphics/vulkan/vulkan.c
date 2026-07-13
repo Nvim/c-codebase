@@ -200,7 +200,7 @@ static VkDevice _create_device(VkPhysicalDevice physical_device,
 		vk_12_features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
 		vk_12_features.descriptorBindingStorageImageUpdateAfterBind = VK_TRUE;
 		vk_12_features.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
-		// vk_12_features.descriptorBindingPartiallyBound = VK_TRUE;
+		vk_12_features.descriptorBindingPartiallyBound = VK_TRUE;
 		vk_12_features.runtimeDescriptorArray = true;
 		vk_12_features.bufferDeviceAddress = true;
 	}
@@ -678,15 +678,16 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			texture_binding, storage_binding, sampler_binding};
 
 		// Create descriptor set layout with indexing feature:
-		VkDescriptorBindingFlags binding_flags =
-			VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+		VkDescriptorBindingFlags binding_flags[countof(bindings_array)] = {
+			VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+			VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT};
 
 		VkDescriptorSetLayoutBindingFlagsCreateInfo layout_binding_flags = {0};
 		{
 			layout_binding_flags.sType =
 				VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
 			layout_binding_flags.bindingCount = countof(bindings_array);
-			layout_binding_flags.pBindingFlags = &binding_flags;
+			layout_binding_flags.pBindingFlags = binding_flags;
 		};
 
 		VkDescriptorSetLayoutCreateInfo layout_ci = {0};
@@ -830,7 +831,8 @@ void vulkan_cmd_begin_rendering(gpu_api* self, gpu_command_buffer cmd,
 	}
 
 	VkRenderingInfo rendering_info = {0};
-	VkClearValue color = {.color = {.float32 = {1.f, 0.f, 1.f, 1.f}}};
+	VkClearValue color = {.color =
+							  gpu_to_vk_color(s->color_targets[0].clear_color)};
 
 	VkRenderingAttachmentInfo color_attachment = {0};
 	{
@@ -2494,6 +2496,29 @@ bool vulkan_cmd_copy_to_buffer(gpu_api* self, gpu_command_buffer cmd,
 	return true;
 }
 
+void vulkan_cmd_full_pipeline_barrier(gpu_api* self, gpu_command_buffer cmd) {
+	vk_api_state* state = self->state;
+
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
+	if (cmd_data->state != CMDBUF_RECORDING &&
+		cmd_data->state != CMDBUF_RENDERING) {
+		LOG_ERR(
+			"vulkan_cmd_full_pipeline_barrier: invalid command buffer state");
+		return;
+	};
+
+	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
+
+	VkDependencyInfo dep_info = {0};
+	{
+		dep_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+		dep_info.memoryBarrierCount = 1;
+		dep_info.pMemoryBarriers = &vk_full_pipeline_barrier;
+	}
+	vkCmdPipelineBarrier2(cmd_buf, &dep_info);
+}
+
 bool vulkan_cmd_buffer_barrier(gpu_api* self, gpu_command_buffer cmd,
 							   gpu_buffer buf_handle, gpu_buffer_access from,
 							   gpu_buffer_access to) {
@@ -2599,6 +2624,7 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->copy_to_staging_buffer = vulkan_copy_to_staging_buffer;
 		out->cmd_copy_to_buffer = vulkan_cmd_copy_to_buffer;
 		out->cmd_buffer_barrier = vulkan_cmd_buffer_barrier;
+		out->cmd_full_pipeline_barrier = vulkan_cmd_full_pipeline_barrier;
 
 		/* == Images =========================================================*/
 		out->create_image = vulkan_create_image;

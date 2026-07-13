@@ -404,7 +404,7 @@ int main(void) {
 			250));
 
 		gpu_color_target color_target = {
-			.clear_color = (gpu_color){.floats = {.3f, .7f, .2f, 1.f}},
+			.clear_color = (gpu_color){.floats = {.1f, .1f, .1f, 1.f}},
 			.load_op = GPU_LOAD_OP_CLEAR,
 			.store_op = GPU_STORE_OP_STORE,
 			.target = frame.framebuffer_view,

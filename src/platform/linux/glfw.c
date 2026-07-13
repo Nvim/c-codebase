@@ -173,7 +173,7 @@ bool platform_init_graphics_api(gpu_api_type type,
 	memset(ret, 0, sizeof(vulkan_init_info));
 
 	char const** required_instance_extensions;
-	uint32_t required_instance_extensions_count;
+	uint32_t required_instance_extensions_count = 0;
 	required_instance_extensions =
 		glfwGetRequiredInstanceExtensions(&required_instance_extensions_count);
 	if (required_instance_extensions == NULL ||

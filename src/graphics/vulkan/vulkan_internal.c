@@ -1004,3 +1004,12 @@ VkAttachmentLoadOp gpu_to_vk_load_op(gpu_target_load_op op) {
 	case GPU_LOAD_OP_CLEAR: return VK_ATTACHMENT_LOAD_OP_CLEAR;
 	}
 }
+
+VkClearColorValue gpu_to_vk_color(gpu_color col) {
+	return (VkClearColorValue){
+		.float32[0] = col.floats[0],
+		.float32[1] = col.floats[1],
+		.float32[2] = col.floats[2],
+		.float32[3] = col.floats[3],
+	};
+}

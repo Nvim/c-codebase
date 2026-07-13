@@ -24,10 +24,9 @@ struct VSInput {
 VSOutput vertMain(uint vertexID : SV_VertexID, uniform VSInput constants) {
 	VSOutput ret;
 
-	const float speed = .5f;
 	Vertex vert = constants.uniform[0].vertex_buffer[vertexID];
 
-	ret.pos.xy = vert.pos;
+	ret.pos = float4(vert.pos, 1.f);
 	ret.uv = vert.uv;
 
 	return ret;
