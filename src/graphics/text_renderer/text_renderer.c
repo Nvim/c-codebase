@@ -88,7 +88,6 @@ typedef struct text_renderer {
 	gpu_api* gpu;
 	gpu_image_extent atlas_size;
 	font_atlas_info atlas_info;
-	float scale;
 	bool is_init;
 
 	// GPU Resources:
@@ -250,7 +249,6 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 	ret->pipeline = pipeline;
 	ret->sampler = s;
 	ret->sampler_binding = sampler_index;
-	ret->scale = 1.f;
 	ret->is_init = false;
 
 	return (text_renderer_t*)ret;
@@ -408,16 +406,6 @@ LIB_EXPORT bool text_renderer_load_atlas_from_file(text_renderer_t* renderer,
 	return true;
 }
 
-void text_renderer_set_scale(text_renderer_t* renderer, float scale) {
-	text_renderer* r = (text_renderer*)renderer;
-	if (scale < 0.125f || scale > 5.f) {
-		LOG_ERR("text_renderer_set_scale: invalid scale value: %f", scale);
-		return;
-	}
-
-	r->scale = scale;
-}
-
 void text_renderer_destroy(text_renderer_t* renderer) {
 	text_renderer* r = (text_renderer*)renderer;
 
@@ -438,18 +426,22 @@ void text_renderer_destroy(text_renderer_t* renderer) {
 }
 
 LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer, string text,
-									   UNUSED uint32_t x, UNUSED uint32_t y) {
+									   uint32_t x, uint32_t y, float scale) {
 	text_renderer* r = (text_renderer*)renderer;
+
+	if (scale < 0.125f || scale > 5.f) {
+		LOG_ERR("text_renderer_add_text: invalid scale value: %f", scale);
+		return false;
+	}
 	gpu_api* gpu = r->gpu;
 
-	UNUSED gpu_image_extent framebuffer_size = gpu->get_framebuffer_extent(gpu);
+	gpu_image_extent framebuffer_size = gpu->get_framebuffer_extent(gpu);
 	font_atlas_info info = r->atlas_info;
 
 	uint32_t char_width = info.glyph_size.width + (info.pad_x * 2);
 	uint32_t char_height = info.glyph_size.height + (info.pad_y * 2);
 
 	uint32_t cols = r->atlas_size.width / char_width;
-	UNUSED uint32_t lines = r->atlas_size.height / char_height;
 	vertex* verts = buffered_buffer_get_mapped(&r->vertex_buffers);
 
 	char c;
@@ -482,20 +474,19 @@ LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer, string text,
 		float x0_ndc = (x / (float)framebuffer_size.width) * 2.f - 1.f;
 		float y0_ndc = (y / (float)framebuffer_size.height) * 2.f - 1.f;
 
-		float x1_ndc = x0_ndc + (char_width / (float)framebuffer_size.width);
-		float y1_ndc = y0_ndc + (char_height / (float)framebuffer_size.height);
+		float x_off = (char_width / (float)framebuffer_size.width) * scale;
+		float y_off = (char_height / (float)framebuffer_size.height) * scale;
+		float x1_ndc = x0_ndc + x_off;
+		float y1_ndc = y0_ndc + y_off;
 
-		x += info.glyph_size.width;
+		x += info.glyph_size.width * scale;
 
-		verts[vert_idx + 0] = (vertex){x0_ndc, y0_ndc, u0, v0}; // top left
-		verts[vert_idx + 1] = (vertex){x0_ndc, y1_ndc, u0, v1}; // bot left
-		verts[vert_idx + 2] = (vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
-
-		verts[vert_idx + 3] = (vertex){x0_ndc, y0_ndc, u0, v0}; // top left
-		verts[vert_idx + 4] = (vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
-		verts[vert_idx + 5] = (vertex){x1_ndc, y0_ndc, u1, v0}; // top right
-
-		vert_idx += 6;
+		verts[vert_idx++] = (vertex){x0_ndc, y0_ndc, u0, v0}; // top left
+		verts[vert_idx++] = (vertex){x0_ndc, y1_ndc, u0, v1}; // bot left
+		verts[vert_idx++] = (vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
+		verts[vert_idx++] = (vertex){x0_ndc, y0_ndc, u0, v0}; // top left
+		verts[vert_idx++] = (vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
+		verts[vert_idx++] = (vertex){x1_ndc, y0_ndc, u1, v0}; // top right
 	}
 
 	r->vertex_count += vert_idx;

@@ -379,6 +379,9 @@ int main(void) {
 	double t_prev_s = platform_get_time_s();
 	double delta_ms = 0.0f;
 
+	float scale_step = .01f;
+	float scale = 1.f;
+
 	while (!_quit) {
 
 		platform_poll();
@@ -399,9 +402,13 @@ int main(void) {
 
 		uniform->time = t_prev_s;
 
+		if(scale >= 2.5f || scale <= .25f) {
+			scale_step = -scale_step;
+		}
+		scale += scale_step;
 		ASSERT(text_renderer_add_text(
 			text_renderer, str("It ain't much, but it's honest work"), 150,
-			250));
+			250, scale));
 
 		gpu_color_target color_target = {
 			.clear_color = (gpu_color){.floats = {.1f, .1f, .1f, 1.f}},

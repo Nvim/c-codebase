@@ -6,8 +6,6 @@ LIB_EXPORT text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena);
 
 LIB_EXPORT void text_renderer_destroy(text_renderer_t* renderer);
 
-LIB_EXPORT void text_renderer_set_scale(text_renderer_t* renderer, float scale);
-
 typedef struct font_atlas_info {
 	gpu_image_extent glyph_size;
 	uint8_t first_char; // First char in ASCII table
@@ -22,7 +20,7 @@ LIB_EXPORT bool text_renderer_load_atlas_from_file(text_renderer_t* renderer,
 												   font_atlas_info atlas_info);
 
 LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer, string text,
-									   uint32_t x, uint32_t y);
+									   uint32_t x, uint32_t y, float scale);
 
 /**
  * [NOTE] Post-processing step on top of framebuffer.
