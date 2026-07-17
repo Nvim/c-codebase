@@ -69,6 +69,15 @@ if(NOT MSVC)
     )
 endif()
 
+option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
+if(ENABLE_ASAN)
+    target_compile_options(compile_flags INTERFACE -fsanitize=address)
+    target_link_options(compile_flags INTERFACE -fsanitize=address)
+	if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+        target_link_options(compile_flags INTERFACE -shared-libasan)
+    endif()
+endif()
+
 FetchContent_Declare(
     glfw
     GIT_REPOSITORY https://github.com/glfw/glfw.git

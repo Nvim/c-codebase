@@ -70,7 +70,7 @@ int main(void) {
 	arena_t* arena = arena_create_from_config(arena_ci);
 	ASSERT(arena);
 
-	arena_t* frame_arena = arena_create(1*MEMORY_MIB);
+	arena_t* frame_arena = arena_create(1 * MEMORY_MIB);
 	ASSERT(frame_arena);
 
 	gpu_api gpu = {0};
@@ -381,6 +381,8 @@ int main(void) {
 
 	double t_prev_s = platform_get_time_s();
 	double delta_ms = 0.0f;
+	double frametime_ms =
+		TARGET_FRAMETIME_MS; // max between delta and TARGET_FRAMETIME_MS.
 
 	float scale_step = .01f;
 	float scale = 1.f;
@@ -407,16 +409,19 @@ int main(void) {
 
 		uniform->time = t_prev_s;
 
-		if(scale >= 2.5f || scale <= .25f) {
-			scale_step = -scale_step;
-		}
+		if (scale >= 2.5f || scale <= .25f) { scale_step = -scale_step; }
 		scale += scale_step;
 		ASSERT(text_renderer_add_text(
-			text_renderer, str("It ain't much, but it's honest work"), 150,
-			250, scale));
+			text_renderer, str("It ain't much, but it's honest work"), 150, 250,
+			scale));
 
-		ASSERT(text_renderer_add_text(
-			text_renderer, str("another string"), 15, 25, 2.f));
+		float fps = 1000.f / frametime_ms;
+		string fps_str, delta_str;
+		string_create_fmt(frame_arena, &fps_str, "FPS: %.2f (%.2f ms)", fps, frametime_ms);
+		string_create_fmt(frame_arena, &delta_str, "Delta: %.2f ms", delta_ms);
+
+		ASSERT(text_renderer_add_text(text_renderer, fps_str, 15, 25, 1.f));
+		ASSERT(text_renderer_add_text(text_renderer, delta_str, 15, 35, 1.f));
 
 		gpu_color_target color_target = {
 			.clear_color = (gpu_color){.floats = {.1f, .1f, .1f, 1.f}},
@@ -448,8 +453,10 @@ int main(void) {
 		ASSERT(gpu.end_frame(&gpu, &frame));
 		double t_now_s = platform_get_time_s();
 		delta_ms = (t_now_s - t_prev_s) * 1000.f;
+		frametime_ms = delta_ms;
 		if (delta_ms < TARGET_FRAMETIME_MS) {
 			platform_sleep(TARGET_FRAMETIME_MS - delta_ms);
+			frametime_ms = TARGET_FRAMETIME_MS;
 			// LOG_DEBUG("frame took %f ms. slept for %f ms", delta_ms,
 			// 		  TARGET_FRAMETIME_MS - delta_ms);
 			// LOG_DEBUG("==============================================");
