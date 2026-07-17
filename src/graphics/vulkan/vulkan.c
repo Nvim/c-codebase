@@ -909,7 +909,7 @@ bool vulkan_cmd_transition_image(gpu_api* self, gpu_command_buffer cmd_handle,
 
 	gpu_image_state cur_state = img_data->gpu_state;
 	if (new_state == cur_state) {
-		LOG_DEBUG("vk_transition_image: transition to same usage");
+		// LOG_DEBUG("vk_transition_image: transition to same usage");
 		return true;
 	}
 
@@ -1586,6 +1586,29 @@ gpu_pipeline vulkan_create_pipeline(gpu_api* self, gpu_pipeline_ci* ci) {
 			viewport_ci.viewportCount = 1;
 			viewport_ci.scissorCount = 1;
 		}
+
+		VkFormat formats[GPU_MAX_RENDERTARGETS] = {0};
+		VkPipelineColorBlendAttachmentState
+			blend_states[GPU_MAX_RENDERTARGETS] = {0};
+		for (uint32_t i = 0; i < ci->color_target_count; ++i) {
+			formats[i] = gpu_to_vk_image_format(ci->color_targets[i].format);
+
+			// hardcoded alpha blending is enough for now
+			VkPipelineColorBlendAttachmentState* b = &blend_states[i];
+			b->blendEnable = ci->color_targets[i].blend;
+
+			b->colorBlendOp = VK_BLEND_OP_ADD;
+			b->srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+			b->dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+
+			b->srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+			b->dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+			b->alphaBlendOp = VK_BLEND_OP_ADD;
+
+			b->colorWriteMask =
+				VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+				VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+		}
 		VkPipelineColorBlendAttachmentState blend_state = {
 			.colorWriteMask = 0xF,
 		};
@@ -1611,10 +1634,6 @@ gpu_pipeline vulkan_create_pipeline(gpu_api* self, gpu_pipeline_ci* ci) {
 		VkPipelineVertexInputStateCreateInfo vert_input_ci = {
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
 
-		VkFormat formats[GPU_MAX_RENDERTARGETS] = {0};
-		for (uint32_t i = 0; i < ci->color_target_count; ++i) {
-			formats[i] = gpu_to_vk_image_format(ci->color_targets[i].format);
-		}
 		VkPipelineRenderingCreateInfo _renderInfo = {0};
 		{
 			_renderInfo.sType =
@@ -1935,6 +1954,21 @@ gpu_image_view vulkan_create_image_view(gpu_api* self, gpu_image_view_ci* ci) {
 
 	out.handle = vk_image_view_pool_unwrap(ret);
 	return out;
+}
+
+gpu_image vulkan_get_image_from_view(gpu_api* self, gpu_image_view v) {
+	gpu_image ret = {.handle = POOL_INVALID_HANDLE};
+
+	vk_api_state* state = self->state;
+	vk_image_view_data* data =
+		vk_image_view_pool_get(state->image_view_pool, to_vk_imgview(v));
+	if (!data || !data->view) {
+		LOG_ERR("vulkan_get_image_from_view: invalid view handle");
+		return ret;
+	}
+
+	ret.handle = vk_image_pool_unwrap(data->image);
+	return ret;
 }
 
 bool vulkan_get_image_view_shader_index(struct gpu_api* self,
@@ -2630,6 +2664,7 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->create_image = vulkan_create_image;
 		out->destroy_image = vulkan_destroy_image;
 		out->create_image_view = vulkan_create_image_view;
+		out->get_image_from_view = vulkan_get_image_from_view;
 		out->get_image_view_shader_index = vulkan_get_image_view_shader_index;
 		out->destroy_image_view = vulkan_destroy_image_view;
 		out->cmd_copy_to_image = vulkan_cmd_copy_to_image;

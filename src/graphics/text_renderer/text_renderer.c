@@ -445,7 +445,6 @@ LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer, string text,
 	vertex* verts = buffered_buffer_get_mapped(&r->vertex_buffers);
 
 	char c;
-	uint64_t vert_idx = 0; // 6 per char
 	for (uint64_t i = 0; i < text.len; ++i) {
 		c = text.str[i];
 
@@ -481,15 +480,13 @@ LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer, string text,
 
 		x += info.glyph_size.width * scale;
 
-		verts[vert_idx++] = (vertex){x0_ndc, y0_ndc, u0, v0}; // top left
-		verts[vert_idx++] = (vertex){x0_ndc, y1_ndc, u0, v1}; // bot left
-		verts[vert_idx++] = (vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
-		verts[vert_idx++] = (vertex){x0_ndc, y0_ndc, u0, v0}; // top left
-		verts[vert_idx++] = (vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
-		verts[vert_idx++] = (vertex){x1_ndc, y0_ndc, u1, v0}; // top right
+		verts[r->vertex_count++] = (vertex){x0_ndc, y0_ndc, u0, v0}; // top left
+		verts[r->vertex_count++] = (vertex){x0_ndc, y1_ndc, u0, v1}; // bot left
+		verts[r->vertex_count++] = (vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
+		verts[r->vertex_count++] = (vertex){x0_ndc, y0_ndc, u0, v0}; // top left
+		verts[r->vertex_count++] = (vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
+		verts[r->vertex_count++] = (vertex){x1_ndc, y0_ndc, u1, v0}; // top right
 	}
-
-	r->vertex_count += vert_idx;
 
 	return true;
 }
@@ -501,9 +498,32 @@ static void _advance_buffers(text_renderer* r) {
 
 LIB_EXPORT bool text_renderer_draw(text_renderer_t* renderer,
 								   gpu_command_buffer cmd,
-								   UNUSED gpu_image_view target) {
+								   gpu_image_view target) {
 	text_renderer* r = (text_renderer*)renderer;
 	gpu_api* gpu = r->gpu;
+
+	gpu_color_target color_target = {
+		.clear_color = (gpu_color){.floats = {.1f, .1f, .1f, 1.f}},
+		.load_op = GPU_LOAD_OP_LOAD,
+		.store_op = GPU_STORE_OP_STORE,
+		.target = target,
+	};
+	gpu_render_state render_state = {
+		.color_target_count = 1,
+		.color_targets = {color_target},
+	};
+
+	gpu_image target_img = gpu->get_image_from_view(gpu, target);
+	if (!check_handle(target_img.handle)) {
+		LOG_ERR("text_renderer_draw: couldn't get target's image");
+		return false;
+	}
+
+	gpu->cmd_transition_image(gpu, cmd, target_img,
+							  GPU_IMAGE_STATE_RENDER_TARGET);
+	gpu->cmd_reset_viewport(gpu, cmd);
+	gpu->cmd_reset_scissor(gpu, cmd);
+	gpu->cmd_begin_rendering(gpu, cmd, &render_state);
 
 	gpu_device_address verts = buffered_buffer_get_addr(&r->vertex_buffers);
 	gpu_device_address u = buffered_buffer_get_addr(&r->uniform_buffers);
@@ -517,6 +537,7 @@ LIB_EXPORT bool text_renderer_draw(text_renderer_t* renderer,
 	gpu->cmd_bind_pipeline(gpu, cmd, r->pipeline, &pc);
 
 	gpu->cmd_draw(gpu, cmd, r->vertex_count, 1, 0, 0);
+	gpu->cmd_end_rendering(gpu, cmd);
 
 	_advance_buffers(r);
 	r->vertex_count = 0;

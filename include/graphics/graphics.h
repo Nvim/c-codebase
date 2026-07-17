@@ -670,6 +670,7 @@ typedef struct gpu_api {
 	gpu_image_view (*create_image_view)(struct gpu_api*, gpu_image_view_ci*);
 	bool (*get_image_view_shader_index)(struct gpu_api*, gpu_image_view,
 										uint32_t* out);
+	gpu_image (*get_image_from_view)(struct gpu_api*, gpu_image_view);
 	void (*destroy_image_view)(struct gpu_api*, gpu_image_view);
 	bool (*cmd_copy_to_image)(struct gpu_api*, gpu_command_buffer,
 							  gpu_image_copy_info* info);

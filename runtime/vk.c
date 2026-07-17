@@ -70,6 +70,9 @@ int main(void) {
 	arena_t* arena = arena_create_from_config(arena_ci);
 	ASSERT(arena);
 
+	arena_t* frame_arena = arena_create(1*MEMORY_MIB);
+	ASSERT(frame_arena);
+
 	gpu_api gpu = {0};
 	gpu_api_config gpu_ci = {0};
 	{
@@ -128,7 +131,7 @@ int main(void) {
 		gpu_pipeline_builder_create(&builder);
 		set_vertex_shader(&builder, vs);
 		set_fragment_shader(&builder, fs);
-		add_color_target(&builder, gpu.config.target_image_format, false);
+		add_color_target(&builder, gpu.config.target_image_format, true);
 		pipeline = gpu_pipeline_build(&gpu, &builder);
 		ASSERT(check_handle(pipeline.handle));
 	}
@@ -384,6 +387,8 @@ int main(void) {
 
 	while (!_quit) {
 
+		arena_reset(frame_arena);
+
 		platform_poll();
 		if (platform_window_should_close(win)) { break; }
 
@@ -410,6 +415,9 @@ int main(void) {
 			text_renderer, str("It ain't much, but it's honest work"), 150,
 			250, scale));
 
+		ASSERT(text_renderer_add_text(
+			text_renderer, str("another string"), 15, 25, 2.f));
+
 		gpu_color_target color_target = {
 			.clear_color = (gpu_color){.floats = {.1f, .1f, .1f, 1.f}},
 			.load_op = GPU_LOAD_OP_CLEAR,
@@ -433,8 +441,10 @@ int main(void) {
 		gpu.cmd_draw_indirect_indexed(
 			&gpu, cmd, indirect_buffer, 0, 1,
 			sizeof(gpu_cmd_indirect_indexed_draw_command));
-		text_renderer_draw(text_renderer, cmd, color_target.target);
 		gpu.cmd_end_rendering(&gpu, cmd);
+
+		text_renderer_draw(text_renderer, cmd, frame.framebuffer_view);
+
 		ASSERT(gpu.end_frame(&gpu, &frame));
 		double t_now_s = platform_get_time_s();
 		delta_ms = (t_now_s - t_prev_s) * 1000.f;
