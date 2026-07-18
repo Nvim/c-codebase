@@ -425,11 +425,11 @@ void text_renderer_destroy(text_renderer_t* renderer) {
 	buffered_buffer_destroy(&r->uniform_buffers, gpu);
 }
 
-LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer, string text,
+bool text_renderer_add_text_pixels(text_renderer_t* renderer, string text,
 									   uint32_t x, uint32_t y, float scale) {
 	text_renderer* r = (text_renderer*)renderer;
 
-	if (scale < 0.125f || scale > 5.f) {
+	if (scale < TEXT_MIN_SCALE || scale > TEXT_MAX_SCALE) {
 		LOG_ERR("text_renderer_add_text: invalid scale value: %f", scale);
 		return false;
 	}
@@ -482,13 +482,35 @@ LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer, string text,
 
 		verts[r->vertex_count++] = (vertex){x0_ndc, y0_ndc, u0, v0}; // top left
 		verts[r->vertex_count++] = (vertex){x0_ndc, y1_ndc, u0, v1}; // bot left
-		verts[r->vertex_count++] = (vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
+		verts[r->vertex_count++] =
+			(vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
 		verts[r->vertex_count++] = (vertex){x0_ndc, y0_ndc, u0, v0}; // top left
-		verts[r->vertex_count++] = (vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
-		verts[r->vertex_count++] = (vertex){x1_ndc, y0_ndc, u1, v0}; // top right
+		verts[r->vertex_count++] =
+			(vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
+		verts[r->vertex_count++] =
+			(vertex){x1_ndc, y0_ndc, u1, v0}; // top right
 	}
 
 	return true;
+}
+
+LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer,
+												string text, float x, float y,
+												float scale) {
+	text_renderer* r = (text_renderer*)renderer;
+
+	if (x >= 100.f || x < 0.f || y >= 100.f || y < 0.f) {
+		LOG_ERR("text_renderer_add_text: invalid coordinates");
+		return false;
+	}
+
+	gpu_api* gpu = r->gpu;
+	gpu_image_extent framebuffer_size = gpu->get_framebuffer_extent(gpu);
+
+	uint32_t xx = (x/100.f) * framebuffer_size.width;
+	uint32_t yy = (y/100.f) * framebuffer_size.height;
+
+	return text_renderer_add_text_pixels(renderer, text, xx, yy, scale);
 }
 
 static void _advance_buffers(text_renderer* r) {

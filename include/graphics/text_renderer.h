@@ -1,5 +1,8 @@
 #include "graphics.h"
 
+#define TEXT_MAX_SCALE 0.125f
+#define TEXT_MIN_SCALE 5.f
+
 typedef struct text_renderer_t text_renderer_t;
 
 LIB_EXPORT text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena);
@@ -19,8 +22,20 @@ LIB_EXPORT bool text_renderer_load_atlas_from_file(text_renderer_t* renderer,
 												   arena_t* scratch, path path,
 												   font_atlas_info atlas_info);
 
-LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer, string text,
-									   uint32_t x, uint32_t y, float scale);
+
+/**
+ * @brief Add text to draw for current frame
+ *
+ * @param renderer
+ * @param text String to write. Chars must be in the loaded atlas' range
+ * @param x X coordinate from 0% to 100%.
+ * @param y Y coordinate from 0% to 100%.
+ * @param scale Text scale. Must be between TEXT_MIN_SCALE and TEXT_MAX_SCALE
+ * @return True on success, false on failure.
+ */
+LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer,
+												string text, float x, float y,
+												float scale);
 
 /**
  * [NOTE] Post-processing step on top of framebuffer.
