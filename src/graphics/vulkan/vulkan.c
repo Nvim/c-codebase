@@ -1609,16 +1609,14 @@ gpu_pipeline vulkan_create_pipeline(gpu_api* self, gpu_pipeline_ci* ci) {
 				VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
 				VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 		}
-		VkPipelineColorBlendAttachmentState blend_state = {
-			.colorWriteMask = 0xF,
-		};
+
 		VkPipelineColorBlendStateCreateInfo blend_ci = {0};
 		{
 			blend_ci.sType =
 				VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
 			blend_ci.pNext = NULL;
-			blend_ci.attachmentCount = 1;
-			blend_ci.pAttachments = &blend_state;
+			blend_ci.attachmentCount = ci->color_target_count;
+			blend_ci.pAttachments = blend_states;
 		}
 		VkPipelineShaderStageCreateInfo shader_stages[2] = {
 			{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,

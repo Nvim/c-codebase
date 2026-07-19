@@ -57,14 +57,7 @@ FSOutput fragMain(VSOutput input, uniform VSInput constants) {
 	Texture2D tex = textures[tex_idx];
 	SamplerState sampler = samplers[sampler_idx];
 
-	// Texture only has red channel
-	float color = tex.Sample(sampler, input.uv).x;
-
-	// [TODO]: real blending
-	if (color == 0.f) {
-		discard;
-	}
-
-	ret.color = float4(float3(color), 1.f);
+	// Texture only has binary red channel, use it as alpha for blending
+	ret.color = tex.Sample(sampler, input.uv).rrrr;
 	return ret;
 }

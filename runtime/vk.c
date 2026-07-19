@@ -131,7 +131,7 @@ int main(void) {
 		gpu_pipeline_builder_create(&builder);
 		set_vertex_shader(&builder, vs);
 		set_fragment_shader(&builder, fs);
-		add_color_target(&builder, gpu.config.target_image_format, true);
+		add_color_target(&builder, gpu.config.target_image_format, false);
 		pipeline = gpu_pipeline_build(&gpu, &builder);
 		ASSERT(check_handle(pipeline.handle));
 	}

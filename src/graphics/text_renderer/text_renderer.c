@@ -181,7 +181,7 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 		gpu_pipeline_builder_create(&builder);
 		set_vertex_shader(&builder, vs);
 		set_fragment_shader(&builder, fs);
-		add_color_target(&builder, gpu->config.target_image_format, false);
+		add_color_target(&builder, gpu->config.target_image_format, true);
 		pipeline = gpu_pipeline_build(gpu, &builder);
 	}
 	gpu->destroy_shader(gpu, vs);
@@ -412,10 +412,7 @@ void text_renderer_destroy(text_renderer_t* renderer) {
 	gpu_api* gpu = r->gpu;
 	gpu->destroy_buffer(gpu, r->staging);
 
-	if (!r->is_init) {
-		// Nothing else to destroy for now. [TODO]: pipeline
-		return;
-	}
+	if (!r->is_init) { return; }
 
 	gpu->destroy_image_view(gpu, r->atlas_texture);
 	gpu->destroy_image(gpu, r->atlas);
