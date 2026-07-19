@@ -15,6 +15,5 @@ LIB_EXPORT double platform_get_time(void) {
 LIB_EXPORT double platform_get_time_s(void) {
 	struct timespec now;
 	clock_gettime(CLOCK_MONOTONIC, &now);
-    return (double)now.tv_sec +
-           (double)now.tv_nsec * 1e-9;
+	return (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
 }

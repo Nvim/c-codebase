@@ -426,7 +426,8 @@ void text_renderer_destroy(text_renderer_t* renderer) {
 }
 
 bool text_renderer_add_text_pixels(text_renderer_t* renderer, string text,
-									   uint32_t x, uint32_t y, float scale) {
+								   uint32_t base_x, uint32_t base_y,
+								   float scale) {
 	text_renderer* r = (text_renderer*)renderer;
 
 	if (scale < TEXT_MIN_SCALE || scale > TEXT_MAX_SCALE) {
@@ -444,11 +445,17 @@ bool text_renderer_add_text_pixels(text_renderer_t* renderer, string text,
 	uint32_t cols = r->atlas_size.width / char_width;
 	vertex* verts = buffered_buffer_get_mapped(&r->vertex_buffers);
 
+	uint32_t x = base_x;
+	uint32_t y = base_y;
+
 	char c;
 	for (uint64_t i = 0; i < text.len; ++i) {
 		c = text.str[i];
 
-		if (c < info.first_char || c > info.last_char) {
+		if (c == '\n') {
+			x = base_x - info.glyph_size.width * scale;
+			y = base_y + info.glyph_size.height * scale;
+		} else if (c < info.first_char || c > info.last_char) {
 			LOG_WARN("text_renderer_add_text: char isn't in atlas: %c (%u)", c, c); // clang-format-ignore
 			continue;
 		}
@@ -494,9 +501,8 @@ bool text_renderer_add_text_pixels(text_renderer_t* renderer, string text,
 	return true;
 }
 
-LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer,
-												string text, float x, float y,
-												float scale) {
+LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer, string text,
+									   float x, float y, float scale) {
 	text_renderer* r = (text_renderer*)renderer;
 
 	if (x >= 100.f || x < 0.f || y >= 100.f || y < 0.f) {
@@ -507,8 +513,8 @@ LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer,
 	gpu_api* gpu = r->gpu;
 	gpu_image_extent framebuffer_size = gpu->get_framebuffer_extent(gpu);
 
-	uint32_t xx = (x/100.f) * framebuffer_size.width;
-	uint32_t yy = (y/100.f) * framebuffer_size.height;
+	uint32_t xx = (x / 100.f) * framebuffer_size.width;
+	uint32_t yy = (y / 100.f) * framebuffer_size.height;
 
 	return text_renderer_add_text_pixels(renderer, text, xx, yy, scale);
 }

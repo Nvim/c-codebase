@@ -1,7 +1,7 @@
 #include "graphics.h"
 
-#define TEXT_MAX_SCALE 0.125f
-#define TEXT_MIN_SCALE 5.f
+#define TEXT_MIN_SCALE 0.125f
+#define TEXT_MAX_SCALE 5.f
 
 typedef struct text_renderer_t text_renderer_t;
 
