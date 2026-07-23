@@ -351,6 +351,7 @@ LIB_EXPORT bool text_renderer_load_atlas_from_file(text_renderer_t* renderer,
 	{ // Upload image and wait
 		gpu_command_buffer cmd = gpu.create_command_buffer(&gpu);
 		ASSERT(check_handle(cmd.handle));
+		gpu.cmd_begin_debug_marker(&gpu, cmd, "text renderer init");
 		gpu.cmd_transition_image(&gpu, cmd, img, GPU_IMAGE_STATE_TRANSFER_DST);
 
 		gpu_image_region_array regions =
@@ -375,6 +376,8 @@ LIB_EXPORT bool text_renderer_load_atlas_from_file(text_renderer_t* renderer,
 		}
 
 		gpu.cmd_transition_image(&gpu, cmd, img, GPU_IMAGE_STATE_SHADER_READ);
+
+		gpu.cmd_end_debug_marker(&gpu, cmd);
 
 		gpu_fence fence = gpu.create_fence(&gpu, false);
 		if (!gpu.submit_command_buffer_fence(&gpu, cmd, fence)) {
@@ -544,6 +547,7 @@ LIB_EXPORT bool text_renderer_draw(text_renderer_t* renderer,
 		return false;
 	}
 
+	gpu->cmd_begin_debug_marker(gpu, cmd, "text renderer");
 	gpu->cmd_transition_image(gpu, cmd, target_img,
 							  GPU_IMAGE_STATE_RENDER_TARGET);
 	gpu->cmd_reset_viewport(gpu, cmd);
@@ -563,6 +567,7 @@ LIB_EXPORT bool text_renderer_draw(text_renderer_t* renderer,
 
 	gpu->cmd_draw(gpu, cmd, r->vertex_count, 1, 0, 0);
 	gpu->cmd_end_rendering(gpu, cmd);
+	gpu->cmd_end_debug_marker(gpu, cmd);
 
 	_advance_buffers(r);
 	r->vertex_count = 0;

@@ -60,6 +60,31 @@ static bool _device_exts(VkPhysicalDevice dev, arena_t* scratch) {
 	return false;
 }
 
+// Look for VK_EXT_DEBUG_UTILS_EXTENSION_NAME for debug mode only
+static bool _instance_exts(arena_t* scratch) {
+#ifdef _DEBUG
+	uint32_t ext_count;
+	check_result(
+		vkEnumerateInstanceExtensionProperties(NULL, &ext_count, NULL));
+	vk_ext_props_array arr = vk_ext_props_array_create(scratch, ext_count);
+	assert(arr.raw);
+
+	VkExtensionProperties* props = vk_ext_props_array_begin(arr);
+	check_result(
+		vkEnumerateInstanceExtensionProperties(NULL, &ext_count, props));
+
+	for (uint32_t i = 0; i < ext_count; i++) {
+		if (strcmp(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, props[i].extensionName) ==
+			0) {
+			return true;
+		}
+	}
+	return false;
+#else
+	return true;
+#endif
+}
+
 // Returns index of the first queue family with graphics and compute
 // capabilities
 static uint32_t _get_queue_family(VkPhysicalDevice dev, arena_t* scratch) {
@@ -235,7 +260,7 @@ static VkDevice _create_device(VkPhysicalDevice physical_device,
 		device_ci.pNext = &vk_13_features;
 		device_ci.queueCreateInfoCount = 1;
 		device_ci.pQueueCreateInfos = &queue_ci;
-		device_ci.enabledExtensionCount = 1;
+		device_ci.enabledExtensionCount = countof(required_exts);
 		device_ci.ppEnabledExtensionNames = required_exts;
 		device_ci.pEnabledFeatures = &vk_10_features;
 	}
@@ -355,6 +380,19 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		state->pf_init_info = vk_pf_info;
 	}
 
+	array_t* ext_with_debug = _array_create(
+		scratch, state->pf_init_info.required_instance_extensions_count + 1,
+		sizeof(char*));
+	char const** ext_begin;
+	_array_at(ext_with_debug, (void**)&ext_begin, 0);
+
+	uint32_t i = 0;
+	for (; i < state->pf_init_info.required_instance_extensions_count; ++i) {
+		ext_begin[i] = state->pf_init_info.required_instance_extensions[i];
+	}
+	ext_begin[i] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+
+	if (!_instance_exts(scratch)) { ASSERT(false); };
 	{ // Instance:
 		VkInstance instance;
 		VkApplicationInfo app_ci = {0};
@@ -368,16 +406,26 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		{
 			instance_ci.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 			instance_ci.pApplicationInfo = &app_ci;
-			instance_ci.enabledExtensionCount =
-				state->pf_init_info.required_instance_extensions_count;
-			instance_ci.ppEnabledExtensionNames =
-				state->pf_init_info.required_instance_extensions;
+			instance_ci.enabledExtensionCount = _array_size(ext_with_debug);
+			instance_ci.ppEnabledExtensionNames = ext_begin;
 		}
 
 		check_result(vkCreateInstance(&instance_ci, NULL, &instance));
 		ASSERT(instance);
 		state->instance = instance;
 	}
+
+	state->cmd_insert_debug_label =
+		(PFN_vkCmdInsertDebugUtilsLabelEXT)vkGetInstanceProcAddr(
+			state->instance, "vkCmdInsertDebugUtilsLabelEXT");
+
+	state->cmd_begin_debug_marker =
+		(PFN_vkCmdBeginDebugUtilsLabelEXT)vkGetInstanceProcAddr(
+			state->instance, "vkCmdBeginDebugUtilsLabelEXT");
+
+	state->cmd_end_debug_marker =
+		(PFN_vkCmdEndDebugUtilsLabelEXT)vkGetInstanceProcAddr(
+			state->instance, "vkCmdEndDebugUtilsLabelEXT");
 
 	gpu_api_config* cfg = &self->config;
 
@@ -1318,6 +1366,7 @@ void vulkan_cmd_bind_pipeline(gpu_api* self, gpu_command_buffer cmd,
 		pc_info.layout = data->layout;
 		pc_info.pValues = &pc;
 	}
+
 	vkCmdPushConstants2(cmd_buf, &pc_info);
 }
 
@@ -2607,6 +2656,52 @@ bool vulkan_cmd_buffer_barrier(gpu_api* self, gpu_command_buffer cmd,
 	return true;
 }
 
+void vulkan_cmd_push_debug_label(struct gpu_api* self, gpu_command_buffer cmd,
+								 char const* label) {
+	vk_api_state* state = self->state;
+
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
+
+	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
+
+	VkDebugUtilsLabelEXT debug = {0};
+	{
+		debug.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+		debug.pLabelName = label;
+	}
+
+	state->cmd_insert_debug_label(cmd_buf, &debug);
+}
+
+void vulkan_cmd_begin_debug_marker(struct gpu_api* self, gpu_command_buffer cmd,
+								   char const* label) {
+	vk_api_state* state = self->state;
+
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
+
+	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
+
+	VkDebugUtilsLabelEXT debug = {0};
+	{
+		debug.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+		debug.pLabelName = label;
+	}
+
+	state->cmd_begin_debug_marker(cmd_buf, &debug);
+}
+
+void vulkan_cmd_end_debug_marker(struct gpu_api* self, gpu_command_buffer cmd) {
+	vk_api_state* state = self->state;
+
+	vk_cmdbuf_data* cmd_data =
+		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
+
+	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
+	state->cmd_end_debug_marker(cmd_buf);
+}
+
 bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 	if (!out) {
 		LOG_ERR("gpu_create_api: invalid parameters");
@@ -2689,6 +2784,11 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->get_framebuffer_extent = vulkan_get_framebuffer_extent;
 		out->get_image_extent = vulkan_get_image_extent;
 		out->get_image_format = vulkan_get_image_format;
+
+		/* == Debug Utils =================================================== */
+		out->cmd_push_debug_label = vulkan_cmd_push_debug_label;
+		out->cmd_begin_debug_marker = vulkan_cmd_begin_debug_marker;
+		out->cmd_end_debug_marker = vulkan_cmd_end_debug_marker;
 	}
 
 	return true;

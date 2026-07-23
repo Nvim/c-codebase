@@ -715,6 +715,13 @@ typedef struct gpu_api {
 	gpu_image_extent (*get_framebuffer_extent)(struct gpu_api*);
 	gpu_image_extent (*get_image_extent)(struct gpu_api*, gpu_image);
 	gpu_image_format (*get_image_format)(struct gpu_api*, gpu_image);
+
+	/* == Debug Utils ====================================================== */
+	void (*cmd_push_debug_label)(struct gpu_api* self, gpu_command_buffer cmd,
+								 char const* label);
+	void (*cmd_begin_debug_marker)(struct gpu_api*, gpu_command_buffer,
+								   char const* label);
+	void (*cmd_end_debug_marker)(struct gpu_api*, gpu_command_buffer);
 } gpu_api;
 
 LIB_EXPORT bool gpu_create_api(gpu_api_config config, gpu_api* out);

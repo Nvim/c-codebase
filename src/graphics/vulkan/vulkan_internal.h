@@ -269,6 +269,10 @@ typedef struct vk_api_state {
 	VkPhysicalDeviceDescriptorIndexingProperties descriptor_props;
 	VkPhysicalDeviceVulkan14Properties vulkan_props;
 
+	PFN_vkCmdInsertDebugUtilsLabelEXT cmd_insert_debug_label;
+	PFN_vkCmdBeginDebugUtilsLabelEXT cmd_begin_debug_marker;
+	PFN_vkCmdEndDebugUtilsLabelEXT cmd_end_debug_marker;
+
 	// Limits we care about:
 	uint64_t max_buffer_size;
 	uint64_t max_buffer_range;

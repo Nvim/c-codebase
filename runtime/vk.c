@@ -257,6 +257,7 @@ int main(void) {
 	{ // Upload image and vertices and wait
 		gpu_command_buffer cmd = gpu.create_command_buffer(&gpu);
 		ASSERT(check_handle(cmd.handle));
+		gpu.cmd_begin_debug_marker(&gpu, cmd, "UPLOAD PASS");
 		gpu.cmd_transition_image(&gpu, cmd, test_image,
 								 GPU_IMAGE_STATE_TRANSFER_DST);
 
@@ -306,6 +307,8 @@ int main(void) {
 		}
 		ASSERT(gpu.cmd_copy_to_buffer(&gpu, cmd, &buf_copy));
 
+		gpu.cmd_push_debug_label(&gpu, cmd, "blitting");
+
 		{ // TEMP: test image blit
 			gpu_image_ci img_ci = {0};
 			img_ci.dimensions = (gpu_image_extent){.width = img_read.width,
@@ -336,6 +339,8 @@ int main(void) {
 
 		gpu.cmd_transition_image(&gpu, cmd, test_image,
 								 GPU_IMAGE_STATE_SHADER_READ);
+
+		gpu.cmd_end_debug_marker(&gpu, cmd);
 
 		gpu_fence fence = gpu.create_fence(&gpu, false);
 		ASSERT(gpu.submit_command_buffer_fence(&gpu, cmd, fence));
@@ -433,6 +438,9 @@ int main(void) {
 			.color_target_count = 1,
 			.color_targets = {color_target},
 		};
+
+		gpu.cmd_begin_debug_marker(&gpu, cmd, "textured quad");
+
 		gpu.cmd_transition_image(&gpu, cmd, frame.framebuffer,
 								 GPU_IMAGE_STATE_RENDER_TARGET);
 		gpu.cmd_reset_viewport(&gpu, cmd);
@@ -447,6 +455,8 @@ int main(void) {
 			&gpu, cmd, indirect_buffer, 0, 1,
 			sizeof(gpu_cmd_indirect_indexed_draw_command));
 		gpu.cmd_end_rendering(&gpu, cmd);
+
+		gpu.cmd_end_debug_marker(&gpu, cmd);
 
 		text_renderer_draw(text_renderer, cmd, frame.framebuffer_view);
 
