@@ -2,13 +2,11 @@ find_package(Vulkan REQUIRED)
 
 add_library(vma)
 
-FetchContent_Declare(
-    VulkanMemoryAllocator
-    GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
-    GIT_TAG v3.3.0
-)
 set(VMA_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(VulkanMemoryAllocator)
+add_subdirectory(
+    ${PROJECT_SOURCE_DIR}/thirdparty/VulkanMemoryAllocator
+    ${PROJECT_SOURCE_DIR}/build/thirdparty/VulkanMemoryAllocator
+)
 
 target_link_libraries(vma PRIVATE GPUOpen::VulkanMemoryAllocator)
 target_compile_options(vma PRIVATE -fPIC)

@@ -60,7 +60,12 @@ static void framebuffer_size_callback(GLFWwindow* window, int width,
 bool platform_init(void) {
 	glfwSetErrorCallback(on_error);
 
+#ifdef PLATFORM_LINUX_WAYLAND
+	glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_WAYLAND);
+#else
 	glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+#endif // PLATFORM_LINUX_WAYLAND
+
 	_init = (glfwInit() == GLFW_TRUE);
 	ASSERT(_init);
 

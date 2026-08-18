@@ -4,7 +4,6 @@
 build/
 compile_commands.json
 out/*
-thirdparty/*
 *.spirv
 mise.local.toml
 *.cap

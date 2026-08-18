@@ -204,8 +204,6 @@ typedef void (*mouse_button_callback)(window_t* window,
 									  input_mouse_button button,
 									  key_action action);
 
-// [TODO]: Callbacks should take window as arg
-
 /**
  * @brief Register a callback to run for the given key/action combinaison.
  *

@@ -16,13 +16,17 @@ endif()
 
 enable_testing()
 
-set(PLATFORM "LINUX_WAYLAND" CACHE STRING "Target platform (LINUX_WAYLAND or LINUX_X11)")
+set(PLATFORM
+    "LINUX_WAYLAND"
+    CACHE STRING
+    "Target platform (LINUX_WAYLAND or LINUX_X11)"
+)
 if(PLATFORM STREQUAL "LINUX_WAYLAND")
     add_compile_definitions(PLATFORM_LINUX=1)
-	add_compile_definitions(WAYLAND=1)
+	add_compile_definitions(PLATFORM_LINUX_WAYLAND=1)
 elseif(PLATFORM STREQUAL "LINUX_X11")
     add_compile_definitions(PLATFORM_LINUX=1)
-	add_compile_definitions(X11=1)
+	add_compile_definitions(PLATFORM_LINUX_X11=1)
 else()
 	message(FATAL_ERROR "Invalid platform value: '${PLATFORM}'")
 endif()
@@ -46,9 +50,14 @@ target_compile_definitions(compile_flags
 )
 
 # Build type specific:
-target_compile_options(compile_flags
+target_compile_options(
+    compile_flags
     INTERFACE
-        $<$<CONFIG:Debug>:-O0 -g3 -fno-inline -fno-omit-frame-pointer -fvisibility=default>
+        $<$<CONFIG:Debug>:-O0
+        -g3
+        -fno-inline
+        -fno-omit-frame-pointer
+        -fvisibility=default>
         $<$<NOT:$<CONFIG:Debug>>:-fvisibility=hidden>
 )
 
@@ -78,18 +87,20 @@ if(ENABLE_ASAN)
     endif()
 endif()
 
-FetchContent_Declare(
-    glfw
-    GIT_REPOSITORY https://github.com/glfw/glfw.git
-    GIT_TAG 3.4
-)
+# == Thirdparty == #
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 
-# Make GLFW available (downloads and integrates it)
-FetchContent_MakeAvailable(glfw)
+if(PLATFORM STREQUAL "LINUX_WAYLAND")
+	set(GLFW_BUILD_X11 OFF CACHE BOOL "" FORCE)
+elseif(PLATFORM STREQUAL "LINUX_X11")
+	set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
+endif()
 
+add_subdirectory(thirdparty/glfw)
+
+# == Actual source == #
 add_subdirectory(tests)
 add_subdirectory(src/platform)
 add_subdirectory(src/core)
