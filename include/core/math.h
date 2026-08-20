@@ -72,32 +72,49 @@ typedef union mat4 {
 } mat4;
 
 // [TODO]: out params vs return values
-LIB_EXPORT void vec2_add(vec2* out, vec2 a, vec2 b);
-LIB_EXPORT void vec2_sub(vec2* out, vec2 a, vec2 b);
-LIB_EXPORT void vec2_mul(vec2* out, vec2 a, vec2 b);
-LIB_EXPORT void vec2_dot(vec2* out, vec2 a, vec2 b);
-LIB_EXPORT void vec2_cross(vec2* out, vec2 a, vec2 b);
-LIB_EXPORT void vec2_reflect(vec2* out, vec2 a, vec2 b);
-LIB_EXPORT void vec2_scale(vec2* out, float scale);
+LIB_EXPORT vec2 vec2_add(vec2 a, vec2 b);
+LIB_EXPORT vec2 vec2_sub(vec2 a, vec2 b);
+LIB_EXPORT vec2 vec2_mul(vec2 a, vec2 b);
+LIB_EXPORT float vec2_dot(vec2 a, vec2 b);
+LIB_EXPORT float vec2_length(vec2 v);
+LIB_EXPORT vec2 vec2_reflect(vec2 a, vec2 b);
+LIB_EXPORT vec2 vec2_scale(vec2 v, float scale);
 
-LIB_EXPORT void vec3_add(vec3* out, vec3 a, vec3 b);
-LIB_EXPORT void vec3_sub(vec3* out, vec3 a, vec3 b);
-LIB_EXPORT void vec3_mul(vec3* out, vec3 a, vec3 b);
-LIB_EXPORT void vec3_dot(vec3* out, vec3 a, vec3 b);
-LIB_EXPORT void vec3_cross(vec3* out, vec3 a, vec3 b);
+LIB_EXPORT vec3 vec3_add(vec3 a, vec3 b);
+LIB_EXPORT vec3 vec3_sub(vec3 a, vec3 b);
+LIB_EXPORT vec3 vec3_mul(vec3 a, vec3 b);
+LIB_EXPORT float vec3_dot(vec3 a, vec3 b);
+LIB_EXPORT float vec3_length(vec2 v);
+LIB_EXPORT vec3 vec3_cross(vec3 a, vec3 b);
+LIB_EXPORT vec3 vec3_scale(vec3 v, float scale);
 
-LIB_EXPORT void vec4_add(vec4* out, vec4 a, vec4 b);
-LIB_EXPORT void vec4_sub(vec4* out, vec4 a, vec4 b);
-LIB_EXPORT void vec4_mul(vec4* out, vec4 a, vec4 b);
-LIB_EXPORT void vec4_dot(vec4* out, vec4 a, vec4 b);
-LIB_EXPORT void vec4_cross(vec4* out, vec4 a, vec4 b);
+LIB_EXPORT vec4 vec4_add(vec4 a, vec4 b);
+LIB_EXPORT vec4 vec4_sub(vec4 a, vec4 b);
+LIB_EXPORT vec4 vec4_mul(vec4 a, vec4 b);
+LIB_EXPORT float vec4_dot(vec4 a, vec4 b);
+LIB_EXPORT float vec4_length(vec4 v);
+LIB_EXPORT vec4 vec4_scale(vec4 v, float scale);
 
-LIB_EXPORT void mat3_add(mat3* out, mat3 a, mat3 b);
-LIB_EXPORT void mat3_sub(mat3* out, mat3 a, mat3 b);
-LIB_EXPORT void mat3_mul(mat3* out, mat3 a, mat3 b);
+LIB_EXPORT mat3 mat3_zero(void);
+LIB_EXPORT mat3 mat3_identity(void);
+LIB_EXPORT mat3 mat3_add(mat3 a, mat3 b);
+LIB_EXPORT mat3 mat3_sub(mat3 a, mat3 b);
+LIB_EXPORT mat3 mat3_mul(mat3 a, mat3 b);
+LIB_EXPORT mat3 mat3_scale(mat3 m, float scale);
 
-LIB_EXPORT void mat4_add(mat4* out, mat4 a, mat4 b);
-LIB_EXPORT void mat4_sub(mat4* out, mat4 a, mat4 b);
-LIB_EXPORT void mat4_mul(mat4* out, mat4 a, mat4 b);
+LIB_EXPORT mat4 mat4_zero(void);
+LIB_EXPORT mat4 mat4_identity(void);
+LIB_EXPORT mat4 mat4_add(mat4 a, mat4 b);
+LIB_EXPORT mat4 mat4_sub(mat4 a, mat4 b);
+LIB_EXPORT mat4 mat4_mul(mat4 a, mat4 b);
+LIB_EXPORT mat4 mat4_scale(mat4 m, float scale);
+
+LIB_EXPORT mat3 mat_scale_2d(float scale);
+LIB_EXPORT mat3 mat_translate_2d(float scale);
+LIB_EXPORT mat3 mat_rotate_2d(float scale);
+
+LIB_EXPORT mat4 mat_scale_3d(float scale);
+LIB_EXPORT mat4 mat_translate_3d(float scale);
+LIB_EXPORT mat4 mat_rotate_3d(float scale);
 
 #endif //! MATH_H
