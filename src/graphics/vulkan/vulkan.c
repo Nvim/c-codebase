@@ -25,8 +25,6 @@ ARRAY_DEFINE_TYPE(VkExtensionProperties, vk_ext_props_array)
 #define BUFFER_POOL_SIZE 4096U
 #define HANDLE_POOL_SIZE 1024U
 
-static VkFormat const _default_surface_format = VK_FORMAT_B8G8R8A8_UNORM;
-
 static bool _is_vk_13(VkPhysicalDeviceProperties2 props) {
 	return props.properties.apiVersion >= VK_API_VERSION_1_3;
 }
@@ -588,6 +586,14 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			state->physical_device, state->surface.surface,
 			&surface_formats_count, surface_formats);
 
+		if (surface_formats_count == 0 ||
+			(surface_formats_count == 1 &&
+			 surface_formats[0].format == VK_FORMAT_UNDEFINED)) {
+			LOG_ERR(
+				"vulkan_initialize: no valid surface formats available (huh?)");
+			return;
+		}
+
 		bool format_supported = false;
 		VkFormat wanted =
 			gpu_to_vk_image_format(self->config.target_image_format);
@@ -596,15 +602,23 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			if (surface_formats[i].format == wanted) {
 				format_supported = true;
 				state->rendertarget_format = wanted;
+				state->rendertarget_color_space = surface_formats[i].colorSpace;
 				break;
 			}
 		}
 
+		/**
+		 * [NOTE] If requested user format isn't found, we fallback to the first
+		 * available, which may be completely different from what the user
+		 * asked.
+		 */
 		if (!format_supported) {
-			state->rendertarget_format = _default_surface_format;
-			self->config.target_image_format =
-				vk_to_gpu_image_format(_default_surface_format);
-			LOG_DEBUG("vulkan_initialize: fallback to default surface format");
+			VkFormat format = surface_formats[0].format;
+			state->rendertarget_format = format;
+			state->rendertarget_color_space = surface_formats[0].colorSpace;
+			// [TODO]: Stop mutating config struct someday
+			self->config.target_image_format = vk_to_gpu_image_format(format);
+			LOG_DEBUG("vulkan_initialize: fallback to default surface format: %d", format); // NOLINT
 		}
 	}
 
@@ -635,7 +649,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		if (!vk_swapchain_create(&state->swapchain, arena, state->device,
 								 &state->surface, win_size.width,
 								 win_size.height, sc_img_count,
-								 state->rendertarget_format, state->image_pool,
+								 state->rendertarget_format, state->rendertarget_color_space, state->image_pool,
 								 state->image_view_pool)) {
 			LOG_ERR("vulkan_initialize: couldn't create swapchain");
 			return;

@@ -86,7 +86,7 @@ static bool _swapchain_refresh_arrays(vk_swapchain* out, VkDevice device) {
 bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
 						 vk_surface* surface, uint32_t width, uint32_t height,
 						 uint32_t min_image_count, VkFormat image_format,
-						 vk_image_pool image_pool,
+						 VkColorSpaceKHR color_space, vk_image_pool image_pool,
 						 vk_image_view_pool view_pool) {
 	VkExtent2D sc_extent = surface->capabilities.currentExtent;
 	if (sc_extent.width == 0xFFFFFFFF) {
@@ -98,7 +98,7 @@ bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
 		.surface = surface->surface,
 		.minImageCount = min_image_count,
 		.imageFormat = image_format,
-		.imageColorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR,
+		.imageColorSpace = color_space,
 		.imageExtent = sc_extent,
 		.imageArrayLayers = 1,
 		.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,

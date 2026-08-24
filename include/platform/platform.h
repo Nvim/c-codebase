@@ -10,12 +10,24 @@
 #include <stddef.h>
 #include <stdint.h>
 
+typedef enum platform_type {
+	PLATFORM_TYPE_LINUX_X11,
+	PLATFORM_TYPE_LINUX_WAYLAND,
+	PLATFORM_TYPE_UNKOWN,
+} platform_type;
+
+static const char* platform_type_names[] = {
+	[PLATFORM_TYPE_LINUX_X11] = "X11",
+	[PLATFORM_TYPE_LINUX_WAYLAND] = "Wayland",
+	[PLATFORM_TYPE_UNKOWN] = "Unknown (x11 fallback)",
+};
+
 /**
  * @brief Initialize the platform API. Must be called first before using other
  * functions.
  *
  */
-LIB_EXPORT bool platform_init(void);
+LIB_EXPORT bool platform_init(platform_type type);
 
 /**
  * @brief Release the platform API resources.

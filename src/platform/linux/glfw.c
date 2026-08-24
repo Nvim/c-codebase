@@ -57,14 +57,14 @@ static void cursor_position_callback(GLFWwindow* window, double xpos,
 static void framebuffer_size_callback(GLFWwindow* window, int width,
 									  int height);
 
-bool platform_init(void) {
+bool platform_init(platform_type type) {
 	glfwSetErrorCallback(on_error);
 
-#ifdef PLATFORM_LINUX_WAYLAND
-	glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_WAYLAND);
-#else
-	glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
-#endif // PLATFORM_LINUX_WAYLAND
+	if (type == PLATFORM_TYPE_LINUX_WAYLAND) {
+		glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_WAYLAND);
+	} else {
+		glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+	}
 
 	_init = (glfwInit() == GLFW_TRUE);
 	ASSERT(_init);

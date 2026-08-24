@@ -204,7 +204,7 @@ typedef enum {
 bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
 						 vk_surface* surface, uint32_t width, uint32_t height,
 						 uint32_t min_image_count, VkFormat image_format,
-						 vk_image_pool image_pool,
+						 VkColorSpaceKHR color_space, vk_image_pool image_pool,
 						 vk_image_view_pool view_pool);
 bool vk_swapchain_refresh(vk_swapchain* swapchain, VkDevice device,
 						  vk_surface* surface, uint32_t width, uint32_t height);
@@ -294,6 +294,7 @@ typedef struct vk_api_state {
 	// Swapchain
 	vk_surface surface;
 	VkFormat rendertarget_format;
+	VkColorSpaceKHR rendertarget_color_space;
 	vk_swapchain swapchain;
 
 	// Frame-in-flight buffering

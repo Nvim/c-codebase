@@ -49,9 +49,28 @@ static gpu_cmd_indirect_indexed_draw_command indirect_data = {
 	.first_instance = 0,
 };
 
-int main(void) {
+int main(int argc, char** argv) {
 
-	ASSERT(platform_init());
+	platform_type type = PLATFORM_TYPE_UNKOWN;
+#ifdef PLATFORM_LINUX_WAYLAND
+	type = PLATFORM_TYPE_LINUX_WAYLAND;
+#else
+	type = PLATFORM_TYPE_LINUX_X11;
+#endif // PLATFORM_LINUX_WAYLAND
+
+	if(argc == 2) {
+		char* arg = argv[1];
+		if(strncmp(arg, "--wayland", 9) == 0) {
+			type = PLATFORM_TYPE_LINUX_WAYLAND;
+		}
+		if(strncmp(arg, "--x11", 5) == 0) {
+			type = PLATFORM_TYPE_LINUX_X11;
+		}
+	}
+
+	LOG_INFO("platform init for type %s", platform_type_names[type]);
+
+	ASSERT(platform_init(type));
 	window_size sz = {.width = 640, .height = 480};
 	window_t* win = platform_create_window(sz, "hello");
 	ASSERT(win != NULL);
