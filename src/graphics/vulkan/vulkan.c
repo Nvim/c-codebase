@@ -1461,13 +1461,9 @@ gpu_image_extent vulkan_get_image_extent(gpu_api* self, gpu_image gpu_img) {
 	return vk_to_gpu_image_extent(data->extent);
 }
 
-/**
- * [NOTE] Technically wrong, framebuffer doesn't necessarily span all surface.
- * Will do for now.
- */
 gpu_image_extent vulkan_get_framebuffer_extent(gpu_api* self) {
 	vk_api_state* state = self->state;
-	VkExtent2D ext = state->surface.capabilities.currentExtent;
+	VkExtent2D ext = state->swapchain.ci.imageExtent;
 
 	return (gpu_image_extent){ext.width, ext.height};
 }

@@ -58,20 +58,18 @@ int main(int argc, char** argv) {
 	type = PLATFORM_TYPE_LINUX_X11;
 #endif // PLATFORM_LINUX_WAYLAND
 
-	if(argc == 2) {
+	if (argc == 2) {
 		char* arg = argv[1];
-		if(strncmp(arg, "--wayland", 9) == 0) {
+		if (strncmp(arg, "--wayland", 9) == 0) {
 			type = PLATFORM_TYPE_LINUX_WAYLAND;
 		}
-		if(strncmp(arg, "--x11", 5) == 0) {
-			type = PLATFORM_TYPE_LINUX_X11;
-		}
+		if (strncmp(arg, "--x11", 5) == 0) { type = PLATFORM_TYPE_LINUX_X11; }
 	}
 
 	LOG_INFO("platform init for type %s", platform_type_names[type]);
 
 	ASSERT(platform_init(type));
-	window_size sz = {.width = 640, .height = 480};
+	window_size sz = {.width = 1600, .height = 900};
 	window_t* win = platform_create_window(sz, "hello");
 	ASSERT(win != NULL);
 
