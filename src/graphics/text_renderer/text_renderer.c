@@ -453,18 +453,19 @@ bool text_renderer_add_text_pixels(text_renderer_t* renderer, string text,
 		c = text.str[i];
 
 		if (c == '\n') {
-			x = base_x - info.glyph_size.width * scale;
+			x = base_x;
 			y = base_y + info.glyph_size.height * scale;
+			continue;
 		} else if (c < info.first_char || c > info.last_char) {
 			LOG_WARN("text_renderer_add_text: char isn't in atlas: %c (%u)", c, c); // clang-format-ignore
 			continue;
 		}
 
-		char cc = c - info.first_char;
+		c = c - info.first_char;
 
 		// Coords in atlas:
-		uint32_t line = cc / cols;
-		uint32_t col = cc % cols;
+		uint32_t line = c / cols;
+		uint32_t col = c % cols;
 
 		uint32_t u0u = col * char_width + info.pad_x;
 		uint32_t v0u = line * char_height + info.pad_y;
@@ -487,15 +488,14 @@ bool text_renderer_add_text_pixels(text_renderer_t* renderer, string text,
 
 		x += info.glyph_size.width * scale;
 
+		// clang-format off
 		verts[r->vertex_count++] = (vertex){x0_ndc, y0_ndc, u0, v0}; // top left
 		verts[r->vertex_count++] = (vertex){x0_ndc, y1_ndc, u0, v1}; // bot left
-		verts[r->vertex_count++] =
-			(vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
+		verts[r->vertex_count++] = (vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
 		verts[r->vertex_count++] = (vertex){x0_ndc, y0_ndc, u0, v0}; // top left
-		verts[r->vertex_count++] =
-			(vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
-		verts[r->vertex_count++] =
-			(vertex){x1_ndc, y0_ndc, u1, v0}; // top right
+		verts[r->vertex_count++] = (vertex){x1_ndc, y1_ndc, u1, v1}; // bot right
+		verts[r->vertex_count++] = (vertex){x1_ndc, y0_ndc, u1, v0}; // top right
+		// clang-format on
 	}
 
 	return true;
@@ -550,9 +550,6 @@ LIB_EXPORT bool text_renderer_draw(text_renderer_t* renderer,
 	gpu->cmd_begin_debug_marker(gpu, cmd, "text renderer");
 	gpu->cmd_transition_image(gpu, cmd, target_img,
 							  GPU_IMAGE_STATE_RENDER_TARGET);
-	gpu->cmd_reset_viewport(gpu, cmd);
-	gpu->cmd_reset_scissor(gpu, cmd);
-	gpu->cmd_begin_rendering(gpu, cmd, &render_state);
 
 	gpu_device_address verts = buffered_buffer_get_addr(&r->vertex_buffers);
 	gpu_device_address u = buffered_buffer_get_addr(&r->uniform_buffers);
@@ -564,9 +561,13 @@ LIB_EXPORT bool text_renderer_draw(text_renderer_t* renderer,
 
 	gpu_per_frame_data pc = {.frame_buffer_address = u};
 	gpu->cmd_bind_pipeline(gpu, cmd, r->pipeline, &pc);
+	gpu->cmd_reset_viewport(gpu, cmd);
+	gpu->cmd_reset_scissor(gpu, cmd);
+	gpu->cmd_begin_rendering(gpu, cmd, &render_state);
 
 	gpu->cmd_draw(gpu, cmd, r->vertex_count, 1, 0, 0);
 	gpu->cmd_end_rendering(gpu, cmd);
+
 	gpu->cmd_end_debug_marker(gpu, cmd);
 
 	_advance_buffers(r);
