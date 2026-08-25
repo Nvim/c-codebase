@@ -38,7 +38,7 @@ static double const TARGET_FRAMETIME = (1 / 60.f) * 1000.f;
 
 int main(void) {
 
-	ASSERT(platform_init());
+	ASSERT(platform_init(PLATFORM_TYPE_LINUX_X11));
 	window_size sz = {.width = 640, .height = 480};
 	window_t* win = platform_create_window(sz, "hello");
 	ASSERT(win != NULL);
