@@ -646,11 +646,11 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 
 		uint32_t sc_img_count = CLAMP(buffering, sc_min, sc_max);
 
-		if (!vk_swapchain_create(&state->swapchain, arena, state->device,
-								 &state->surface, win_size.width,
-								 win_size.height, sc_img_count,
-								 state->rendertarget_format, state->rendertarget_color_space, state->image_pool,
-								 state->image_view_pool)) {
+		if (!vk_swapchain_create(
+				&state->swapchain, arena, state->device, &state->surface,
+				win_size.width, win_size.height, sc_img_count,
+				state->rendertarget_format, state->rendertarget_color_space,
+				state->image_pool, state->image_view_pool)) {
 			LOG_ERR("vulkan_initialize: couldn't create swapchain");
 			return;
 		}

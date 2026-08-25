@@ -120,15 +120,12 @@ void test_mat3_translate_2d(void) {
 	expect.m7 = 4.f;
 
 	TEST_ASSERT_TRUE(
-		mat3_equal(expect, mat_translate_2d((vec2){.x = 3.f, .y = 4.f}))
-	);
+		mat3_equal(expect, mat_translate_2d((vec2){.x = 3.f, .y = 4.f})));
 }
 
 void test_mat3_rotate_2d(void) {
-	vec3 result = mat3_mul_vec(
-		mat_rotate_2d((float)(PI / 2.0)),
-		(vec3){.x = 1.f, .y = 0.f, .z = 1.f}
-	);
+	vec3 result = mat3_mul_vec(mat_rotate_2d((float)(PI / 2.0)),
+							   (vec3){.x = 1.f, .y = 0.f, .z = 1.f});
 
 	TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.f, result.x);
 	TEST_ASSERT_FLOAT_WITHIN(0.0001f, 1.f, result.y);
@@ -285,16 +282,14 @@ void test_mat4_translate_3d(void) {
 	expect.m13 = 5.f;
 	expect.m14 = 6.f;
 
-	TEST_ASSERT_TRUE(
-		mat4_equal(expect, mat_translate_3d((vec3){.x = 4.f, .y = 5.f, .z = 6.f}))
-	);
+	TEST_ASSERT_TRUE(mat4_equal(
+		expect, mat_translate_3d((vec3){.x = 4.f, .y = 5.f, .z = 6.f})));
 }
 
 void test_mat4_rotate_3d(void) {
 	vec4 result = mat4_mul_vec(
 		mat_rotate_3d((vec3){.x = 0.f, .y = 0.f, .z = 1.f}, (float)(PI / 2.0)),
-		(vec4){.x = 1.f, .y = 0.f, .z = 0.f, .w = 1.f}
-	);
+		(vec4){.x = 1.f, .y = 0.f, .z = 0.f, .w = 1.f});
 
 	TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.f, result.x);
 	TEST_ASSERT_FLOAT_WITHIN(0.0001f, 1.f, result.y);
@@ -312,10 +307,8 @@ void test_mat4_mul_vec(void) {
 				{13.f, 14.f, 15.f, 16.f},
 			},
 	};
-	vec4 result = mat4_mul_vec(
-		m,
-		(vec4){.x = 1.f, .y = 2.f, .z = 3.f, .w = 4.f}
-	);
+	vec4 result =
+		mat4_mul_vec(m, (vec4){.x = 1.f, .y = 2.f, .z = 3.f, .w = 4.f});
 
 	TEST_ASSERT_EQUAL_FLOAT(90.f, result.x);
 	TEST_ASSERT_EQUAL_FLOAT(100.f, result.y);
