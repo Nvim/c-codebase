@@ -141,56 +141,141 @@ void test_json_read_number_good(void) {
 	}
 }
 
-void test_json_tokenize(void) {
-	char const* str = "{ [ \n\t    \t ] } false 123";
+void test_json_tokenize_good(void) {
+	char const* str = "{ [ \n\t    \t ] } false 123 : ] \"escape me\" \"\"";
 	json_lexer lexer = {
 		.base_str = str,
 		.str = str,
 		.cur_line = 0,
 	};
-	json_token token = {0};
 
-	// open bracket
-	TEST_ASSERT_TRUE(json_read_token(&lexer, &token));
-	TEST_ASSERT_EQUAL(JSON_TOKEN_OPEN_BRACKET, token.type);
-	TEST_ASSERT_EQUAL_CHAR('{', token.value.chr);
-	TEST_ASSERT_EQUAL(1, token.length);
-	TEST_ASSERT_EQUAL(0, token.begin_pos);
+	json_token expected_tokens[] = {
+		{
+			.type = JSON_TOKEN_OPEN_BRACKET,
+			.value.chr = '{',
+			.length = 1,
+			.begin_pos = 0,
+		},
+		{
+			.type = JSON_TOKEN_OPEN_SQ_BRACKET,
+			.value.chr = '[',
+			.length = 1,
+			.begin_pos = 2,
+		},
+		{
+			.type = JSON_TOKEN_CLOSE_SQ_BRACKET,
+			.value.chr = ']',
+			.length = 1,
+			.begin_pos = 12,
+		},
+		{
+			.type = JSON_TOKEN_CLOSE_BRACKET,
+			.value.chr = '}',
+			.length = 1,
+			.begin_pos = 14,
+		},
+		{
+			.type = JSON_TOKEN_KEYWORD,
+			.length = 5,
+			.begin_pos = 16,
+			.value.s = str("false"),
+		},
+		{
+			.type = JSON_TOKEN_NUMBER,
+			.length = 3,
+			.begin_pos = 22,
+			.value.s = str("123"),
+		},
+		{
+			.type = JSON_TOKEN_COLON,
+			.value.chr = ':',
+			.length = 1,
+			.begin_pos = 26,
+		},
+		{
+			.type = JSON_TOKEN_CLOSE_SQ_BRACKET,
+			.value.chr = ']',
+			.length = 1,
+			.begin_pos = 28,
+		},
+		{
+			.type = JSON_TOKEN_STRING,
+			.length = 9,
+			.begin_pos = 30,
+			.value.s = str("escape me"),
+		},
+		{
+			.type = JSON_TOKEN_STRING,
+			.length = 0,
+			.begin_pos = 42,
+			.value.s = STRING_EMPTY,
+		},
+		{
+			.type = JSON_TOKEN_EOF,
+			.length = 0,
+			.begin_pos = 44,
+			.value.chr = '\0',
+		},
+	};
 
-	// open square
-	TEST_ASSERT_TRUE(json_read_token(&lexer, &token));
-	TEST_ASSERT_EQUAL(JSON_TOKEN_OPEN_SQ_BRACKET, token.type);
-	TEST_ASSERT_EQUAL_CHAR('[', token.value.chr);
-	TEST_ASSERT_EQUAL(1, token.length);
-	TEST_ASSERT_EQUAL(2, token.begin_pos);
-
-	// close square
-	TEST_ASSERT_TRUE(json_read_token(&lexer, &token));
-	TEST_ASSERT_EQUAL(JSON_TOKEN_CLOSE_SQ_BRACKET, token.type);
-	TEST_ASSERT_EQUAL_CHAR(']', token.value.chr);
-	TEST_ASSERT_EQUAL(1, token.length);
-	TEST_ASSERT_EQUAL(12, token.begin_pos);
-
-	// close bracket
-	TEST_ASSERT_TRUE(json_read_token(&lexer, &token));
-	TEST_ASSERT_EQUAL(JSON_TOKEN_CLOSE_BRACKET, token.type);
-	TEST_ASSERT_EQUAL_CHAR('}', token.value.chr);
-	TEST_ASSERT_EQUAL(1, token.length);
-	TEST_ASSERT_EQUAL(14, token.begin_pos);
-
-	// false
-	TEST_ASSERT_TRUE(json_read_token(&lexer, &token));
-	TEST_ASSERT_EQUAL(JSON_TOKEN_KEYWORD, token.type);
-	TEST_ASSERT_EQUAL(5, token.length);
-	TEST_ASSERT_EQUAL(16, token.begin_pos);
-
-	// number
-	TEST_ASSERT_TRUE(json_read_token(&lexer, &token));
-	TEST_ASSERT_EQUAL(JSON_TOKEN_NUMBER, token.type);
-	TEST_ASSERT_EQUAL(3, token.length);
-	TEST_ASSERT_EQUAL(22, token.begin_pos);
+	for (uint32_t i = 0; i < countof(expected_tokens); i++) {
+		json_token expected_token = expected_tokens[i];
+		json_token actual_token = {0};
+		TEST_ASSERT_TRUE(json_read_token(&lexer, &actual_token));
+		TEST_ASSERT_EQUAL(expected_token.type, actual_token.type);
+		TEST_ASSERT_EQUAL(expected_token.begin_pos, actual_token.begin_pos);
+		TEST_ASSERT_EQUAL(expected_token.length, actual_token.length);
+		if (expected_token.type <= JSON_TOKEN_CLOSE_SQ_BRACKET) {
+			TEST_ASSERT_EQUAL_CHAR(expected_token.value.chr,
+								   actual_token.value.chr);
+		} else {
+			TEST_ASSERT_TRUE(
+				string_compare(expected_token.value.s, actual_token.value.s));
+		}
+	}
 
 	TEST_ASSERT_EQUAL(1, lexer.cur_line);
+}
+
+void test_json_tokenize_numbers_good(void) {
+	char const* good_str = " 123.0 1203.05 -22.500005 ";
+	json_lexer lexer = {
+		.base_str = good_str,
+		.str = good_str,
+		.cur_line = 0,
+	};
+	json_token expected_tokens[] = {
+		{
+			.type = JSON_TOKEN_NUMBER,
+			.length = 5,
+			.begin_pos = 1,
+			.value.s = str("123.0"),
+		},
+		{
+			.type = JSON_TOKEN_NUMBER,
+			.length = 7,
+			.begin_pos = 7,
+			.value.s = str("1203.05"),
+		},
+		{
+			.type = JSON_TOKEN_NUMBER,
+			.length = 10,
+			.begin_pos = 15,
+			.value.s = str("-22.500005"),
+		},
+	};
+
+	for (uint32_t i = 0; i < countof(expected_tokens); i++) {
+		json_token expected_token = expected_tokens[i];
+		json_token actual_token = {0};
+
+		TEST_ASSERT_TRUE(json_read_token(&lexer, &actual_token));
+		TEST_ASSERT_EQUAL(expected_token.type, actual_token.type);
+		TEST_ASSERT_EQUAL(expected_token.begin_pos, actual_token.begin_pos);
+		TEST_ASSERT_EQUAL(expected_token.length, actual_token.length);
+		TEST_ASSERT_TRUE(
+			string_compare(expected_token.value.s, actual_token.value.s));
+	}
 }
 
 int main(void) {
@@ -199,7 +284,8 @@ int main(void) {
 	RUN_TEST(test_json_read_whitespace);
 	RUN_TEST(test_json_read_bool_good);
 	RUN_TEST(test_json_read_number_good);
-	RUN_TEST(test_json_tokenize);
+	RUN_TEST(test_json_tokenize_good);
+	RUN_TEST(test_json_tokenize_numbers_good);
 
 	return UNITY_END();
 }

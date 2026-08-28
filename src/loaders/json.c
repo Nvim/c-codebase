@@ -159,7 +159,7 @@ bool json_lex_keyword(char const* s, json_token* out) {
 	}
 
 	string value = {
-		.len = pos-1,
+		.len = pos - 1,
 		.str = (char*)s,
 	};
 
@@ -172,27 +172,23 @@ bool json_lex_keyword(char const* s, json_token* out) {
 
 bool json_lex_string(char const* s, json_token* out) {
 	uint64_t pos = 0;
-	char c = s[pos];
-	if (c != '"') { return false; }
-	pos++;
+	if (s[pos] != '"') { return false; }
+	char c = s[++pos];
 
 	// TODO: escaping
-	while (c != '"') {
-		pos++;
-		c = s[pos++];
-	}
+	while (c != '"') { c = s[++pos]; }
 
 	string value = {0};
 	if (pos == 1) {
 		value = STRING_EMPTY;
 	} else {
-		value.len = pos;
-		value.str = (char*)s;
+		value.len = pos - 1;	  // -1 for last quote
+		value.str = (char*)s + 1; // +1 skips 1st quote
 	};
 
 	out->length = value.len;
 	out->value.s = value;
-	out->type = JSON_TOKEN_KEYWORD;
+	out->type = JSON_TOKEN_STRING;
 
 	return true;
 }
@@ -206,8 +202,16 @@ bool json_read_token(json_lexer* lexer, json_token* out) {
 		ss++;
 	}
 
+	*out = (json_token){0};
+
 	char chr = *ss;
 	switch (chr) {
+	case EOF:
+	case '\0':
+		out->type = JSON_TOKEN_EOF;
+		out->begin_pos = ss - lexer->base_str;
+		out->value.chr = '\0';
+		return true;
 	case JSON_TOKEN_COMMA:
 	case JSON_TOKEN_COLON:
 	case JSON_TOKEN_OPEN_BRACKET:
@@ -235,6 +239,8 @@ bool json_read_token(json_lexer* lexer, json_token* out) {
 
 	out->begin_pos = ss - lexer->base_str;
 	ss += out->length;
+	if (out->type == JSON_TOKEN_STRING) { ss += 2; }
 	lexer->str = ss;
+	// ASSERT(*lexer->str == ' ');
 	return true;
 }

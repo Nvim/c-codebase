@@ -1,6 +1,7 @@
 #include <loaders/json_loader.h>
 
 typedef enum json_token_type {
+	JSON_TOKEN_EOF = 0,
 	JSON_TOKEN_COMMA = ',',
 	JSON_TOKEN_COLON = ':',
 	JSON_TOKEN_OPEN_BRACKET = '{',
