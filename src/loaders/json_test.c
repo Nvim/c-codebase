@@ -143,62 +143,54 @@ void test_json_read_number_good(void) {
 
 void test_json_tokenize(void) {
 	char const* str = "{ [ \n\t    \t ] } false 123";
-	json_token_type token;
+	json_lexer lexer = {
+		.base_str = str,
+		.str = str,
+		.cur_line = 0,
+	};
+	json_token token = {0};
 
 	// open bracket
-	TEST_ASSERT_TRUE(json_read_token(&str, &token));
-	TEST_ASSERT_EQUAL(JSON_TOKEN_OPEN_BRACKET, token);
-	str++;
-
-	// space
-	TEST_ASSERT_TRUE(json_read_token(&str, &token));
-	TEST_ASSERT_EQUAL(JSON_TOKEN_WHITESPACE, token);
-	TEST_ASSERT_TRUE(json_read_whitespace(&str));
+	TEST_ASSERT_TRUE(json_read_token(&lexer, &token));
+	TEST_ASSERT_EQUAL(JSON_TOKEN_OPEN_BRACKET, token.type);
+	TEST_ASSERT_EQUAL_CHAR('{', token.value.chr);
+	TEST_ASSERT_EQUAL(1, token.length);
+	TEST_ASSERT_EQUAL(0, token.begin_pos);
 
 	// open square
-	TEST_ASSERT_TRUE(json_read_token(&str, &token));
-	TEST_ASSERT_EQUAL(JSON_TOKEN_OPEN_SQ_BRACKET, token);
-	str++;
-
-	// space
-	TEST_ASSERT_TRUE(json_read_token(&str, &token));
-	TEST_ASSERT_EQUAL(JSON_TOKEN_WHITESPACE, token);
-	TEST_ASSERT_TRUE(json_read_whitespace(&str));
+	TEST_ASSERT_TRUE(json_read_token(&lexer, &token));
+	TEST_ASSERT_EQUAL(JSON_TOKEN_OPEN_SQ_BRACKET, token.type);
+	TEST_ASSERT_EQUAL_CHAR('[', token.value.chr);
+	TEST_ASSERT_EQUAL(1, token.length);
+	TEST_ASSERT_EQUAL(2, token.begin_pos);
 
 	// close square
-	TEST_ASSERT_TRUE(json_read_token(&str, &token));
-	TEST_ASSERT_EQUAL(JSON_TOKEN_CLOSE_SQ_BRACKET, token);
-	str++;
-
-	// space
-	TEST_ASSERT_TRUE(json_read_token(&str, &token));
-	TEST_ASSERT_EQUAL(JSON_TOKEN_WHITESPACE, token);
-	TEST_ASSERT_TRUE(json_read_whitespace(&str));
+	TEST_ASSERT_TRUE(json_read_token(&lexer, &token));
+	TEST_ASSERT_EQUAL(JSON_TOKEN_CLOSE_SQ_BRACKET, token.type);
+	TEST_ASSERT_EQUAL_CHAR(']', token.value.chr);
+	TEST_ASSERT_EQUAL(1, token.length);
+	TEST_ASSERT_EQUAL(12, token.begin_pos);
 
 	// close bracket
-	TEST_ASSERT_TRUE(json_read_token(&str, &token));
-	TEST_ASSERT_EQUAL(JSON_TOKEN_CLOSE_BRACKET, token);
-	str++;
-
-	// space
-	TEST_ASSERT_TRUE(json_read_token(&str, &token));
-	TEST_ASSERT_EQUAL(JSON_TOKEN_WHITESPACE, token);
-	TEST_ASSERT_TRUE(json_read_whitespace(&str));
+	TEST_ASSERT_TRUE(json_read_token(&lexer, &token));
+	TEST_ASSERT_EQUAL(JSON_TOKEN_CLOSE_BRACKET, token.type);
+	TEST_ASSERT_EQUAL_CHAR('}', token.value.chr);
+	TEST_ASSERT_EQUAL(1, token.length);
+	TEST_ASSERT_EQUAL(14, token.begin_pos);
 
 	// false
-	TEST_ASSERT_TRUE(json_read_token(&str, &token));
-	TEST_ASSERT_EQUAL(JSON_TOKEN_CHAR_SEQUENCE, token);
-	str += 5;
-
-	// space
-	TEST_ASSERT_TRUE(json_read_token(&str, &token));
-	TEST_ASSERT_EQUAL(JSON_TOKEN_WHITESPACE, token);
-	TEST_ASSERT_TRUE(json_read_whitespace(&str));
+	TEST_ASSERT_TRUE(json_read_token(&lexer, &token));
+	TEST_ASSERT_EQUAL(JSON_TOKEN_KEYWORD, token.type);
+	TEST_ASSERT_EQUAL(5, token.length);
+	TEST_ASSERT_EQUAL(16, token.begin_pos);
 
 	// number
-	TEST_ASSERT_TRUE(json_read_token(&str, &token));
-	TEST_ASSERT_EQUAL(JSON_TOKEN_NUMBER, token);
-	str += 5;
+	TEST_ASSERT_TRUE(json_read_token(&lexer, &token));
+	TEST_ASSERT_EQUAL(JSON_TOKEN_NUMBER, token.type);
+	TEST_ASSERT_EQUAL(3, token.length);
+	TEST_ASSERT_EQUAL(22, token.begin_pos);
+
+	TEST_ASSERT_EQUAL(1, lexer.cur_line);
 }
 
 int main(void) {

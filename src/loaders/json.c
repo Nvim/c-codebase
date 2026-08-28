@@ -100,34 +100,141 @@ bool json_read_number(char const** c, double* out) {
 	return true;
 }
 
-bool json_read_token(char const** c, json_token_type* out) {
-	if (isspace(**c)) {
-		*out = JSON_TOKEN_WHITESPACE;
-		return true;
+bool json_lex_number(char const* num_str, json_token* out) {
+
+	uint64_t pos = 0;
+	bool dot_seen = false;
+	bool negative = false;
+	bool int_digits = false;
+	bool frac_digits = false;
+
+	if (num_str[pos] == '-') {
+		negative = true;
+		pos++;
 	}
 
-	switch (**c) {
-	case JSON_TOKEN_QUOTE:
+	// TODO: exponent notation
+	while (isdigit(num_str[pos]) || (!dot_seen && num_str[pos] == '.')) {
+		char c = num_str[pos++];
+
+		if (c == '.') {
+			if (!int_digits) { return false; }
+			dot_seen = true;
+			continue;
+		}
+		if (dot_seen) {
+			frac_digits = true;
+		} else {
+			int_digits = true;
+		}
+	}
+
+	if (pos == 0) { return false; }
+
+	if (dot_seen && !frac_digits) { return false; }
+	if (dot_seen && !int_digits) { return false; }
+
+	if (pos == 1) {
+		if (negative || dot_seen) { return false; }
+	}
+
+	string value = {
+		.str = (char*)num_str,
+		.len = pos,
+	};
+
+	out->type = JSON_TOKEN_NUMBER;
+	out->length = value.len;
+	out->value.s = value;
+
+	return true;
+}
+
+bool json_lex_keyword(char const* s, json_token* out) {
+	uint64_t pos = 0;
+	char c = s[pos];
+	while (isalpha(c)) {
+		if (pos > 5) { return false; }
+		c = s[pos++];
+	}
+
+	string value = {
+		.len = pos-1,
+		.str = (char*)s,
+	};
+
+	out->length = value.len;
+	out->value.s = value;
+	out->type = JSON_TOKEN_KEYWORD;
+
+	return true;
+}
+
+bool json_lex_string(char const* s, json_token* out) {
+	uint64_t pos = 0;
+	char c = s[pos];
+	if (c != '"') { return false; }
+	pos++;
+
+	// TODO: escaping
+	while (c != '"') {
+		pos++;
+		c = s[pos++];
+	}
+
+	string value = {0};
+	if (pos == 1) {
+		value = STRING_EMPTY;
+	} else {
+		value.len = pos;
+		value.str = (char*)s;
+	};
+
+	out->length = value.len;
+	out->value.s = value;
+	out->type = JSON_TOKEN_KEYWORD;
+
+	return true;
+}
+
+bool json_read_token(json_lexer* lexer, json_token* out) {
+	char const* ss = lexer->str;
+
+	// Skip whitespace
+	while (isspace(*ss)) {
+		if (*ss == '\n' || *ss == '\r') { lexer->cur_line++; }
+		ss++;
+	}
+
+	char chr = *ss;
+	switch (chr) {
 	case JSON_TOKEN_COMMA:
 	case JSON_TOKEN_COLON:
 	case JSON_TOKEN_OPEN_BRACKET:
 	case JSON_TOKEN_OPEN_SQ_BRACKET:
 	case JSON_TOKEN_CLOSE_BRACKET:
 	case JSON_TOKEN_CLOSE_SQ_BRACKET: {
-		*out = **c;
+		out->type = chr;
+		out->value.chr = chr;
+		out->begin_pos = ss++ - lexer->base_str;
+		out->length = 1;
+		lexer->str = ss;
 		return true;
 	}
 	}
 
-	if (isdigit(**c)) {
-		*out = JSON_TOKEN_NUMBER;
-		return true;
+	if (isdigit(chr) || chr == '-') { // Number
+		if (!json_lex_number(ss, out)) { return false; }
+	} else if (isalpha(chr)) { // Keyword
+		if (!json_lex_keyword(ss, out)) { return false; }
+	} else if (chr == '"') { // String
+		if (!json_lex_string(ss, out)) { return false; }
+	} else { // Invalid
+		return false;
 	}
 
-	if (isalpha(**c)) {
-		*out = JSON_TOKEN_CHAR_SEQUENCE;
-		return true;
-	}
-
-	return false;
+	out->begin_pos = ss - lexer->base_str;
+	ss += out->length;
+	lexer->str = ss;
+	return true;
 }
