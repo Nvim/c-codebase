@@ -25,8 +25,10 @@ typedef struct json_token {
 
 typedef struct json_lexer {
 	char const* const base_str; // used to compute current offset
-	char const* str;
-	uint64_t cur_line; // incremented at every newline
+	char const* str;			// current position (advanced by consuming)
+	bool has_peeked;			// when true, `consume` returns `peeked_token`
+	json_token peeked_token;	// peeked token
+	uint64_t cur_line;			// incremented at every newline (by peeking)
 } json_lexer;
 
 bool json_read_whitespace(char const** c);
@@ -39,8 +41,10 @@ bool json_read_string(char const** c, string* out);
 
 bool json_read_number(char const** c, double* out);
 
+json_lexer json_lexer_init(char const* base);
 bool json_lex_number(char const* num_str, json_token* out);
 bool json_lex_keyword(char const* s, json_token* out);
 bool json_lex_string(char const* s, json_token* out);
 
-bool json_read_token(json_lexer* lexer, json_token* out);
+bool json_peek_token(json_lexer* lexer, json_token* out);
+bool json_consume_token(json_lexer* lexer, json_token* out);

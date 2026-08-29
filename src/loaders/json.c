@@ -100,6 +100,16 @@ bool json_read_number(char const** c, double* out) {
 	return true;
 }
 
+json_lexer json_lexer_init(char const* base) {
+	return (json_lexer){
+		.has_peeked = false,
+		.peeked_token = {0},
+		.base_str = base,
+		.str = base,
+		.cur_line = 0,
+	};
+}
+
 bool json_lex_number(char const* num_str, json_token* out) {
 
 	uint64_t pos = 0;
@@ -195,7 +205,8 @@ bool json_lex_string(char const* s, json_token* out) {
 	return true;
 }
 
-bool json_read_token(json_lexer* lexer, json_token* out) {
+bool json_peek_token(json_lexer* lexer, json_token* out) {
+	if (lexer->has_peeked) { return false; }
 	char const* ss = lexer->str;
 
 	// Skip whitespace
@@ -213,6 +224,7 @@ bool json_read_token(json_lexer* lexer, json_token* out) {
 		out->type = JSON_TOKEN_EOF;
 		out->begin_pos = ss - lexer->base_str;
 		out->value.chr = '\0';
+		lexer->has_peeked = true;
 		return true;
 	case JSON_TOKEN_COMMA:
 	case JSON_TOKEN_COLON:
@@ -224,7 +236,7 @@ bool json_read_token(json_lexer* lexer, json_token* out) {
 		out->value.chr = chr;
 		out->begin_pos = ss++ - lexer->base_str;
 		out->length = 1;
-		lexer->str = ss;
+		lexer->has_peeked = true;
 		return true;
 	}
 	}
@@ -241,8 +253,21 @@ bool json_read_token(json_lexer* lexer, json_token* out) {
 
 	out->begin_pos = ss - lexer->base_str;
 	ss += out->length;
-	if (out->type == JSON_TOKEN_STRING) { ss += 2; }
-	lexer->str = ss;
-	// ASSERT(*lexer->str == ' ');
+	lexer->has_peeked = true;
+	return true;
+}
+
+bool json_consume_token(json_lexer* lexer, json_token* out) {
+	if (!lexer->has_peeked) {
+		// Peek first
+		if (!json_peek_token(lexer, &lexer->peeked_token)) { return false; }
+	}
+
+	// Consume:
+	lexer->has_peeked = false;
+	memcpy(out, &lexer->peeked_token, sizeof(lexer->peeked_token));
+	lexer->str = &lexer->base_str[out->begin_pos + out->length];
+	if (out->type == JSON_TOKEN_STRING) { lexer->str += 2; }
+
 	return true;
 }

@@ -143,11 +143,7 @@ void test_json_read_number_good(void) {
 
 void test_json_tokenize_good(void) {
 	char const* str = "{ [ \n\t    \t ] } false 123 : ] \"escape me\" \"\"";
-	json_lexer lexer = {
-		.base_str = str,
-		.str = str,
-		.cur_line = 0,
-	};
+	json_lexer lexer = json_lexer_init(str);
 
 	json_token expected_tokens[] = {
 		{
@@ -221,7 +217,7 @@ void test_json_tokenize_good(void) {
 	for (uint32_t i = 0; i < countof(expected_tokens); i++) {
 		json_token expected_token = expected_tokens[i];
 		json_token actual_token = {0};
-		TEST_ASSERT_TRUE(json_read_token(&lexer, &actual_token));
+		TEST_ASSERT_TRUE(json_consume_token(&lexer, &actual_token));
 		TEST_ASSERT_EQUAL(expected_token.type, actual_token.type);
 		TEST_ASSERT_EQUAL(expected_token.begin_pos, actual_token.begin_pos);
 		TEST_ASSERT_EQUAL(expected_token.length, actual_token.length);
@@ -239,11 +235,7 @@ void test_json_tokenize_good(void) {
 
 void test_json_tokenize_number_good(void) {
 	char const* good_str = " 123.0 1203.05 -22.500005 ";
-	json_lexer lexer = {
-		.base_str = good_str,
-		.str = good_str,
-		.cur_line = 0,
-	};
+	json_lexer lexer = json_lexer_init(good_str);
 	json_token expected_tokens[] = {
 		{
 			.type = JSON_TOKEN_NUMBER,
@@ -269,7 +261,7 @@ void test_json_tokenize_number_good(void) {
 		json_token expected_token = expected_tokens[i];
 		json_token actual_token = {0};
 
-		TEST_ASSERT_TRUE(json_read_token(&lexer, &actual_token));
+		TEST_ASSERT_TRUE(json_consume_token(&lexer, &actual_token));
 		TEST_ASSERT_EQUAL(expected_token.type, actual_token.type);
 		TEST_ASSERT_EQUAL(expected_token.begin_pos, actual_token.begin_pos);
 		TEST_ASSERT_EQUAL(expected_token.length, actual_token.length);
@@ -326,11 +318,7 @@ void test_json_tokenize_number_bad(void) {
 
 void test_json_tokenize_keywords(void) {
 	char const* str = "false true null bad";
-	json_lexer lexer = {
-		.base_str = str,
-		.str = str,
-		.cur_line = 0,
-	};
+	json_lexer lexer = json_lexer_init(str);
 
 	json_token expected_tokens[] = {
 		{
@@ -368,7 +356,7 @@ void test_json_tokenize_keywords(void) {
 	for (uint32_t i = 0; i < countof(expected_tokens); i++) {
 		json_token expected_token = expected_tokens[i];
 		json_token actual_token = {0};
-		TEST_ASSERT_TRUE(json_read_token(&lexer, &actual_token));
+		TEST_ASSERT_TRUE(json_consume_token(&lexer, &actual_token));
 		TEST_ASSERT_EQUAL(expected_token.type, actual_token.type);
 		TEST_ASSERT_EQUAL(expected_token.begin_pos, actual_token.begin_pos);
 		TEST_ASSERT_EQUAL(expected_token.length, actual_token.length);
@@ -384,14 +372,10 @@ void test_json_tokenize_keywords(void) {
 
 	// --- Keyword is too long --- //
 	char const* bad = "truenull";
-	json_lexer bad_lexer = {
-		.base_str = bad,
-		.str = bad,
-		.cur_line = 0,
-	};
+	json_lexer bad_lexer = json_lexer_init(bad);
 	json_token bad_token = {0};
 
-	TEST_ASSERT_FALSE(json_read_token(&bad_lexer, &bad_token));
+	TEST_ASSERT_FALSE(json_consume_token(&bad_lexer, &bad_token));
 }
 
 int main(void) {
