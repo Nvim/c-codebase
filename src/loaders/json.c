@@ -5,101 +5,6 @@
 #include <math.h>
 #include <string.h>
 
-bool json_read_whitespace(char const** c) {
-	uint32_t count = 0;
-	while (isspace(**c)) {
-		(*c)++;
-		count++;
-	}
-	return count != 0;
-}
-
-bool json_read_bool(char const** c, bool* out) {
-	if (strncmp(*c, "false", 5) == 0) {
-		*out = false;
-		(*c) += 5;
-		return true;
-	} else if (strncmp(*c, "true", 4) == 0) {
-		*out = true;
-		(*c) += 4;
-		return true;
-	}
-	return false;
-}
-
-bool json_read_null(char const** c) {
-	if (strncmp(*c, "null", 4) == 0) {
-		(*c) += 4;
-		return true;
-	}
-	return false;
-}
-
-bool json_read_string(char const** c, string* out) {
-	if (**c != '"') return false;
-
-	size_t len = 0;
-	char const* base = *c;
-
-	while (**c != '"') {
-		len++;
-		(*c)++;
-	}
-
-	// [TODO]: allocate and copy it!
-	out->len = len;
-	out->str = (char*)base;
-
-	return true;
-}
-
-bool json_read_number(char const** c, double* out) {
-	bool dot_seen = false;
-	uint32_t decimal_count = 1; // post-dot digit
-	double res = 0.f;
-	int sign = 1;
-
-	if (**c == '-') {
-		sign = -1;
-		(*c)++;
-	}
-
-	if (!isdigit(**c)) { return false; }
-
-	// Leading 0 is legal only when no integer part
-	if (**c - 48 == 0) {
-		if (*(*c + 1) != '.') { return false; }
-	}
-
-	while (**c != '\0' && **c != EOF) {
-		if (**c == '.') {
-			if (dot_seen) { return false; }
-
-			dot_seen = true;
-			(*c)++;
-			continue;
-		}
-
-		if (!isdigit(**c)) { break; }
-
-		double digit = **c - 48;
-
-		if (!dot_seen) {
-			res *= 10;
-			res += digit;
-		} else {
-			digit *= 1.f / (pow(10.f, decimal_count));
-
-			res += digit;
-			decimal_count++;
-		}
-
-		(*c)++;
-	}
-	*out = res * sign;
-	return true;
-}
-
 json_lexer json_lexer_init(char const* base) {
 	return (json_lexer){
 		.has_peeked = false,
@@ -205,7 +110,7 @@ bool json_lex_string(char const* s, json_token* out) {
 	return true;
 }
 
-bool json_peek_token(json_lexer* lexer, json_token* out) {
+bool json_peek_token(json_lexer* lexer) {
 	if (lexer->has_peeked) { return false; }
 	char const* ss = lexer->str;
 
@@ -215,6 +120,7 @@ bool json_peek_token(json_lexer* lexer, json_token* out) {
 		ss++;
 	}
 
+	json_token* out = &lexer->peeked_token;
 	*out = (json_token){0};
 
 	char chr = *ss;
@@ -260,7 +166,7 @@ bool json_peek_token(json_lexer* lexer, json_token* out) {
 bool json_consume_token(json_lexer* lexer, json_token* out) {
 	if (!lexer->has_peeked) {
 		// Peek first
-		if (!json_peek_token(lexer, &lexer->peeked_token)) { return false; }
+		if (!json_peek_token(lexer)) { return false; }
 	}
 
 	// Consume:
@@ -270,4 +176,223 @@ bool json_consume_token(json_lexer* lexer, json_token* out) {
 	if (out->type == JSON_TOKEN_STRING) { lexer->str += 2; }
 
 	return true;
+}
+
+// Parse
+json_parser json_parser_init(arena_t* arena, string str) {
+	json_lexer lexer = json_lexer_init(str.str);
+	return (json_parser){.arena = arena, .lexer = lexer};
+}
+
+bool json_parser_parse(json_parser* parser, json_node* out) {
+
+	json_parser* p = parser;
+
+	ASSERT(p->lexer.base_str == p->lexer.str);
+	if (!json_peek_token(&p->lexer)) { return false; }
+	json_token* token = &p->lexer.peeked_token;
+
+	switch (token->type) {
+	case JSON_TOKEN_EOF:
+	case JSON_TOKEN_COMMA:
+	case JSON_TOKEN_COLON:
+	case JSON_TOKEN_CLOSE_BRACKET:
+	case JSON_TOKEN_CLOSE_SQ_BRACKET:
+		LOG_ERR("unexpected token %s at position %u",
+				json_token_names[token->type], token->begin_pos);
+		return false;
+	case JSON_TOKEN_OPEN_BRACKET:
+		if (!json_parse_array(p, out)) {
+			LOG_ERR("error parsing array node at line %u", p->lexer.cur_line);
+			return false;
+		}
+		break;
+	case JSON_TOKEN_OPEN_SQ_BRACKET:
+		if (!json_parse_object(p, out)) {
+			LOG_ERR("error parsing object node at line %u", p->lexer.cur_line);
+			return false;
+		}
+		break;
+	case JSON_TOKEN_KEYWORD:
+		if (!json_parse_keyword(p, out)) {
+			LOG_ERR("error parsing keyword at line %u", p->lexer.cur_line);
+			return false;
+		}
+		break;
+	case JSON_TOKEN_STRING:
+		if (!json_parse_string(p, out)) {
+			LOG_ERR("error parsing string at line %u", p->lexer.cur_line);
+			return false;
+		}
+		break;
+	case JSON_TOKEN_NUMBER:
+		if (!json_parse_number(p, out)) {
+			LOG_ERR("error parsing number at line %u", p->lexer.cur_line);
+			return false;
+		}
+		break;
+	}
+
+	// Top-level can only have single node. If anything else is left, error
+	json_peek_token(&p->lexer);
+	token = &p->lexer.peeked_token;
+	if (token->type != JSON_TOKEN_EOF) {
+		LOG_ERR("json_parser_parse: unexpected `%s` at line %u (position %u). "
+				"Expected EOF",
+				json_token_names[token->type], p->lexer.cur_line,
+				token->begin_pos);
+		return false;
+	}
+
+	return true;
+}
+
+bool json_parse_keyword(json_parser* parser, json_node* out) {
+	json_token token = {0};
+
+	bool r = json_consume_token(&parser->lexer, &token);
+	uint64_t line = parser->lexer.cur_line;
+	if (!r) {
+		LOG_ERR("couldn't consume next token (line %u)", line);
+		return false;
+	}
+
+	if (token.type != JSON_TOKEN_KEYWORD) {
+		LOG_ERR("unexpected token `%s` at (line %u). expected keyword",
+				json_token_names[token.type], line);
+		return false;
+	}
+
+	out->key = STRING_EMPTY;
+	if (string_compare(token.value.s, str("null"))) {
+		out->value_type = JSON_VALUE_NULL;
+	} else if (string_compare(token.value.s, str("true"))) {
+		out->value_type = JSON_VALUE_BOOLEAN;
+		out->value.boolean = true;
+	} else if (string_compare(token.value.s, str("false"))) {
+		out->value_type = JSON_VALUE_BOOLEAN;
+		out->value.boolean = false;
+	} else {
+		LOG_ERR("couldn't parse keyword at line %u: " STR_FMT,
+				STR_FMT_ARGS(token.value.s));
+		return false;
+	}
+
+	return true;
+}
+
+/**
+ * Assumptions from the lexer simplify logic:
+ *  - no leading space
+ *  - a single (optional) leading minus sign
+ *  - no leading zeros in the decimal part
+ *  - no leading or trailing '.'
+ * [TODO]: exponent notation, enforce length check, don't always assume double
+ */
+bool json_parse_number(json_parser* parser, json_node* out) {
+	json_token token = {0};
+
+	bool r = json_consume_token(&parser->lexer, &token);
+	uint64_t line = parser->lexer.cur_line;
+	if (!r) {
+		LOG_ERR("couldn't consume next token (line %u)", line);
+		return false;
+	}
+
+	if (token.type != JSON_TOKEN_NUMBER) {
+		LOG_ERR("unexpected token `%s` at (line %u). expected number",
+				json_token_names[token.type], line);
+		return false;
+	}
+
+	bool dot_seen = false;
+	uint32_t decimal_count = 1; // post-dot digit
+	double res = 0.f;
+	int sign = 1;
+
+	char* c = token.value.s.str;
+	if (*c == '-') {
+		sign = -1;
+		c++;
+	}
+
+	ASSERT(isdigit(*c));
+	if (*c - 48 == 0) { ASSERT(*(c + 1) == '.'); }
+
+	while (*c != '\0' && *c != EOF) {
+		if (*c == '.') {
+			ASSERT(!dot_seen);
+			dot_seen = true;
+			c++;
+			continue;
+		}
+
+		if (!isdigit(*c)) { break; }
+
+		double digit = *c - 48;
+
+		if (!dot_seen) {
+			res *= 10;
+			res += digit;
+		} else {
+			digit *= 1.f / (pow(10.f, decimal_count++));
+			res += digit;
+		}
+
+		c++;
+	}
+
+	out->key = STRING_EMPTY;
+	out->value_type = JSON_VALUE_NUMBER;
+	out->value.number = res * sign;
+
+	return true;
+}
+
+bool json_parse_string(json_parser* parser, json_node* out) {
+	json_token token = {0};
+
+	bool r = json_consume_token(&parser->lexer, &token);
+	uint64_t line = parser->lexer.cur_line;
+	if (!r) {
+		LOG_ERR("couldn't consume next token (line %u)", line);
+		return false;
+	}
+
+	if (token.type != JSON_TOKEN_STRING) {
+		LOG_ERR("unexpected token `%s` at (line %u). expected string",
+				json_token_names[token.type], line);
+		return false;
+	}
+
+	char* c = token.value.s.str;
+	if (*c != '"') return false;
+
+	size_t len = 0;
+	char const* base = c;
+
+	while (*c != '"') {
+		len++;
+		c++;
+	}
+
+	// [TODO]: allocate and copy it!
+	out->value.string.len = len;
+	out->value.string.str = (char*)base;
+
+	return true;
+}
+
+// TODO
+bool json_parse_array(json_parser* parser, json_node* out) {
+	(void)parser;
+	(void)out;
+	return false;
+}
+
+// TODO
+bool json_parse_object(json_parser* parser, json_node* out) {
+	(void)parser;
+	(void)out;
+	return false;
 }
