@@ -125,6 +125,8 @@ bool json_lex_number(char const* num_str, json_token* out) {
 		if (dot_seen) {
 			frac_digits = true;
 		} else {
+			// first digit can't be a leading 0
+			if (!int_digits && c == '0') return false;
 			int_digits = true;
 		}
 	}
