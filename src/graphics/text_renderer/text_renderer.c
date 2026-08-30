@@ -120,14 +120,14 @@ typedef struct uniform {
 
 text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 	if (!arena || !gpu || !gpu->is_init) {
-		LOG_ERR("text_renderer_init: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return NULL;
 	}
 
 	arena_checkpoint* checkpoint = arena_get_checkpoint(arena);
 	text_renderer* ret = arena_push_z(arena, text_renderer);
 	if (!ret) {
-		LOG_ERR("text_renderer_init: couldn't allocate renderer");
+		LOG_ERR("couldn't allocate renderer");
 		return NULL;
 	}
 
@@ -140,7 +140,7 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 
 	gpu_buffer staging = gpu->create_buffer(gpu, &staging_ci);
 	if (!check_handle(staging.handle)) {
-		LOG_ERR("text_renderer_init: couldn't allocate staging buffer");
+		LOG_ERR("couldn't allocate staging buffer");
 		arena_restore_checkpoint(arena, checkpoint, true);
 		return NULL;
 	}
@@ -169,7 +169,7 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 	}
 
 	if (!check_handle(vs.handle) || !check_handle(fs.handle)) {
-		LOG_ERR("text_renderer_init: couldn't create shaders");
+		LOG_ERR("couldn't create shaders");
 		arena_restore_checkpoint(arena, checkpoint, true);
 		return NULL;
 	}
@@ -187,7 +187,7 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 	gpu->destroy_shader(gpu, vs);
 	gpu->destroy_shader(gpu, fs);
 	if (!check_handle(pipeline.handle)) {
-		LOG_ERR("text_renderer_init: couldn't build pipeline");
+		LOG_ERR("couldn't build pipeline");
 		arena_restore_checkpoint(arena, checkpoint, true);
 		gpu->destroy_buffer(gpu, staging);
 		return NULL;
@@ -216,7 +216,7 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 
 	if (!buffered_buffer_init(&ret->vertex_buffers, gpu, &vertex_ci,
 							  gpu->config.frames_in_flight, true)) {
-		LOG_ERR("text_renderer_init: couldn't create vertex buffers");
+		LOG_ERR("couldn't create vertex buffers");
 		arena_restore_checkpoint(arena, checkpoint, true);
 		gpu->destroy_buffer(gpu, staging);
 		return NULL;
@@ -224,7 +224,7 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 
 	if (!buffered_buffer_init(&ret->uniform_buffers, gpu, &uniform_ci,
 							  gpu->config.frames_in_flight, true)) {
-		LOG_ERR("text_renderer_init: couldn't create uniform buffers");
+		LOG_ERR("couldn't create uniform buffers");
 		arena_restore_checkpoint(arena, checkpoint, true);
 		gpu->destroy_buffer(gpu, staging);
 		buffered_buffer_destroy(&ret->vertex_buffers, gpu);
@@ -236,7 +236,7 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 	uint32_t sampler_index;
 	gpu_sampler s = gpu->create_sampler(gpu, &ci, &sampler_index);
 	if (!check_handle(s.handle)) {
-		LOG_ERR("text_renderer_init: couldn't create sampler");
+		LOG_ERR("couldn't create sampler");
 		arena_restore_checkpoint(arena, checkpoint, true);
 		gpu->destroy_buffer(gpu, staging);
 		buffered_buffer_destroy(&ret->vertex_buffers, gpu);
@@ -259,12 +259,12 @@ LIB_EXPORT bool text_renderer_load_atlas_from_file(text_renderer_t* renderer,
 												   arena_t* scratch, path path,
 												   font_atlas_info atlas_info) {
 	if (!renderer || !path.len || !scratch) {
-		LOG_ERR("text_renderer_load_atlas_from_file: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
 	if (atlas_info.first_char >= atlas_info.last_char) {
-		LOG_ERR("text_renderer_load_atlas_from_file: invalid atlas info");
+		LOG_ERR("invalid atlas info");
 		return false;
 	}
 
@@ -276,13 +276,13 @@ LIB_EXPORT bool text_renderer_load_atlas_from_file(text_renderer_t* renderer,
 	image_read_result img_read = load_qoi(scratch, s.arena, path, false);
 	arena_clear_scratch(s);
 	if (!img_read.ok) {
-		LOG_ERR("text_renderer_load_atlas_from_file: couldn't atlas image");
+		LOG_ERR("couldn't atlas image");
 		return false;
 	}
 
 	if (atlas_info.glyph_size.width >= img_read.width ||
 		atlas_info.glyph_size.height >= img_read.height) {
-		LOG_ERR("text_renderer_load_atlas_from_file: invalid glyph size");
+		LOG_ERR("invalid glyph size");
 		return false;
 	}
 
@@ -299,7 +299,7 @@ LIB_EXPORT bool text_renderer_load_atlas_from_file(text_renderer_t* renderer,
 
 	gpu_image img = r->gpu->create_image(r->gpu, &img_ci);
 	if (!check_handle(img.handle)) {
-		LOG_ERR("text_renderer_load_atlas_from_file: coudn't create gpu image");
+		LOG_ERR("coudn't create gpu image");
 		return false;
 	}
 
@@ -324,7 +324,7 @@ LIB_EXPORT bool text_renderer_load_atlas_from_file(text_renderer_t* renderer,
 	};
 
 	if (!r->gpu->copy_to_staging_buffer(r->gpu, r->staging, img_payload.data)) {
-		LOG_ERR("text_renderer_load_atlas_from_file: couldn't copy image to staging buffer"); // clang-format-ignore
+		LOG_ERR("couldn't copy image to staging buffer"); // clang-format-ignore
 		return false;
 	}
 	gpu_api gpu = *r->gpu;
@@ -343,7 +343,7 @@ LIB_EXPORT bool text_renderer_load_atlas_from_file(text_renderer_t* renderer,
 		}
 		view = gpu.create_image_view(&gpu, &view_ci);
 		if (!gpu.get_image_view_shader_index(&gpu, view, &tex_bind)) {
-			LOG_ERR("text_renderer_load_atlas_from_file: couldn't create texture"); // clang-format-ignore
+			LOG_ERR("couldn't create texture"); // clang-format-ignore
 			return false;
 		}
 	}
@@ -370,7 +370,7 @@ LIB_EXPORT bool text_renderer_load_atlas_from_file(text_renderer_t* renderer,
 			.regions = regions,
 		};
 		if (!gpu.cmd_copy_to_image(&gpu, cmd, &img_copy_info)) {
-			LOG_ERR("text_renderer_load_atlas_from_file: couldn't upload image to gpu"); // clang-format-ignore
+			LOG_ERR("couldn't upload image to gpu"); // clang-format-ignore
 			gpu.destroy_command_buffer(&gpu, cmd);
 			return false;
 		}
@@ -381,13 +381,13 @@ LIB_EXPORT bool text_renderer_load_atlas_from_file(text_renderer_t* renderer,
 
 		gpu_fence fence = gpu.create_fence(&gpu, false);
 		if (!gpu.submit_command_buffer_fence(&gpu, cmd, fence)) {
-			LOG_ERR("text_renderer_load_atlas_from_file: couldn't submit transfer"); // clang-format-ignore
+			LOG_ERR("couldn't submit transfer"); // clang-format-ignore
 			gpu.destroy_command_buffer(&gpu, cmd);
 			gpu.destroy_fence(&gpu, fence);
 			return false;
 		}
 		if (!gpu.wait_fence(&gpu, fence, sec_to_ns(10))) {
-			LOG_ERR("text_renderer_load_atlas_from_file: transfer timed-out");
+			LOG_ERR("transfer timed-out");
 			gpu.destroy_command_buffer(&gpu, cmd);
 			gpu.destroy_fence(&gpu, fence);
 			return false;
@@ -431,7 +431,7 @@ bool text_renderer_add_text_pixels(text_renderer_t* renderer, string text,
 	text_renderer* r = (text_renderer*)renderer;
 
 	if (scale < TEXT_MIN_SCALE || scale > TEXT_MAX_SCALE) {
-		LOG_ERR("text_renderer_add_text: invalid scale value: %f", scale);
+		LOG_ERR("%f", scale);
 		return false;
 	}
 	gpu_api* gpu = r->gpu;
@@ -457,7 +457,7 @@ bool text_renderer_add_text_pixels(text_renderer_t* renderer, string text,
 			y = base_y + info.glyph_size.height * scale;
 			continue;
 		} else if (c < info.first_char || c > info.last_char) {
-			LOG_WARN("text_renderer_add_text: char isn't in atlas: %c (%u)", c, c); // clang-format-ignore
+			LOG_WARN("char isn't in atlas: %c (%u)", c, c); // clang-format-ignore
 			continue;
 		}
 
@@ -506,7 +506,7 @@ LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer, string text,
 	text_renderer* r = (text_renderer*)renderer;
 
 	if (x >= 100.f || x < 0.f || y >= 100.f || y < 0.f) {
-		LOG_ERR("text_renderer_add_text: invalid coordinates");
+		LOG_ERR("invalid coordinates");
 		return false;
 	}
 
@@ -543,7 +543,7 @@ LIB_EXPORT bool text_renderer_draw(text_renderer_t* renderer,
 
 	gpu_image target_img = gpu->get_image_from_view(gpu, target);
 	if (!check_handle(target_img.handle)) {
-		LOG_ERR("text_renderer_draw: couldn't get target's image");
+		LOG_ERR("couldn't get target's image");
 		return false;
 	}
 

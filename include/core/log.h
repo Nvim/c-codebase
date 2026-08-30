@@ -8,6 +8,12 @@
 
 #define LOG_MAX_LEN 1024
 
+#if defined(__FILE_NAME__)
+#define CUR_FILE __FILE_NAME__
+#else
+#define CUR_FILE __FILE__
+#endif
+
 enum log_color {
 	COLOR_FATAL = 41,
 	COLOR_ERR = 31,
@@ -17,31 +23,47 @@ enum log_color {
 };
 
 static char const* log_prefixes[] = {
-	[COLOR_FATAL] = "[FATAL]",	 //
-	[COLOR_ERR] = "[ERR]: ",	 //
-	[COLOR_WARN] = "[WARN]: ",	 //
-	[COLOR_INFO] = "[INFO]: ",	 //
-	[COLOR_DEBUG] = "[DEBUG]: ", //
+	[COLOR_FATAL] = "[FATAL]", //
+	[COLOR_ERR] = "[ERR]",	   //
+	[COLOR_WARN] = "[WARN]",   //
+	[COLOR_INFO] = "[INFO]",   //
+	[COLOR_DEBUG] = "[DEBUG]", //
 };
 
-LIB_EXPORT void log_out(FILE* stream, enum log_color color, char const* msg,
-						...);
+LIB_EXPORT void log_out(FILE* stream, enum log_color color,
+						char const* filename, int linenum, char const* func,
+						char const* msg, ...);
 
 #define LOG_FATAL(msg, ...)                                                    \
-	{ log_out(stderr, COLOR_FATAL, msg, ##__VA_ARGS__); }
+	{                                                                          \
+		log_out(stderr, COLOR_FATAL, CUR_FILE, __LINE__, __func__, msg,        \
+				##__VA_ARGS__);                                                \
+	}
 
 #define LOG_ERR(msg, ...)                                                      \
-	{ log_out(stderr, COLOR_ERR, msg, ##__VA_ARGS__); }
+	{                                                                          \
+		log_out(stderr, COLOR_ERR, CUR_FILE, __LINE__, __func__, msg,          \
+				##__VA_ARGS__);                                                \
+	}
 
 #define LOG_WARN(msg, ...)                                                     \
-	{ log_out(stderr, COLOR_WARN, msg, ##__VA_ARGS__); }
+	{                                                                          \
+		log_out(stderr, COLOR_WARN, CUR_FILE, __LINE__, __func__, msg,         \
+				##__VA_ARGS__);                                                \
+	}
 
 #define LOG_INFO(msg, ...)                                                     \
-	{ log_out(stderr, COLOR_INFO, msg, ##__VA_ARGS__); }
+	{                                                                          \
+		log_out(stderr, COLOR_INFO, CUR_FILE, __LINE__, __func__, msg,         \
+				##__VA_ARGS__);                                                \
+	}
 
 #ifdef _DEBUG
 #define LOG_DEBUG(msg, ...)                                                    \
-	{ log_out(stderr, COLOR_DEBUG, msg, ##__VA_ARGS__); }
+	{                                                                          \
+		log_out(stderr, COLOR_DEBUG, CUR_FILE, __LINE__, __func__, msg,        \
+				##__VA_ARGS__);                                                \
+	}
 #else
 #define LOG_DEBUG(msg, ...)
 #endif

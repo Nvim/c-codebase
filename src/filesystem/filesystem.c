@@ -7,7 +7,7 @@
 string fs_format_memory_size(arena_t* arena, size_t size) {
 	string ret = str("ERROR");
 	if (!arena) {
-		LOG_ERR("fs_format_memory_size: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return ret;
 	}
 
@@ -22,7 +22,7 @@ string fs_format_memory_size(arena_t* arena, size_t size) {
 
 	if (!string_create_fmt(arena, &ret, "%.2f " STR_FMT, s,
 						   STR_FMT_ARGS(units[i]))) {
-		LOG_ERR("fs_format_memory_size: couldn't create string");
+		LOG_ERR("couldn't create string");
 		return str("ERROR");
 	}
 
@@ -33,7 +33,7 @@ fs_file_read_result fs_read_all_file(arena_t* arena, path pth) {
 	fs_file_read_result result = {0};
 
 	if (!arena || !pth.len) {
-		LOG_ERR("fs_read_all_file: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return result;
 	}
 
@@ -46,7 +46,7 @@ fs_file_read_result fs_read_all_file(arena_t* arena, path pth) {
 	if (size > 0) {
 		u8_array bytes = u8_array_create(arena, size);
 		if (!bytes.raw) {
-			LOG_ERR("fs_read_all_file: couldn't allocate result buffer");
+			LOG_ERR("couldn't allocate result buffer");
 			return result;
 		}
 
@@ -58,7 +58,7 @@ fs_file_read_result fs_read_all_file(arena_t* arena, path pth) {
 			result.str = (string){.str = (char*)u8_array_begin(bytes),
 								  .len = u8_array_size(bytes)};
 		} else {
-			LOG_ERR("fs_read_all_file: couldn't read from file");
+			LOG_ERR("couldn't read from file");
 		}
 	}
 	return result;
@@ -68,7 +68,7 @@ fs_file_read_result fs_read_file(arena_t* arena, path pth, size_t size) {
 	fs_file_read_result result = {0};
 
 	if (!arena || !pth.len) {
-		LOG_ERR("fs_read_file: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return result;
 	}
 
@@ -78,7 +78,7 @@ fs_file_read_result fs_read_file(arena_t* arena, path pth, size_t size) {
 
 	u8_array bytes = u8_array_create(arena, size);
 	if (!bytes.raw) {
-		LOG_ERR("fs_read_file: couldn't allocate buffer");
+		LOG_ERR("couldn't allocate buffer");
 		return result;
 	}
 
@@ -92,7 +92,7 @@ fs_file_read_result fs_read_file(arena_t* arena, path pth, size_t size) {
 			.len = u8_array_size(bytes),
 		};
 	} else {
-		LOG_ERR("fs_read_file: couldn't read from file");
+		LOG_ERR("couldn't read from file");
 	}
 
 	return result;
@@ -100,7 +100,7 @@ fs_file_read_result fs_read_file(arena_t* arena, path pth, size_t size) {
 
 bool fs_write_all_file(path pth, u8_array data) {
 	if (!pth.len || !data.raw) {
-		LOG_ERR("fs_write_all_file: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
@@ -116,7 +116,7 @@ bool fs_write_all_file(path pth, u8_array data) {
 
 bool fs_append_file(path pth, u8_array data) {
 	if (!pth.len || !data.raw) {
-		LOG_ERR("fs_append_file: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 

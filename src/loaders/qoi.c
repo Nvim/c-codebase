@@ -59,19 +59,19 @@ image_read_result load_qoi(arena_t* arena, arena_t* scratch, path filename,
 	image_read_result ret = {0};
 
 	if (!arena || !scratch || !filename.len) {
-		LOG_ERR("load_qoi: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return ret;
 	}
 
 	fs_file_read_result r = fs_read_all_file(scratch, filename);
 	if (!r.ok) {
-		LOG_ERR("load_qoi: couldn't read file");
+		LOG_ERR("couldn't read file");
 		return ret;
 	}
 
 	uint64_t file_size = u8_array_size(r.bytes);
 	if (file_size < HEADER_SIZE + END_SIZE) {
-		LOG_ERR("load_qoi: file is too small");
+		LOG_ERR("file is too small");
 		return ret;
 	}
 
@@ -79,7 +79,7 @@ image_read_result load_qoi(arena_t* arena, arena_t* scratch, path filename,
 
 	string magic = (string){.len = current_offset, .str = r.str.str};
 	if (!_magic_valid(magic)) {
-		LOG_ERR("load_qoi: file isn't a QOI file");
+		LOG_ERR("file isn't a QOI file");
 		return ret;
 	}
 
@@ -89,12 +89,12 @@ image_read_result load_qoi(arena_t* arena, arena_t* scratch, path filename,
 	uint8_t channels = _read_u8(&current_offset, raw);
 	uint8_t colorspace = _read_u8(&current_offset, raw);
 
-	LOG_INFO("load_qoi: " STR_FMT " (%ux%u) - %u channels, %d colorspace",
+	LOG_INFO(STR_FMT " (%ux%u) - %u channels, %d colorspace",
 			 STR_FMT_ARGS(filename), width, height, channels, colorspace);
 
 	if (!width || !height || !_channels_valid(channels) ||
 		!_colorspace_valid(colorspace)) {
-		LOG_ERR("load_qoi: invalid header");
+		LOG_ERR("invalid header");
 		return ret;
 	}
 
@@ -103,7 +103,7 @@ image_read_result load_qoi(arena_t* arena, arena_t* scratch, path filename,
 	pixel previous_pixels[64] = {0};
 	pixel_array pixel_buffer = pixel_array_create(scratch, width * height);
 	if (!pixel_buffer.raw) {
-		LOG_ERR("load_qoi: couldn't create pixel buffer");
+		LOG_ERR("couldn't create pixel buffer");
 		return ret;
 	}
 
@@ -157,7 +157,7 @@ image_read_result load_qoi(arena_t* arena, arena_t* scratch, path filename,
 		previous_pixels[_get_index(p)] = p;
 	}
 
-	LOG_INFO("load_qoi: read %lu pixels", write_index);
+	LOG_INFO("read %lu pixels", write_index);
 
 	u8_array ret_arr = u8_array_create(arena, width * height * channels);
 	if (!ret_arr.raw) {

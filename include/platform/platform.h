@@ -16,7 +16,7 @@ typedef enum platform_type {
 	PLATFORM_TYPE_UNKOWN,
 } platform_type;
 
-static const char* platform_type_names[] = {
+static char const* platform_type_names[] = {
 	[PLATFORM_TYPE_LINUX_X11] = "X11",
 	[PLATFORM_TYPE_LINUX_WAYLAND] = "Wayland",
 	[PLATFORM_TYPE_UNKOWN] = "Unknown (x11 fallback)",

@@ -15,19 +15,19 @@ STATIC_ASSERT(sizeof(string) == 16, "unexpected string size");
 
 bool string_create(arena_t* arena, string* out, char const* cstr) {
 	if (!arena || !out || !cstr) {
-		LOG_ERR("string_create: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
 	size_t len = strlen(cstr);
 	if (!len) {
-		LOG_ERR("string_create: can't create empty string");
+		LOG_ERR("can't create empty string");
 		return false;
 	}
 
 	char* buf = arena_alloc_array(arena, 1, len);
 	if (!buf) {
-		LOG_ERR("string_create: couldn't allocate new string buffer");
+		LOG_ERR("couldn't allocate new string buffer");
 		return false;
 	}
 
@@ -40,7 +40,7 @@ bool string_create(arena_t* arena, string* out, char const* cstr) {
 
 bool string_create_fmt(arena_t* arena, string* out, char const* cstr, ...) {
 	if (!arena || !out || !cstr) {
-		LOG_ERR("string_create: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
@@ -52,19 +52,19 @@ bool string_create_fmt(arena_t* arena, string* out, char const* cstr, ...) {
 	va_end(ap);
 
 	if (n < 0) {
-		LOG_ERR("string_create_fmt: couldn't compute string length");
+		LOG_ERR("couldn't compute string length");
 		return false;
 	}
 
 	size_t len = n;
 	if (!len) {
-		LOG_ERR("string_create_fmt: can't create empty string");
+		LOG_ERR("can't create empty string");
 		return false;
 	}
 
 	char* buf = arena_alloc(arena, len + 1);
 	if (!buf) {
-		LOG_ERR("string_create_fmt: couldn't allocate new string buffer");
+		LOG_ERR("couldn't allocate new string buffer");
 		return false;
 	}
 
@@ -73,7 +73,7 @@ bool string_create_fmt(arena_t* arena, string* out, char const* cstr, ...) {
 	va_end(ap);
 
 	if (n < 0) {
-		LOG_ERR("string_create_fmt: couldn't format string to buffer");
+		LOG_ERR("couldn't format string to buffer");
 		return false;
 	}
 
@@ -87,14 +87,14 @@ bool string_create_fmt(arena_t* arena, string* out, char const* cstr, ...) {
 
 bool string_copy(arena_t* arena, string* out, string s) {
 	if (!arena || !out || !s.len) {
-		LOG_ERR("string_copy: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
 	size_t len = s.len;
 	char* buf = arena_alloc_array(arena, 1, len);
 	if (!buf) {
-		LOG_ERR("string_copy: couldn't allocate new string buffer");
+		LOG_ERR("couldn't allocate new string buffer");
 		return false;
 	}
 
@@ -107,14 +107,14 @@ bool string_copy(arena_t* arena, string* out, string s) {
 
 bool string_append(arena_t* arena, string* out, string s, char c) {
 	if (!arena || !out || !s.len) {
-		LOG_ERR("string_append: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
 	size_t len = s.len + 1;
 	char* buf = arena_alloc_array(arena, 1, len);
 	if (!buf) {
-		LOG_ERR("string_append: couldn't allocate new string buffer");
+		LOG_ERR("couldn't allocate new string buffer");
 		return false;
 	}
 
@@ -128,13 +128,13 @@ bool string_append(arena_t* arena, string* out, string s, char c) {
 
 bool string_concat(arena_t* arena, string* out, string s1, string s2) {
 	if (!arena || !out || !s1.len || !s2.len) {
-		LOG_ERR("string_concat: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 	size_t len = s1.len + s2.len;
 	char* buf = arena_alloc_array(arena, 1, len);
 	if (!buf) {
-		LOG_ERR("string_concat: couldn't allocate new string buffer");
+		LOG_ERR("couldn't allocate new string buffer");
 		return false;
 	}
 
@@ -149,7 +149,7 @@ bool string_concat(arena_t* arena, string* out, string s1, string s2) {
 bool string_concat_cstr(arena_t* arena, string* out, string s1,
 						char const* cstr) {
 	if (!arena || !out || !s1.len || !cstr) {
-		LOG_ERR("string_concat_cstr: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
@@ -157,7 +157,7 @@ bool string_concat_cstr(arena_t* arena, string* out, string s1,
 	size_t len = s1.len + cstr_len;
 	char* buf = arena_alloc_array(arena, 1, len);
 	if (!buf) {
-		LOG_ERR("string_concat_cstr: couldn't allocate new string buffer");
+		LOG_ERR("couldn't allocate new string buffer");
 		return false;
 	}
 
@@ -269,7 +269,7 @@ bool string_compare_addr(string s1, string s2) { return (s1.str == s2.str); }
 bool string_occurences(arena_t* arena, arena_t* scratch, u64_array* out,
 					   string s, string pattern) {
 	if (!arena || !out || !s.len || !pattern.len) {
-		LOG_ERR("string_occurences: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
@@ -282,7 +282,7 @@ bool string_occurences(arena_t* arena, arena_t* scratch, u64_array* out,
 
 	queue_t* queue = queue_create(scratch, max_occurences, sizeof(size_t));
 	if (!queue) {
-		LOG_ERR("string_occurences: couldn't create temp queue");
+		LOG_ERR("couldn't create temp queue");
 		return false;
 	}
 
@@ -315,7 +315,7 @@ bool string_occurences(arena_t* arena, arena_t* scratch, u64_array* out,
 	{
 		*out = u64_array_create(arena, count);
 		if (!out) {
-			LOG_ERR("string_occurences: couldn't allocate result array");
+			LOG_ERR("couldn't allocate result array");
 			return false;
 		}
 
@@ -325,7 +325,7 @@ bool string_occurences(arena_t* arena, arena_t* scratch, u64_array* out,
 			ASSERT(queue_dequeue(queue, &elem));
 			// LOG_INFO("queue: %zu", elem);
 			if (!u64_array_set(*out, idx, &elem)) {
-				LOG_ERR("string_occurences: error filling result array");
+				LOG_ERR("error filling result array");
 				return false;
 			}
 			// size_t idk;
@@ -340,7 +340,7 @@ bool string_occurences(arena_t* arena, arena_t* scratch, u64_array* out,
 bool string_tokenize(arena_t* arena, string_array* out, string s,
 					 string delim) {
 	if (!arena || !out || !s.len || !delim.len) {
-		LOG_ERR("string_tokenize: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
@@ -404,7 +404,7 @@ bool string_tokenize(arena_t* arena, string_array* out, string s,
 bool string_replace(arena_t* arena, arena_t* scratch, string* out, string s,
 					string pattern, string replacement) {
 	if (!arena || !out || !s.len) {
-		LOG_ERR("string_replace: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
@@ -425,7 +425,7 @@ bool string_replace(arena_t* arena, arena_t* scratch, string* out, string s,
 	size_t* indices =
 		arena_alloc_array(scratch, sizeof(size_t), max_occurences);
 	if (!indices) {
-		LOG_ERR("string_replace: couldn't allocate temp array for %zu "
+		LOG_ERR("couldn't allocate temp array for %zu "
 				"max_occurences",
 				max_occurences);
 		return false;
@@ -449,7 +449,7 @@ bool string_replace(arena_t* arena, arena_t* scratch, string* out, string s,
 	}
 
 	if (!occurences) {
-		LOG_INFO("string_replace: no occurences of pattern");
+		LOG_INFO("no occurences of pattern");
 		return string_copy(arena, out, s); // No match isn't a failure
 	}
 
@@ -459,7 +459,7 @@ bool string_replace(arena_t* arena, arena_t* scratch, string* out, string s,
 
 	char* buf = arena_alloc_array(arena, 1, buf_len);
 	if (!buf) {
-		LOG_ERR("string_replace: couldn't allocate string buffer");
+		LOG_ERR("couldn't allocate string buffer");
 		return false;
 	}
 
@@ -485,7 +485,7 @@ bool string_replace(arena_t* arena, arena_t* scratch, string* out, string s,
 
 bool string_ltrim(string* str, size_t n) {
 	if (!str || n >= str->len) {
-		LOG_ERR("string_ltrim: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
@@ -496,7 +496,7 @@ bool string_ltrim(string* str, size_t n) {
 
 bool string_rtrim(string* str, size_t n) {
 	if (!str || n >= str->len) {
-		LOG_ERR("string_rtrim: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
@@ -506,7 +506,7 @@ bool string_rtrim(string* str, size_t n) {
 
 bool string_trimspace(string* str) {
 	if (!str) {
-		LOG_ERR("string_trimspace: invalid parameter");
+		LOG_ERR("invalid parameter");
 		return false;
 	}
 	size_t i = 0;
@@ -516,7 +516,7 @@ bool string_trimspace(string* str) {
 	while (isspace(str->str[j]) != 0) { j--; }
 
 	if (i >= j) {
-		LOG_ERR("string_trimspace: empty string");
+		LOG_ERR("empty string");
 		return false;
 	}
 

@@ -92,7 +92,7 @@ static uint32_t _get_queue_family(VkPhysicalDevice dev, arena_t* scratch) {
 	vkGetPhysicalDeviceQueueFamilyProperties2(dev, &qf_count, NULL);
 
 	if (!qf_count) { return UINT32_MAX; }
-	LOG_DEBUG("vulkan_initialize: enumerating %zu qf properties", qf_count);
+	LOG_DEBUG("enumerating %zu qf properties", qf_count);
 
 	// Create array with the right size:
 	vk_qf_props_array props_arr = vk_qf_props_array_create(scratch, qf_count);
@@ -149,7 +149,7 @@ _find_device(vulkan_init_info* pf_info, VkInstance instance, arena_t* scratch) {
 	check_result(vkEnumeratePhysicalDevices(
 		instance, &device_count, vk_physical_device_array_begin(arr)));
 
-	LOG_DEBUG("vulkan_initialize: %zu physical devices", device_count);
+	LOG_DEBUG("%zu physical devices", device_count);
 
 	VkPhysicalDevice* dev = vk_physical_device_array_begin(arr);
 	VkPhysicalDeviceProperties2 device_props = {
@@ -182,7 +182,7 @@ _find_device(vulkan_init_info* pf_info, VkInstance instance, arena_t* scratch) {
 	}
 
 	if (i == device_count && !ret.found) {
-		LOG_ERR("vulkan_initialize: no suitable GPU found");
+		LOG_ERR("no suitable GPU found");
 		memset(&ret, 0, sizeof(ret));
 		return ret;
 	}
@@ -348,7 +348,7 @@ _memory_lookup(UNUSED arena_t* scratch,
 void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 					   arena_t* scratch) {
 	if (!self || !arena || !scratch || !window) {
-		LOG_ERR("vulkan_initialize: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return;
 	}
 
@@ -358,7 +358,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	uint64_t arena_base_usage = arena_get_usage(arena);
 	vk_api_state* state = arena_push_z(arena, vk_api_state);
 	if (!state) {
-		LOG_ERR("vulkan_initialize: couldn't allocate state");
+		LOG_ERR("couldn't allocate state");
 		ASSERT(false);
 		return;
 	}
@@ -370,7 +370,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		if (!platform_init_graphics_api(
 				GRAPHICS_API_VULKAN,
 				(gpu_api_platform_init_info*)&vk_pf_info)) {
-			LOG_ERR("vulkan_initialize: couldn't init platform for vulkan");
+			LOG_ERR("couldn't init platform for vulkan");
 			ASSERT(false);
 			return;
 		};
@@ -475,12 +475,12 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			state->device_props.properties.limits.maxPushConstantsSize;
 
 		// clang-format off
-		LOG_INFO("vulkan_initialize: max sampled images: %u", cfg->max_sampled_images);
-		LOG_INFO("vulkan_initialize: max storage images: %u", cfg->max_storage_images);
-		LOG_INFO("vulkan_initialize: max samplers: %u", cfg->max_samplers);
-		LOG_INFO("vulkan_initialize: max buffer size: " STR_FMT, STR_FMT_ARGS(fs_format_memory_size(scratch, state->max_buffer_size)));
-		LOG_INFO("vulkan_initialize: max buffer range: " STR_FMT, STR_FMT_ARGS(fs_format_memory_size(scratch, state->max_buffer_range)));
-		LOG_INFO("vulkan_initialize: max push constant size: " STR_FMT, STR_FMT_ARGS(fs_format_memory_size(scratch, state->push_constant_size)));
+		LOG_INFO("max sampled images: %u", cfg->max_sampled_images);
+		LOG_INFO("max storage images: %u", cfg->max_storage_images);
+		LOG_INFO("max samplers: %u", cfg->max_samplers);
+		LOG_INFO("max buffer size: " STR_FMT, STR_FMT_ARGS(fs_format_memory_size(scratch, state->max_buffer_size)));
+		LOG_INFO("max buffer range: " STR_FMT, STR_FMT_ARGS(fs_format_memory_size(scratch, state->max_buffer_range)));
+		LOG_INFO("max push constant size: " STR_FMT, STR_FMT_ARGS(fs_format_memory_size(scratch, state->push_constant_size)));
 		// clang-format on
 
 		// Search available memory types for Device Local + Host Visible amount
@@ -493,7 +493,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		_memory_lookup_result r =
 			_memory_lookup(scratch, &state->memory_props.memoryProperties);
 		if (!r.device_total) {
-			LOG_ERR("vulkan_initialize: couldn't get memory info");
+			LOG_ERR("couldn't get memory info");
 			return;
 		}
 		state->device_memory = r.device_total;
@@ -563,7 +563,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		ASSERT(surface);
 		if (!vk_surface_create(&state->surface, state->physical_device,
 							   surface)) {
-			LOG_ERR("vulkan_initialize: couldn't create surface");
+			LOG_ERR("couldn't create surface");
 			return;
 		}
 		ASSERT(state->surface.capabilities.minImageCount);
@@ -597,7 +597,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		bool format_supported = false;
 		VkFormat wanted =
 			gpu_to_vk_image_format(self->config.target_image_format);
-		LOG_DEBUG("vulkan_initialize: looking for surface format %d", wanted);
+		LOG_DEBUG("looking for surface format %d", wanted);
 		for (uint32_t i = 0; i < surface_formats_count; ++i) {
 			if (surface_formats[i].format == wanted) {
 				format_supported = true;
@@ -618,7 +618,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			state->rendertarget_color_space = surface_formats[0].colorSpace;
 			// [TODO]: Stop mutating config struct someday
 			self->config.target_image_format = vk_to_gpu_image_format(format);
-			LOG_DEBUG("vulkan_initialize: fallback to default surface format: %d", format); // NOLINT
+			LOG_DEBUG("fallback to default surface format: %d", format);
 		}
 	}
 
@@ -636,7 +636,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		if (sc_max == 0) { sc_max = buffering; }
 
 		if (sc_max < buffering) {
-			LOG_ERR("vulkan_initialize: required frames_in_flight is above "
+			LOG_ERR("required frames_in_flight is above "
 					"swapchain buffering limit (%u < %u)",
 					sc_max, buffering);
 			return;
@@ -651,11 +651,10 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 				win_size.width, win_size.height, sc_img_count,
 				state->rendertarget_format, state->rendertarget_color_space,
 				state->image_pool, state->image_view_pool)) {
-			LOG_ERR("vulkan_initialize: couldn't create swapchain");
+			LOG_ERR("couldn't create swapchain");
 			return;
 		}
-		LOG_DEBUG("vulkan_initialize: created swapchain with %u images",
-				  state->swapchain.img_count);
+		LOG_DEBUG("created swapchain with %u images", state->swapchain.img_count); // NOLINT
 	}
 
 	{ // Frame sync
@@ -670,7 +669,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		if (!vk_sync_buffer_create(
 				state->device, &state->sync_buffer, state->cmd_pool,
 				self->config.frames_in_flight, state->command_pool)) {
-			LOG_FATAL("vulkan_initialize: couldn't create rendersync");
+			LOG_FATAL("couldn't create rendersync");
 			return;
 		}
 	}
@@ -706,7 +705,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 
 		if (!check_result(vkCreateDescriptorPool(state->device, &ci, NULL,
 												 &state->descriptor_pool))) {
-			LOG_ERR("vulkan_initialize: couldn't create descriptor pool");
+			LOG_ERR("couldn't create descriptor pool");
 			return;
 		}
 	}
@@ -764,7 +763,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		}
 		if (!check_result(vkCreateDescriptorSetLayout(
 				state->device, &layout_ci, NULL, &state->descriptor_layout))) {
-			LOG_ERR("vulkan_initialize: couldn't create descriptor set layout");
+			LOG_ERR("couldn't create descriptor set layout");
 			return;
 		}
 
@@ -779,7 +778,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 
 		if (!check_result(vkAllocateDescriptorSets(state->device, &alloc_ci,
 												   &state->descriptor))) {
-			LOG_ERR("vulkan_initialize: couldn't allocate descriptor");
+			LOG_ERR("couldn't allocate descriptor");
 			return;
 		}
 	}
@@ -788,18 +787,16 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		self->is_init = true;
 		self->state = state;
 	}
-	LOG_DEBUG("vulkan_initialize: Using device: '%s'",
-			  state->device_props.properties.deviceName);
-	LOG_DEBUG("vulkan_initialize: Using queue family: '%u'",
-			  state->queue_family_idx);
+	LOG_DEBUG("Using device: '%s'", state->device_props.properties.deviceName);
+	LOG_DEBUG("Using queue family: '%u'", state->queue_family_idx);
 	size_t alloc = arena_get_usage(state->arena) - arena_base_usage;
-	LOG_INFO("vulkan_initialize: allocated " STR_FMT " for gpu api",
+	LOG_INFO("allocated " STR_FMT " for gpu api",
 			 STR_FMT_ARGS(fs_format_memory_size(scratch, alloc)));
 }
 
 void vulkan_destroy(gpu_api* self) {
 	if (!self) {
-		LOG_ERR("vulkan_destroy: invalid instance");
+		LOG_ERR("invalid instance");
 		return;
 	}
 	if (!self->is_init || !self->state) { return; }
@@ -822,7 +819,7 @@ void vulkan_destroy(gpu_api* self) {
 		}
 		vkDestroyInstance(state->instance, NULL);
 	}
-	LOG_DEBUG("vulkan_destroy: destroyed vulkan api");
+	LOG_DEBUG("destroyed vulkan api");
 }
 
 gpu_memory_info vulkan_get_memory_info(gpu_api* self) {
@@ -847,7 +844,7 @@ gpu_frame_result vulkan_begin_frame(gpu_api* self) {
 	window_size win_size = platform_get_window_size(self->window);
 	vk_frame frame = {0};
 	if (!vk_begin_frame(state, &frame, win_size)) {
-		LOG_ERR("vulkan_begin_frame: couldn't begin frame");
+		LOG_ERR("couldn't begin frame");
 		return ret;
 	}
 
@@ -869,7 +866,7 @@ gpu_frame_result vulkan_begin_frame(gpu_api* self) {
 	if (frame.has_rendertarget == true) {
 		ret.status = FRAME_OK;
 	} else {
-		LOG_INFO("vulkan_begin_frame: frame must be skipped by client");
+		LOG_INFO("frame must be skipped by client");
 		ret.status = FRAME_SKIP;
 	}
 
@@ -888,7 +885,7 @@ void vulkan_cmd_begin_rendering(gpu_api* self, gpu_command_buffer cmd,
 	vk_image_view_data* target = vk_image_view_pool_get(
 		state->image_view_pool, to_vk_imgview(s->color_targets[0].target));
 	if (!target || target->type != GPU_IMAGE_VIEW_RENDER_TARGET) {
-		LOG_ERR("vulkan_cmd_begin_rendering: invalid render target view");
+		LOG_ERR("invalid render target view");
 		return;
 	}
 
@@ -914,7 +911,7 @@ void vulkan_cmd_begin_rendering(gpu_api* self, gpu_command_buffer cmd,
 		vk_image_view_data* depth_view = vk_image_view_pool_get(
 			state->image_view_pool, to_vk_imgview(s->depth_target->target));
 		if (!depth_view || depth_view->type != GPU_IMAGE_VIEW_DEPTH_TARGET) {
-			LOG_ERR("vulkan_cmd_begin_rendering: invalid depth target view");
+			LOG_ERR("invalid depth target view");
 			return;
 		}
 		VkClearValue clear =
@@ -1026,7 +1023,7 @@ gpu_command_buffer vulkan_create_command_buffer(gpu_api* self) {
 	VkCommandBuffer cmd_buf;
 	if (!check_result(
 			vkAllocateCommandBuffers(state->device, &alloc_info, &cmd_buf))) {
-		LOG_ERR("vulkan_create_command_buffer: couldn't create command buffer");
+		LOG_ERR("couldn't create command buffer");
 		return ret;
 	}
 
@@ -1036,7 +1033,7 @@ gpu_command_buffer vulkan_create_command_buffer(gpu_api* self) {
 		begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	}
 	if (!check_result(vkBeginCommandBuffer(cmd_buf, &begin_info))) {
-		LOG_ERR("vulkan_create_command_buffer: couldn't begin command buffer");
+		LOG_ERR("couldn't begin command buffer");
 		return ret;
 	}
 
@@ -1059,18 +1056,18 @@ void vulkan_destroy_command_buffer(gpu_api* self, gpu_command_buffer cmd) {
 		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
 
 	if (!cmd_data) {
-		LOG_ERR("vulkan_destroy_command_buffer: invalid handle");
+		LOG_ERR("invalid handle");
 		return;
 	}
 
 	if (cmd_data->state != CMDBUF_ENDED) {
-		LOG_ERR("vulkan_destroy_command_buffer: can't destroy pending command "
+		LOG_ERR("can't destroy pending command "
 				"buffer");
 		return;
 	}
 
 	if ((cmd_data->flags & CMDBUF_FLAG_FRAME)) {
-		LOG_ERR("vulkan_destroy_command_buffer: can't destroy frame command "
+		LOG_ERR("can't destroy frame command "
 				"buffer");
 		return;
 	}
@@ -1086,13 +1083,13 @@ bool vulkan_submit_command_buffer(gpu_api* self, gpu_command_buffer cmd) {
 
 	if (!cmd_data || cmd_data->state != CMDBUF_RECORDING ||
 		(cmd_data->flags & CMDBUF_FLAG_FRAME)) {
-		LOG_ERR("vulkan_submit_command_buffer: invalid command buffer");
+		LOG_ERR("invalid command buffer");
 		return false;
 	}
 	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
 
 	if (!check_result(vkEndCommandBuffer(cmd_buf))) {
-		LOG_ERR("vulkan_submit_command_buffer: couldn't end command buffer");
+		LOG_ERR("couldn't end command buffer");
 		return false;
 	}
 	cmd_data->state = CMDBUF_ENDED;
@@ -1109,7 +1106,7 @@ bool vulkan_submit_command_buffer(gpu_api* self, gpu_command_buffer cmd) {
 	};
 
 	if (!check_result(vkCreateFence(state->device, &fence_ci, NULL, &fence))) {
-		LOG_ERR("vulkan_submit_command_buffer: couldn't create fence");
+		LOG_ERR("couldn't create fence");
 		return false;
 	}
 
@@ -1120,14 +1117,14 @@ bool vulkan_submit_command_buffer(gpu_api* self, gpu_command_buffer cmd) {
 		submit_info.pCommandBufferInfos = &cmd_info;
 	}
 	if (!check_result(vkQueueSubmit2(state->queue, 1, &submit_info, fence))) {
-		LOG_ERR("vulkan_submit_command_buffer: couldn't submit");
+		LOG_ERR("couldn't submit");
 		return false;
 	}
 
 	static uint64_t const fence_timeout = sec_to_ns(1);
 	if (!check_result(vkWaitForFences(state->device, 1, &fence, VK_TRUE,
 									  fence_timeout))) {
-		LOG_ERR("vulkan_submit_command_buffer: couldn't wait for fence");
+		LOG_ERR("couldn't wait for fence");
 		return false;
 	}
 
@@ -1143,7 +1140,7 @@ bool vulkan_submit_command_buffer_fence(gpu_api* self, gpu_command_buffer cmd,
 		vk_handle_pool_get(state->handle_pool, to_vk_handle(fence_handle));
 
 	if (h->type != VK_OBJECT_TYPE_FENCE || !h->handle) {
-		LOG_ERR("vulkan_submit_command_buffer_fence: invalid fence handle");
+		LOG_ERR("invalid fence handle");
 		return false;
 	}
 	VkFence fence = h->handle;
@@ -1153,13 +1150,13 @@ bool vulkan_submit_command_buffer_fence(gpu_api* self, gpu_command_buffer cmd,
 
 	if (!cmd_data || cmd_data->state != CMDBUF_RECORDING ||
 		(cmd_data->flags & CMDBUF_FLAG_FRAME)) {
-		LOG_ERR("vulkan_submit_command_buffer_fence: invalid command buffer");
+		LOG_ERR("invalid command buffer");
 		return false;
 	}
 	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
 
 	if (!check_result(vkEndCommandBuffer(cmd_buf))) {
-		LOG_ERR("vulkan_submit_command_buffer: couldn't end command buffer");
+		LOG_ERR("couldn't end command buffer");
 		return false;
 	}
 	cmd_data->state = CMDBUF_ENDED;
@@ -1177,7 +1174,7 @@ bool vulkan_submit_command_buffer_fence(gpu_api* self, gpu_command_buffer cmd,
 		submit_info.pCommandBufferInfos = &cmd_info;
 	}
 	if (!check_result(vkQueueSubmit2(state->queue, 1, &submit_info, fence))) {
-		LOG_ERR("vulkan_submit_command_buffer_fence: couldn't submit");
+		LOG_ERR("couldn't submit");
 		return false;
 	}
 
@@ -1195,7 +1192,7 @@ gpu_fence vulkan_create_fence(gpu_api* self, bool create_signalled) {
 	};
 
 	if (!check_result(vkCreateFence(state->device, &fence_ci, NULL, &fence))) {
-		LOG_ERR("vulkan_create_fence: couldn't create fence");
+		LOG_ERR("couldn't create fence");
 		return ret;
 	}
 
@@ -1217,14 +1214,14 @@ bool vulkan_wait_fence(gpu_api* self, gpu_fence gpu_fence,
 		vk_handle_pool_get(state->handle_pool, to_vk_handle(gpu_fence));
 
 	if (h->type != VK_OBJECT_TYPE_FENCE || !h->handle) {
-		LOG_ERR("vulkan_wait_fence: invalid fence handle");
+		LOG_ERR("invalid fence handle");
 		return false;
 	}
 	VkFence fence = h->handle;
 
 	if (!check_result(
 			vkWaitForFences(state->device, 1, &fence, VK_TRUE, timeout_ns))) {
-		LOG_ERR("vulkan_wait_fence: couldn't wait for fence");
+		LOG_ERR("couldn't wait for fence");
 		return false;
 	}
 
@@ -1237,7 +1234,7 @@ void vulkan_destroy_fence(gpu_api* self, gpu_fence gpu_fence) {
 		vk_handle_pool_get(state->handle_pool, to_vk_handle(gpu_fence));
 
 	if (h->type != VK_OBJECT_TYPE_FENCE || !h->handle) {
-		LOG_ERR("vulkan_destroy_fence: invalid fence");
+		LOG_ERR("invalid fence");
 		return;
 	}
 	VkFence fence = h->handle;
@@ -1250,21 +1247,21 @@ bool vulkan_end_frame(gpu_api* self, gpu_frame* f) {
 	vk_cmdbuf_data* cmd_data = vk_cmdbuf_pool_get(state->cmd_pool, handle);
 
 	if (f->frame_index != state->frame_idx) {
-		LOG_ERR("vulkan_end_frame: invalid frame index");
+		LOG_ERR("invalid frame index");
 		return false;
 	}
 
 	// Transition framebuffer layout
 	if (check_handle(f->framebuffer.handle)) {
 		if (!vk_transition_to_present(state, f)) {
-			LOG_ERR("vulkan_end_frame: couldn't transition swapchain image");
+			LOG_ERR("couldn't transition swapchain image");
 			return false;
 		}
 	}
 
 	// Submit command buffer
 	if (!vk_submit_frame_cmd(state, f)) {
-		LOG_ERR("vulkan_end_frame: couldn't submit frame's command buffer");
+		LOG_ERR("couldn't submit frame's command buffer");
 		return false;
 	}
 
@@ -1274,13 +1271,12 @@ bool vulkan_end_frame(gpu_api* self, gpu_frame* f) {
 			vk_swapchain_present(&state->swapchain, state->queue);
 
 		if (pres_res == PRESENT_ERROR) {
-			LOG_ERR("vulkan_end_frame: couldn't present to swapchain");
+			LOG_ERR("couldn't present to swapchain");
 			return false;
 		}
 
 		if (pres_res == PRESENT_OUT_OF_DATE) {
-			LOG_INFO(
-				"vulkan_end_frame: queueing swapchain refresh for next frame");
+			LOG_INFO("queueing swapchain refresh for next frame");
 			state->swapchain.must_refresh = true;
 		}
 	}
@@ -1423,7 +1419,7 @@ void vulkan_cmd_draw_indirect(gpu_api* self, gpu_command_buffer cmd,
 		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(indirect_buffer));
 
 	if (!buf_data || !buf_data->buffer) {
-		LOG_ERR("vulkan_cmd_draw_indirect: invalid buffer");
+		LOG_ERR("invalid buffer");
 		return;
 	}
 
@@ -1445,7 +1441,7 @@ void vulkan_cmd_draw_indirect_indexed(gpu_api* self, gpu_command_buffer cmd,
 		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(indirect_buffer));
 
 	if (!buf_data || !buf_data->buffer) {
-		LOG_ERR("vulkan_cmd_draw_indirect_indexed: invalid buffer");
+		LOG_ERR("invalid buffer");
 		return;
 	}
 
@@ -1495,7 +1491,7 @@ gpu_sampler vulkan_create_sampler(gpu_api* self, gpu_sampler_ci* ci,
 	}
 
 	if (!check_result(vkCreateSampler(state->device, &vk_ci, NULL, &s))) {
-		LOG_ERR("vulkan_create_sampler: couldn't create sampler");
+		LOG_ERR("couldn't create sampler");
 		return ret;
 	}
 
@@ -1508,7 +1504,7 @@ gpu_sampler vulkan_create_sampler(gpu_api* self, gpu_sampler_ci* ci,
 
 	uint32_t index = vk_update_sampler_descriptor(state, vk_ret);
 	if (index == INVALID_DESCRIPTOR) {
-		LOG_ERR("vulkan_create_sampler: couldn't get sampler shader binding");
+		LOG_ERR("couldn't get sampler shader binding");
 		return ret;
 	}
 
@@ -1523,7 +1519,7 @@ void vulkan_destroy_sampler(gpu_api* self, gpu_sampler sampler_handle) {
 		vk_handle_pool_get(state->handle_pool, to_vk_handle(sampler_handle));
 
 	if (h->type != VK_OBJECT_TYPE_SAMPLER || !h->handle) {
-		LOG_ERR("vulkan_destroy_sampler: invalid sampler handle");
+		LOG_ERR("invalid sampler handle");
 		return;
 	}
 
@@ -1535,7 +1531,7 @@ gpu_shader vulkan_create_shader(gpu_api* self, gpu_shader_ci* ci) {
 
 	gpu_shader ret = {.handle = POOL_INVALID_IDX};
 	if (!self || !self->state || !self->is_init || !ci) {
-		LOG_ERR("vulkan_create_shader: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return ret;
 	}
 
@@ -1543,7 +1539,7 @@ gpu_shader vulkan_create_shader(gpu_api* self, gpu_shader_ci* ci) {
 
 	uint64_t code_size = u8_array_size(ci->code);
 	if (code_size == 0 || code_size % 4 != 0) {
-		LOG_ERR("vulkan_create_shader: invalid shader code buffer");
+		LOG_ERR("invalid shader code buffer");
 		return ret;
 	}
 
@@ -1561,7 +1557,7 @@ gpu_shader vulkan_create_shader(gpu_api* self, gpu_shader_ci* ci) {
 
 		if (!check_result(
 				vkCreateShaderModule(state->device, &vk_ci, NULL, &module))) {
-			LOG_ERR("vulkan_create_shader: couldn't create shader");
+			LOG_ERR("couldn't create shader");
 			return ret;
 		}
 		// [TODO]: debug name
@@ -1587,7 +1583,7 @@ void vulkan_destroy_shader(gpu_api* self, gpu_shader handle) {
 		vk_shader_pool_get(state->shader_pool, to_vk_shader(handle));
 
 	if (!data || !data->module) {
-		LOG_ERR("vulkan_destroy_shader: invalid shader handle");
+		LOG_ERR("invalid shader handle");
 		return;
 	}
 
@@ -1620,7 +1616,7 @@ gpu_pipeline vulkan_create_pipeline(gpu_api* self, gpu_pipeline_ci* ci) {
 	}
 	if (!check_result(vkCreatePipelineLayout(state->device, &layout_ci, NULL,
 											 &data.layout))) {
-		LOG_ERR("vulkan_create_pipeline: couldn't create pipeline layout");
+		LOG_ERR("couldn't create pipeline layout");
 		return ret;
 	}
 	data.ci.layout = data.layout;
@@ -1632,7 +1628,7 @@ gpu_pipeline vulkan_create_pipeline(gpu_api* self, gpu_pipeline_ci* ci) {
 			state->shader_pool, to_vk_shader(ci->fragment_shader));
 
 		if (!vs || !vs->module || !fs || !fs->module) {
-			LOG_ERR("gpu_to_vulkan_pipeline: invalid shader handles");
+			LOG_ERR("gpu_to_invalid shader handles");
 			return ret;
 		}
 		ASSERT(vs->stage == VK_SHADER_STAGE_VERTEX_BIT &&
@@ -1765,7 +1761,7 @@ gpu_pipeline vulkan_create_pipeline(gpu_api* self, gpu_pipeline_ci* ci) {
 
 		if (!check_result(vkCreateGraphicsPipelines(
 				state->device, NULL, 1, &data.ci, NULL, &data.pipeline))) {
-			LOG_ERR("vulkan_create_pipeline: couldn't create pipeline");
+			LOG_ERR("couldn't create pipeline");
 			vkDestroyPipelineLayout(state->device, data.layout, NULL);
 			return ret;
 		}
@@ -1784,7 +1780,7 @@ void vulkan_destroy_pipeline(gpu_api* self, gpu_pipeline handle) {
 		vk_pipeline_pool_get(state->pipeline_pool, to_vk_pipeline(handle));
 
 	if (!data || !data->pipeline) {
-		LOG_ERR("vulkan_destroy_pipeline: invalid pipeline handle");
+		LOG_ERR("invalid pipeline handle");
 		return;
 	}
 
@@ -1799,12 +1795,12 @@ gpu_image vulkan_create_image(gpu_api* self, gpu_image_ci* ci) {
 	gpu_image ret = {.handle = POOL_INVALID_HANDLE};
 
 	if (!self || !self->is_init || !ci) {
-		LOG_ERR("vulkan_create_image: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return ret;
 	}
 
 	if (!gpu_validate_image_ci(ci)) {
-		LOG_ERR("vulkan_create_image: invalid create info");
+		LOG_ERR("invalid create info");
 		return ret;
 	}
 
@@ -1835,16 +1831,15 @@ gpu_image vulkan_create_image(gpu_api* self, gpu_image_ci* ci) {
 			ci->mip_levels, ci->array_layers, state->queue_family_idx);
 
 		if (!vk_image_pool_is_handle_valid(state->image_pool, vk_img_handle)) {
-			LOG_ERR("vulkan_create_image: couldn't create image");
+			LOG_ERR("couldn't create image");
 			return ret;
 		}
 	} else {
-		LOG_ERR("vulkan_create_image: non 2D images aren't supported yet");
+		LOG_ERR("non 2D images aren't supported yet");
 		return ret;
 	}
 
-	LOG_DEBUG("vulkan_create_image: image created: %u",
-			  vk_img_handle.raw_handle.handle);
+	LOG_DEBUG("image created: %u", vk_img_handle.raw_handle.handle);
 	ret.handle = vk_image_pool_unwrap(vk_img_handle);
 
 	return ret;
@@ -1856,12 +1851,12 @@ void vulkan_destroy_image(gpu_api* self, gpu_image handle) {
 	vk_image_data* data =
 		vk_image_pool_get(state->image_pool, to_vk_img(handle));
 	if (!data) {
-		LOG_ERR("vulkan_destroy_image: invalid image handle");
+		LOG_ERR("invalid image handle");
 		return;
 	}
 
 	if (data->vk_image_flags & IMAGE_FLAGS_SWAPCHAIN) {
-		LOG_ERR("vulkan_destroy_image: can't destroy swapchain image");
+		LOG_ERR("can't destroy swapchain image");
 		return;
 	}
 
@@ -1875,23 +1870,23 @@ gpu_image_view vulkan_create_image_view(gpu_api* self, gpu_image_view_ci* ci) {
 	gpu_image_view out = {.handle = POOL_INVALID_HANDLE};
 
 	if (!self || !self->is_init || !ci) {
-		LOG_ERR("vulkan_create_image_view: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return out;
 	}
 
 	vk_image_data* vk_img =
 		vk_image_pool_get(state->image_pool, to_vk_img(ci->image));
 	if (!vk_img) {
-		LOG_ERR("vulkan_create_image_view: invalid image");
+		LOG_ERR("invalid image");
 		return out;
 	}
 
 	if (ci->base_layer >= ci->layer_count) {
-		LOG_ERR("vulkan_create_image_view: invalid layers");
+		LOG_ERR("invalid layers");
 		return out;
 	}
 	if (ci->base_level >= ci->level_count) {
-		LOG_ERR("vulkan_create_image_view: invalid levels");
+		LOG_ERR("invalid levels");
 		return out;
 	}
 
@@ -1906,12 +1901,12 @@ gpu_image_view vulkan_create_image_view(gpu_api* self, gpu_image_view_ci* ci) {
 
 	if (ci->type == GPU_IMAGE_VIEW_TEXTURE) {
 		if (ci->base_layer + layer_count > vk_img->layer_count) {
-			LOG_ERR("vulkan_create_image_view: invalid layers");
+			LOG_ERR("invalid layers");
 			return out;
 		}
 
 		if (ci->base_level + level_count > vk_img->level_count) {
-			LOG_ERR("vulkan_create_image_view: invalid levels");
+			LOG_ERR("invalid levels");
 			return out;
 		}
 
@@ -1977,7 +1972,7 @@ gpu_image_view vulkan_create_image_view(gpu_api* self, gpu_image_view_ci* ci) {
 	VkImageView view = {0};
 	if (!check_result(
 			vkCreateImageView(state->device, &view_ci, NULL, &view))) {
-		LOG_ERR("vulkan_create_image_view: couldn't create vulkan image view");
+		LOG_ERR("couldn't create vulkan image view");
 		return out;
 	}
 
@@ -2002,9 +1997,9 @@ gpu_image_view vulkan_create_image_view(gpu_api* self, gpu_image_view_ci* ci) {
 		vk_image_view_pool_new(state->image_view_pool, &data);
 
 	if (has_image_descriptor(ci->type)) {
-		LOG_INFO("vulkan_create_image_view: updating image descriptor");
+		LOG_INFO("updating image descriptor");
 		if (!vk_update_image_descriptor(state, ret)) {
-			LOG_ERR("vulkan_create_image_view: couldn't write descriptor");
+			LOG_ERR("couldn't write descriptor");
 			return out;
 		}
 	}
@@ -2020,7 +2015,7 @@ gpu_image vulkan_get_image_from_view(gpu_api* self, gpu_image_view v) {
 	vk_image_view_data* data =
 		vk_image_view_pool_get(state->image_view_pool, to_vk_imgview(v));
 	if (!data || !data->view) {
-		LOG_ERR("vulkan_get_image_from_view: invalid view handle");
+		LOG_ERR("invalid view handle");
 		return ret;
 	}
 
@@ -2034,13 +2029,13 @@ bool vulkan_get_image_view_shader_index(struct gpu_api* self,
 	vk_image_view_data* data =
 		vk_image_view_pool_get(state->image_view_pool, to_vk_imgview(view));
 	if (!data || !data->view) {
-		LOG_ERR("vulkan_get_image_view_shader_index: invalid view handle");
+		LOG_ERR("invalid view handle");
 		return false;
 	}
 
 	if (data->type != GPU_IMAGE_VIEW_TEXTURE &&
 		data->type != GPU_IMAGE_VIEW_STORAGE) {
-		LOG_ERR("vulkan_get_image_view_shader_index: invalid view type");
+		LOG_ERR("invalid view type");
 		return false;
 	}
 
@@ -2052,14 +2047,14 @@ void vulkan_destroy_image_view(gpu_api* self, gpu_image_view view) {
 	vk_api_state* state = self->state;
 
 	if (!self || !self->is_init) {
-		LOG_ERR("vulkan_create_image_view: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return;
 	}
 
 	vk_image_view_data* data =
 		vk_image_view_pool_get(state->image_view_pool, to_vk_imgview(view));
 	if (!data || !data->view) {
-		LOG_ERR("vulkan_destroy_image_view: invalid view handle");
+		LOG_ERR("invalid view handle");
 		return;
 	}
 
@@ -2072,21 +2067,21 @@ bool vulkan_cmd_copy_to_image(struct gpu_api* self, gpu_command_buffer cmd,
 	vk_api_state* state = self->state;
 
 	if (!info) {
-		LOG_ERR("vulkan_cmd_copy_to_image: invalid command buffer state");
+		LOG_ERR("invalid command buffer state");
 		return false;
 	}
 
 #define MAX_REGIONS 256U
 	size_t region_count = gpu_image_region_array_size(info->regions);
 	if (!region_count || region_count > MAX_REGIONS) {
-		LOG_ERR("vulkan_cmd_copy_to_image: invalid region count");
+		LOG_ERR("invalid region count");
 		return false;
 	}
 
 	vk_cmdbuf_data* cmd_data =
 		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
 	if (cmd_data->state != CMDBUF_RECORDING) {
-		LOG_ERR("vulkan_cmd_copy_to_image: invalid command buffer state");
+		LOG_ERR("invalid command buffer state");
 		return false;
 	};
 	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
@@ -2094,24 +2089,24 @@ bool vulkan_cmd_copy_to_image(struct gpu_api* self, gpu_command_buffer cmd,
 	vk_image_data* data =
 		vk_image_pool_get(state->image_pool, to_vk_img(info->dst));
 	if (!data) {
-		LOG_ERR("vulkan_cmd_copy_to_image: invalid image handle");
+		LOG_ERR("invalid image handle");
 		return false;
 	}
 	if (data->vk_image_flags & IMAGE_FLAGS_SWAPCHAIN) {
-		LOG_ERR("vulkan_cmd_copy_to_image: can't update to swapchain image");
+		LOG_ERR("can't update to swapchain image");
 		return false;
 	}
 
 	vk_buffer_data* buf_data =
 		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(info->src));
 	if (!buf_data) {
-		LOG_ERR("vulkan_cmd_copy_to_image: invalid staging buffer");
+		LOG_ERR("invalid staging buffer");
 		return false;
 	}
 
 	if (!(buf_data->usage_flags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) ||
 		!buf_data->alloc_info.pMappedData) {
-		LOG_ERR("vulkan_cmd_copy_to_image: invalid staging buffer usage");
+		LOG_ERR("invalid staging buffer usage");
 		return false;
 	}
 
@@ -2219,14 +2214,14 @@ bool vulkan_cmd_blit_to_image(gpu_api* self, gpu_command_buffer cmd,
 	vk_api_state* state = self->state;
 
 	if (!info) {
-		LOG_ERR("vulkan_cmd_blit_to_image: parameters");
+		LOG_ERR("parameters");
 		return false;
 	}
 
 	vk_cmdbuf_data* cmd_data =
 		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
 	if (cmd_data->state != CMDBUF_RECORDING) {
-		LOG_ERR("vulkan_cmd_blit_to_image: invalid command buffer state");
+		LOG_ERR("invalid command buffer state");
 		return false;
 	};
 	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
@@ -2234,38 +2229,38 @@ bool vulkan_cmd_blit_to_image(gpu_api* self, gpu_command_buffer cmd,
 	vk_image_data* dst_data =
 		vk_image_pool_get(state->image_pool, to_vk_img(info->dst));
 	if (!dst_data) {
-		LOG_ERR("vulkan_cmd_blit_to_image: invalid dest image handle");
+		LOG_ERR("invalid dest image handle");
 		return false;
 	}
 	vk_image_data* src_data =
 		vk_image_pool_get(state->image_pool, to_vk_img(info->src));
 	if (!src_data) {
-		LOG_ERR("vulkan_cmd_blit_to_image: invalid src image handle");
+		LOG_ERR("invalid src image handle");
 		return false;
 	}
 
 	// Validation time
 	if (dst_data->vk_image_flags & IMAGE_FLAGS_SWAPCHAIN) {
-		LOG_ERR("vulkan_cmd_blit_to_image: can't blit to swapchain image");
+		LOG_ERR("can't blit to swapchain image");
 		return false;
 	}
 
 	if (!(src_data->usage_flags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) ||
 		!(dst_data->usage_flags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)) {
-		LOG_ERR("vulkan_cmd_blit_to_image: images are missing transfer usage "
+		LOG_ERR("images are missing transfer usage "
 				"flags");
 		return false;
 	}
 
 	if (info->src_region.layer >= src_data->layer_count ||
 		info->src_region.level >= src_data->level_count) {
-		LOG_ERR("vulkan_cmd_blit_to_image: invalid src layer/level count");
+		LOG_ERR("invalid src layer/level count");
 		return false;
 	}
 
 	if (info->dst_region.layer >= dst_data->layer_count ||
 		info->dst_region.level >= dst_data->level_count) {
-		LOG_ERR("vulkan_cmd_blit_to_image: invalid dst layer/level count");
+		LOG_ERR("invalid dst layer/level count");
 		return false;
 	}
 
@@ -2319,19 +2314,19 @@ bool vulkan_cmd_blit_to_image(gpu_api* self, gpu_command_buffer cmd,
 gpu_buffer vulkan_create_buffer(gpu_api* self, gpu_buffer_ci* ci) {
 	gpu_buffer ret = {.handle = POOL_INVALID_HANDLE};
 	if (!self || !ci || !self->is_init) {
-		LOG_ERR("vulkan_create_buffer: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return ret;
 	}
 
 	vk_api_state* state = self->state;
 
 	if (!gpu_validate_buffer_ci(ci)) {
-		LOG_ERR("vulkan_create_buffer: invalid buffer create info");
+		LOG_ERR("invalid buffer create info");
 		return ret;
 	}
 
 	if (!ci->size || ci->size > state->max_buffer_size) {
-		LOG_ERR("vulkan_create_buffer: invalid buffer size");
+		LOG_ERR("invalid buffer size");
 		return ret;
 	}
 
@@ -2351,7 +2346,7 @@ gpu_buffer vulkan_create_buffer(gpu_api* self, gpu_buffer_ci* ci) {
 	if (!check_result(vmaCreateBuffer(state->allocator, &buf_ci, &vma_ci,
 									  &data.buffer, &data.alloc,
 									  &data.alloc_info))) {
-		LOG_ERR("vulkan_create_buffer: couldn't create buffer");
+		LOG_ERR("couldn't create buffer");
 		return ret;
 	};
 
@@ -2359,7 +2354,7 @@ gpu_buffer vulkan_create_buffer(gpu_api* self, gpu_buffer_ci* ci) {
 	// every switch to my own allocator
 	if (vma_ci.flags & VMA_ALLOCATION_CREATE_MAPPED_BIT) {
 		if (!data.alloc_info.pMappedData) {
-			LOG_ERR("vulkan_create_buffer: couldn't get buffer mapping");
+			LOG_ERR("couldn't get buffer mapping");
 			vmaDestroyBuffer(state->allocator, data.buffer, data.alloc);
 			return ret;
 		}
@@ -2397,7 +2392,7 @@ void vulkan_destroy_buffer(gpu_api* self, gpu_buffer buf) {
 		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(buf));
 
 	if (!data || !data->buffer) {
-		LOG_ERR("vulkan_destroy_buffer: invalid buffer");
+		LOG_ERR("invalid buffer");
 		return;
 	}
 
@@ -2412,12 +2407,12 @@ gpu_buffer_map_result vulkan_map_buffer(gpu_api* self, gpu_buffer buf) {
 		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(buf));
 
 	if (!data || !data->buffer) {
-		LOG_ERR("vulkan_map_buffer: invalid buffer");
+		LOG_ERR("invalid buffer");
 		return res;
 	}
 
 	if (!data->alloc_info.pMappedData) {
-		LOG_ERR("vulkan_map_buffer: buffer has no mapped data");
+		LOG_ERR("buffer has no mapped data");
 		return res;
 	}
 
@@ -2436,7 +2431,7 @@ vulkan_buffer_get_device_address(gpu_api* self, gpu_buffer buf) {
 		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(buf));
 
 	if (!data || !data->buffer) {
-		LOG_ERR("vulkan_buffer_get_device_address: invalid buffer");
+		LOG_ERR("invalid buffer");
 		return res;
 	}
 
@@ -2459,7 +2454,7 @@ bool vulkan_cmd_bind_index_buffer(gpu_api* self, gpu_command_buffer cmd,
 		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
 	if (cmd_data->state != CMDBUF_RECORDING &&
 		cmd_data->state != CMDBUF_RENDERING) {
-		LOG_ERR("vulkan_cmd_bind_index_buffer: invalid command buffer state");
+		LOG_ERR("invalid command buffer state");
 		return false;
 	};
 	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
@@ -2469,7 +2464,7 @@ bool vulkan_cmd_bind_index_buffer(gpu_api* self, gpu_command_buffer cmd,
 
 	if (!buf_data || !buf_data->buffer ||
 		!(buf_data->usage_flags & VK_BUFFER_USAGE_INDEX_BUFFER_BIT)) {
-		LOG_ERR("vulkan_cmd_bind_index_buffer: invalid buffer");
+		LOG_ERR("invalid buffer");
 		return false;
 	}
 
@@ -2489,14 +2484,14 @@ bool vulkan_copy_to_staging_buffer(gpu_api* self, gpu_buffer dst,
 		size = u8_array_size(data.data.array);
 		src = u8_array_begin(data.data.array);
 		if (size == 0 || !src) {
-			LOG_ERR("vulkan_copy_to_staging_buffer: invalid data payload");
+			LOG_ERR("invalid data payload");
 			return false;
 		}
 	} else if (data.data_format == GPU_DATA_SPAN) {
 		size = data.data.span.size;
 		src = data.data.span.data;
 		if (size == 0 || !data.data.span.data) {
-			LOG_ERR("vulkan_copy_to_staging_buffer: invalid data payload");
+			LOG_ERR("invalid data payload");
 			return false;
 		}
 	} else {
@@ -2509,12 +2504,12 @@ bool vulkan_copy_to_staging_buffer(gpu_api* self, gpu_buffer dst,
 	if (!dst_data || !dst_data->buffer ||
 		!(dst_data->usage_flags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) ||
 		!dst_data->alloc_info.pMappedData) {
-		LOG_ERR("vulkan_copy_to_staging_buffer: invalid destination buffer");
+		LOG_ERR("invalid destination buffer");
 		return false;
 	}
 
 	if (size > (dst_data->size - data.offset)) {
-		LOG_ERR("vulkan_copy_to_staging_buffer: invalid transfer size");
+		LOG_ERR("invalid transfer size");
 		return false;
 	}
 
@@ -2532,7 +2527,7 @@ bool vulkan_cmd_copy_to_buffer(gpu_api* self, gpu_command_buffer cmd,
 	vk_cmdbuf_data* cmd_data =
 		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
 	if (cmd_data->state != CMDBUF_RECORDING) {
-		LOG_ERR("vulkan_cmd_copy_to_buffer: invalid command buffer state");
+		LOG_ERR("invalid command buffer state");
 		return false;
 	};
 	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
@@ -2542,7 +2537,7 @@ bool vulkan_cmd_copy_to_buffer(gpu_api* self, gpu_command_buffer cmd,
 
 	if (!dst_data || !dst_data->buffer ||
 		!(dst_data->usage_flags & VK_BUFFER_USAGE_TRANSFER_DST_BIT)) {
-		LOG_ERR("vulkan_cmd_copy_to_buffer: invalid destination buffer");
+		LOG_ERR("invalid destination buffer");
 		return false;
 	}
 
@@ -2551,18 +2546,18 @@ bool vulkan_cmd_copy_to_buffer(gpu_api* self, gpu_command_buffer cmd,
 
 	if (!src_data || !src_data->buffer ||
 		!(src_data->usage_flags & VK_BUFFER_USAGE_TRANSFER_SRC_BIT)) {
-		LOG_ERR("vulkan_cmd_copy_to_buffer: invalid source buffer");
+		LOG_ERR("invalid source buffer");
 		return false;
 	}
 
 	if (!info->size) {
-		LOG_ERR("vulkan_cmd_copy_to_buffer: invalid size");
+		LOG_ERR("invalid size");
 		return false;
 	}
 
 	if (info->size > (dst_data->size - info->dst_offset) ||
 		info->size > (src_data->size - info->src_offset)) {
-		LOG_ERR("vulkan_cmd_copy_to_buffer: size is too big");
+		LOG_ERR("size is too big");
 		return false;
 	}
 
@@ -2618,7 +2613,7 @@ bool vulkan_cmd_buffer_barrier(gpu_api* self, gpu_command_buffer cmd,
 	vk_cmdbuf_data* cmd_data =
 		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
 	if (cmd_data->state != CMDBUF_RECORDING) {
-		LOG_ERR("vulkan_cmd_buffer_barrier: invalid command buffer state");
+		LOG_ERR("invalid command buffer state");
 		return false;
 	};
 	VkCommandBuffer cmd_buf = cmd_data->command_buffer;
@@ -2627,7 +2622,7 @@ bool vulkan_cmd_buffer_barrier(gpu_api* self, gpu_command_buffer cmd,
 		vk_buffer_pool_get(state->buffer_pool, to_vk_buffer(buf_handle));
 
 	if (!buf_data || !buf_data->buffer) {
-		LOG_ERR("vulkan_cmd_buffer_barrier: invalid buffer");
+		LOG_ERR("invalid buffer");
 		return false;
 	}
 

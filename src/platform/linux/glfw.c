@@ -137,9 +137,7 @@ void platform_register_key_callback(input_key key, key_action action,
 	for (int i = 0; i < 3; ++i) {
 		if (action & key_act_types[i]) {
 			if (entry->callbacks[key_act_types[i]]) {
-				LOG_WARN("platform_register_key_callback: overriding an "
-						 "existing key "
-						 "callback");
+				LOG_WARN("overriding an existing key callback");
 			}
 			entry->callbacks[key_act_types[i]] = callback;
 		}
@@ -157,9 +155,7 @@ void platform_register_mouse_button_callback(input_mouse_button button,
 	for (int i = 0; i < 2; ++i) {
 		if (action & mouse_act_types[i]) {
 			if (entry->callbacks[mouse_act_types[i]]) {
-				LOG_WARN(
-					"platform_register_mouse_button_callback: overriding an "
-					"existing button callback");
+				LOG_WARN("overriding an existing button callback");
 			}
 			entry->callbacks[mouse_act_types[i]] = callback;
 		}
@@ -283,7 +279,7 @@ static void framebuffer_size_callback(GLFWwindow* window, int width,
 	(void)window;
 	(void)width;
 	(void)height;
-	LOG_WARN("glfw_framebuffer_size_callback: window was resized")
+	LOG_WARN("window was resized")
 }
 
 static VkSurfaceKHR _create_vk_surface(window_t* window, VkInstance instance) {

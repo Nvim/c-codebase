@@ -81,7 +81,7 @@ STATIC_ASSERT(sizeof(pool_impl) == 40, "");
 LIB_EXPORT pool_t* pool_create(arena_t* arena, uint32_t pool_size,
 							   uint32_t elem_size) {
 	if (!arena || !pool_size || !elem_size) {
-		LOG_ERR("pool_create: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return NULL;
 	}
 
@@ -104,24 +104,24 @@ LIB_EXPORT pool_t* pool_create(arena_t* arena, uint32_t pool_size,
 
 	pool_impl* ret = arena_push_z(arena, pool_impl);
 	if (!ret) {
-		LOG_ERR("pool_create: couldn't allocate pool");
+		LOG_ERR("couldn't allocate pool");
 		return NULL;
 	}
 
 	void* elems = arena_alloc_clear(arena, alloc_size, 0);
 	if (!elems) {
-		LOG_ERR("pool_create: couldn't allocate pool array");
+		LOG_ERR("couldn't allocate pool array");
 		return false;
 	}
 	gen_t* gens = arena_push_array_z(arena, gen_t, pool_size);
 	if (!gens) {
-		LOG_ERR("pool_create: couldn't allocate generations array");
+		LOG_ERR("couldn't allocate generations array");
 		return false;
 	}
 
 	uint32_t* freelist = arena_push_array_z(arena, uint32_t, pool_size);
 	if (!freelist) {
-		LOG_ERR("pool_create: couldn't allocate freelist array");
+		LOG_ERR("couldn't allocate freelist array");
 		return false;
 	}
 
@@ -144,13 +144,13 @@ LIB_EXPORT pool_t* pool_create(arena_t* arena, uint32_t pool_size,
 
 pool_handle pool_new(pool_t* pool, void* elem) {
 	if (!pool || !elem) {
-		LOG_ERR("pool_new: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return (pool_handle){.handle = POOL_INVALID_IDX};
 	}
 
 	pool_impl* impl = (pool_impl*)pool;
 	if (!impl->free_count || impl->first_free == POOL_INVALID_IDX) {
-		LOG_ERR("pool_new: pool is full");
+		LOG_ERR("pool is full");
 		return (pool_handle){.handle = POOL_INVALID_IDX};
 	}
 
@@ -170,7 +170,7 @@ pool_handle pool_new(pool_t* pool, void* elem) {
 
 bool pool_is_handle_valid(pool_t* pool, pool_handle handle) {
 	if (!pool) {
-		LOG_ERR("pool_is_handle_valid: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 	pool_impl* impl = (pool_impl*)pool;
@@ -202,12 +202,12 @@ void* pool_get(pool_t* pool, pool_handle handle) {
 
 void pool_release(pool_t* pool, pool_handle handle) {
 	if (!pool) {
-		LOG_ERR("pool_release: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return;
 	}
 
 	if (!pool_is_handle_valid(pool, handle)) {
-		LOG_ERR("pool_release: invalid handle");
+		LOG_ERR("invalid handle");
 		return;
 	}
 
@@ -224,7 +224,7 @@ void pool_release(pool_t* pool, pool_handle handle) {
 
 void pool_reset(pool_t* pool) {
 	if (!pool) {
-		LOG_ERR("pool_reset: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return;
 	}
 

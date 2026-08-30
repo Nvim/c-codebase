@@ -10,7 +10,7 @@
 
 bool path_create(arena_t* arena, arena_t* scratch, string str, path* out) {
 	if (!arena || !scratch || !out || !str.str || !str.len) {
-		LOG_ERR("path_create: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
@@ -39,7 +39,7 @@ bool path_create(arena_t* arena, arena_t* scratch, string str, path* out) {
 
 	if (str.len == 1) {
 		if (!string_copy(arena, out, str)) {
-			LOG_ERR("path_create: path copy allocation failed");
+			LOG_ERR("path copy allocation failed");
 			return false;
 		}
 		return true;
@@ -48,9 +48,9 @@ bool path_create(arena_t* arena, arena_t* scratch, string str, path* out) {
 	// We have at least one char, and no tailing /
 	string_array slashes;
 	if (!string_tokenize(scratch, &slashes, str, str("/"))) {
-		LOG_DEBUG("path_create: no slashes in path");
+		LOG_DEBUG("no slashes in path");
 		if (!string_copy(arena, out, str)) {
-			LOG_ERR("path_create: path copy allocation failed");
+			LOG_ERR("path copy allocation failed");
 			return false;
 		}
 		return true;
@@ -59,7 +59,7 @@ bool path_create(arena_t* arena, arena_t* scratch, string str, path* out) {
 	queue_t* valid_components =
 		queue_create(scratch, string_array_size(slashes) + 1, sizeof(size_t));
 	if (!valid_components) {
-		LOG_ERR("path_create: couldn't create temp queue");
+		LOG_ERR("couldn't create temp queue");
 		return false;
 	}
 
@@ -129,8 +129,7 @@ bool path_get_filename(path p, path* out) {
 
 	if (last_slash >= p.len - 1) {
 		// Shouldn't happen, trailing slash is always removed
-		LOG_WARN("path_get_filename: path isn't normalized: unexpected "
-				 "trailing slash");
+		LOG_WARN("path isn't normalized: unexpected trailing slash");
 		return false;
 	}
 
@@ -186,7 +185,7 @@ bool path_get_stem(path p, string* out) {
 
 bool path_join(arena_t* arena, arena_t* scratch, path p1, path p2, path* out) {
 	if (!arena || !p1.len || !p2.len || !out) {
-		LOG_ERR("path_join: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
@@ -202,11 +201,11 @@ bool path_join(arena_t* arena, arena_t* scratch, path p1, path p2, path* out) {
 	// First create tmp = p1 + '/', and return tmp + p2
 	string tmp;
 	if (!string_concat_cstr(scratch, &tmp, p1, "/")) {
-		LOG_ERR("path_join: couldn't concat strings");
+		LOG_ERR("couldn't concat strings");
 		return false;
 	}
 	if (!string_concat(arena, (string*)out, tmp, p2)) {
-		LOG_ERR("path_join: couldn't concat strings");
+		LOG_ERR("couldn't concat strings");
 		return false;
 	}
 

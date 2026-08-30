@@ -227,7 +227,7 @@ vk_sc_image_acquire_result vk_swapchain_acquire_image(vk_swapchain* swapchain,
 							  semaphore, NULL, &swapchain->img_index);
 
 	if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR) {
-		LOG_WARN("vk_swapchain_acquire_image: out of date");
+		LOG_WARN("out of date");
 		ret.status = ACQUIRE_OUT_OF_DATE;
 		return ret;
 	} else if (res != VK_SUCCESS) {
@@ -273,7 +273,7 @@ vk_present_result vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue) {
 	VkResult res = vkQueuePresentKHR(queue, &present_info);
 
 	if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR) {
-		LOG_WARN("vk_swapchain_present: out of date");
+		LOG_WARN("out of date");
 		return PRESENT_OUT_OF_DATE;
 	}
 
@@ -392,7 +392,7 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 	// fence never signalled. It can be safely reset instead.
 	if (state->swapchain.must_refresh) {
 		state->swapchain.must_refresh = false;
-		LOG_INFO("vk_begin_frame: handling out of date swapchain");
+		LOG_INFO("handling out of date swapchain");
 		if (!vk_surface_get_capabilities(&state->surface,
 										 state->physical_device)) {
 			LOG_ERR("vulkan_begin_frame: couldn't get surface capabilities");
@@ -437,8 +437,7 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 		}
 
 		if (sc_ret.status == ACQUIRE_OUT_OF_DATE) {
-			LOG_INFO(
-				"vk_begin_frame: out of date swapchain, refreshing next frame");
+			LOG_INFO("out of date swapchain, refreshing next frame");
 			state->swapchain.must_refresh = true;
 		} else {
 			// get image view only if we got an image
@@ -448,8 +447,7 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 			vk_image_data* img_data =
 				vk_image_pool_get(state->image_pool, sc_image);
 			if (!img_data) {
-				LOG_ERR(
-					"vulkan_begin_frame: couldn't get swapchain image's data");
+				LOG_ERR("couldn't get swapchain image's data");
 				return false;
 			}
 			out->has_rendertarget = true;

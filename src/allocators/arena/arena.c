@@ -22,19 +22,19 @@ static bool commit_more(arena_impl* impl, size_t size, bool is_page_full);
 
 static arena_impl* _arena_create_internal(arena_create_info info) {
 	if (!info.alignment) {
-		LOG_ERR("arena_create: bad alignment");
+		LOG_ERR("bad alignment");
 		return NULL;
 	}
 
 	bool const growable = info.flags & ARENA_GROWING;
 	if (growable) {
 		if (info.max_size == 0 || info.max_size < info.alignment) {
-			LOG_ERR("arena_create: invalid max size: %zu", info.max_size);
+			LOG_ERR("%zu", info.max_size);
 			return NULL;
 		}
 	} else {
 		if (info.initial_size == 0) {
-			LOG_ERR("arena_create: invalid initial size");
+			LOG_ERR("invalid initial size");
 			return NULL;
 		}
 	}
@@ -69,9 +69,9 @@ static arena_impl* _arena_create_internal(arena_create_info info) {
 		}
 
 		if (!platform_memory_commit(memory, commit_size)) {
-			LOG_ERR("arena_create: couldn't commit memory");
+			LOG_ERR("couldn't commit memory");
 			if (!platform_memory_dereserve(memory, commit_size)) {
-				LOG_ERR("arena_create: couldn't de-reserve memory");
+				LOG_ERR("couldn't de-reserve memory");
 			}
 			return NULL;
 		}
@@ -80,14 +80,14 @@ static arena_impl* _arena_create_internal(arena_create_info info) {
 
 		memory = platform_memory_reserve(reserve_size);
 		if (!memory) {
-			LOG_ERR("arena_create: arena allocation failed");
+			LOG_ERR("arena allocation failed");
 			return NULL;
 		}
 
 		if (!platform_memory_commit(memory, commit_size)) {
-			LOG_ERR("arena_create: couldn't commit memory");
+			LOG_ERR("couldn't commit memory");
 			if (!platform_memory_dereserve(memory, reserve_size)) {
-				LOG_ERR("arena_create: couldn't de-reserve memory");
+				LOG_ERR("couldn't de-reserve memory");
 			}
 			return NULL;
 		}
@@ -136,7 +136,7 @@ arena_t* arena_create_aligned(size_t size, size_t alignment) {
 
 arena_t* arena_create_from_config(arena_create_info info) {
 	if (info.flags & ARENA_EXTERNAL_MEMORY) {
-		LOG_ERR("arena_create_from_config: invalid flags");
+		LOG_ERR("invalid flags");
 		return NULL;
 	}
 	return (arena_t*)_arena_create_internal(info);
@@ -144,12 +144,12 @@ arena_t* arena_create_from_config(arena_create_info info) {
 
 arena_t* arena_create_from_memory(void* memory, arena_create_info info) {
 	if (!memory) {
-		LOG_ERR("arena_create_from: invalid memory");
+		LOG_ERR("invalid memory");
 		return NULL;
 	}
 
 	if (info.flags & ARENA_GROWING) {
-		LOG_ERR("arena_create_from_memory: invalid flags");
+		LOG_ERR("invalid flags");
 		return NULL;
 	}
 
@@ -157,7 +157,7 @@ arena_t* arena_create_from_memory(void* memory, arena_create_info info) {
 	uint8_t alignment = info.alignment;
 
 	if (size <= ARENA_HEADER_SIZE || size % alignment != 0) {
-		LOG_ERR("arena_create_from: memory is too short or not aligned");
+		LOG_ERR("memory is too short or not aligned");
 		return NULL;
 	}
 
@@ -179,7 +179,7 @@ size_t arena_header_size(void) { return ARENA_HEADER_SIZE; }
 
 void* arena_alloc(arena_t* arena, size_t size) {
 	if (!arena) {
-		LOG_ERR("arena_alloc: invalid arena handle: %p", arena);
+		LOG_ERR("%p", arena);
 		ASSERT(false);
 		return NULL;
 	}
@@ -191,7 +191,7 @@ void* arena_alloc(arena_t* arena, size_t size) {
 	size_t remaining = arena_impl_remaining(impl);
 	if (remaining < size) {
 		if (!(impl->flags & ARENA_GROWING)) {
-			LOG_ERR("arena_alloc: not enough space for %zu. (%zu left)", size,
+			LOG_ERR("not enough space for %zu. (%zu left)", size,
 					arena_impl_remaining(impl));
 			ASSERT(false);
 			return NULL;
@@ -213,7 +213,7 @@ void* arena_alloc(arena_t* arena, size_t size) {
 		if (remaining < size) {
 			// Commit more pages:
 			if (!commit_more(impl, size, is_page_full)) {
-				LOG_ERR("arena_grow: couldn't commit more pages");
+				LOG_ERR("couldn't commit more pages");
 				breakpoint();
 				return NULL;
 			}
@@ -235,7 +235,7 @@ LIB_EXPORT void* arena_alloc_clear(arena_t* arena, size_t size,
 
 void* arena_alloc_array(arena_t* arena, size_t elem_size, size_t elem_count) {
 	if (!arena) {
-		LOG_ERR("arena_alloc_array: invalid arena handle: %p", arena);
+		LOG_ERR("%p", arena);
 		return NULL;
 	}
 	size_t size = elem_size * elem_count;
@@ -252,7 +252,7 @@ void* arena_alloc_array_clear(arena_t* arena, size_t elem_size,
 
 void* arena_reset(arena_t* arena) {
 	if (!arena) {
-		LOG_ERR("arena_reset: invalid arena handle: %p", arena);
+		LOG_ERR("%p", arena);
 		return NULL;
 	}
 	arena_impl* impl = (arena_impl*)arena;
@@ -266,7 +266,7 @@ void* arena_reset(arena_t* arena) {
 
 void* arena_reset_zero(arena_t* arena) {
 	if (!arena) {
-		LOG_ERR("arena_reset_zero: invalid arena handle: %p", arena);
+		LOG_ERR("%p", arena);
 		return NULL;
 	}
 	arena_impl* impl = (arena_impl*)arena;
@@ -279,19 +279,18 @@ void* arena_reset_zero(arena_t* arena) {
 
 void arena_destroy(arena_t* arena) {
 	if (!arena) {
-		LOG_ERR("arena_destroy: invalid arena handle: %p", arena);
+		LOG_ERR("%p", arena);
 		return;
 	}
 	arena_impl* impl = (arena_impl*)arena;
 
 	if (impl->flags & ARENA_EXTERNAL_MEMORY) {
-		LOG_WARN("arena_destroy: called on externally backed arena. Ignoring.",
-				 arena);
+		LOG_WARN("called on externally backed arena. Ignoring.", arena);
 		return;
 	}
 
 	if (!impl->begin || !impl->allocation_size) {
-		LOG_WARN("arena_destroy: arena has no allocation");
+		LOG_WARN("arena has no allocation");
 		return;
 	}
 
@@ -313,13 +312,13 @@ void arena_destroy(arena_t* arena) {
 		// 	LOG_ERR("arena_destroy: couldn't decommit arena memory");
 		// }
 		if (!platform_memory_dereserve(arena, to_dereserve)) {
-			LOG_ERR("arena_destroy: couldn't dereserve arena memory");
+			LOG_ERR("couldn't dereserve arena memory");
 		}
 	} else {
 		ASSERT(arena == platform_memory_page_begin(arena));
 		size_t const to_dereserve = impl->allocation_size + header_size_align;
 		if (!platform_memory_dereserve(arena, to_dereserve)) {
-			LOG_ERR("arena_destroy: couldn't dereserve arena memory");
+			LOG_ERR("couldn't dereserve arena memory");
 		}
 		// platform_memory_free(arena);
 	}
@@ -327,7 +326,7 @@ void arena_destroy(arena_t* arena) {
 
 size_t arena_get_usage(arena_t* arena) {
 	if (!arena) {
-		LOG_ERR("arena_get_usage: invalid arena handle: %p", arena);
+		LOG_ERR("%p", arena);
 		return 0;
 	}
 	arena_impl* impl = (arena_impl*)arena;
@@ -338,7 +337,7 @@ size_t arena_get_usage(arena_t* arena) {
 
 void* arena_get_base(arena_t* arena) {
 	if (!arena) {
-		LOG_ERR("arena_get_base: invalid arena handle: %p", arena);
+		LOG_ERR("%p", arena);
 		return 0;
 	}
 	arena_impl* impl = (arena_impl*)arena;
@@ -347,7 +346,7 @@ void* arena_get_base(arena_t* arena) {
 
 size_t arena_get_remaining(arena_t* arena) {
 	if (!arena) {
-		LOG_ERR("arena_get_remaining: invalid arena handle: %p", arena);
+		LOG_ERR("%p", arena);
 		return 0;
 	}
 	arena_impl* impl = (arena_impl*)arena;
@@ -358,7 +357,7 @@ size_t arena_get_remaining(arena_t* arena) {
 
 size_t arena_get_growth_remaining(arena_t* arena) {
 	if (!arena) {
-		LOG_ERR("arena_get_growth_remaining: invalid arena handle: %p", arena);
+		LOG_ERR("%p", arena);
 		return 0;
 	}
 	arena_impl* impl = (arena_impl*)arena;
@@ -375,7 +374,7 @@ size_t arena_get_growth_remaining(arena_t* arena) {
 
 arena_checkpoint* arena_get_checkpoint(arena_t* arena) {
 	if (!arena) {
-		LOG_ERR("arena_get_checkpoint: invalid arena handle: %p", arena);
+		LOG_ERR("%p", arena);
 		return NULL;
 	}
 	arena_impl* impl = (arena_impl*)arena;
@@ -388,7 +387,7 @@ arena_checkpoint* arena_get_checkpoint(arena_t* arena) {
 void arena_restore_checkpoint(arena_t* arena, arena_checkpoint* checkpoint,
 							  bool zero) {
 	if (!arena) {
-		LOG_ERR("arena_restore_checkpoint: invalid arena handle: %p", arena);
+		LOG_ERR("%p", arena);
 		return;
 	}
 	arena_impl* impl = (arena_impl*)arena;
@@ -397,7 +396,7 @@ void arena_restore_checkpoint(arena_t* arena, arena_checkpoint* checkpoint,
 	if (impl->current == p) { return; }
 
 	if ((char*)impl->current < (char*)p) {
-		LOG_ERR("arena_restore_checkpoint: invalid checkpoint: %p", checkpoint);
+		LOG_ERR("%p", checkpoint);
 		return;
 	}
 
@@ -408,7 +407,7 @@ void arena_restore_checkpoint(arena_t* arena, arena_checkpoint* checkpoint,
 
 bool arena_pool_init(void) {
 	if (g_arena_pool.init) {
-		LOG_ERR("arena_pool_init: arena pool is already initialized");
+		LOG_ERR("arena pool is already initialized");
 		return true; // Not fatal, don't crash on this
 	}
 
@@ -425,7 +424,7 @@ bool arena_pool_init(void) {
 	for (size_t i = 0; i < ARENA_POOL_SIZE; ++i) {
 		g_arena_pool.arenas[i] = arena_create_from_config(ci);
 		if (!g_arena_pool.arenas[i]) {
-			LOG_ERR("arena_pool_init: couldn't create arena #", i);
+			LOG_ERR("couldn't create arena #", i);
 			return false;
 		}
 	}
@@ -435,7 +434,7 @@ bool arena_pool_init(void) {
 
 bool arena_get_scratch(arena_t* conflict, scratch_arena* out) {
 	if (!g_arena_pool.init) {
-		LOG_ERR("arena_get_scratch: pool isn't initialized");
+		LOG_ERR("pool isn't initialized");
 		return false;
 	}
 	for (size_t i = 0; i < ARENA_POOL_SIZE; ++i) {
@@ -446,14 +445,14 @@ bool arena_get_scratch(arena_t* conflict, scratch_arena* out) {
 		}
 	}
 
-	LOG_ERR("arena_get_scratch: couldn't get non-conflicting scratch arena");
+	LOG_ERR("couldn't get non-conflicting scratch arena");
 	ASSERT(false);
 	return false;
 }
 
 bool arena_clear_scratch(scratch_arena scratch) {
 	if (!g_arena_pool.init) {
-		LOG_ERR("arena_clear_scratch: pool isn't initialized");
+		LOG_ERR("pool isn't initialized");
 		return false;
 	}
 
@@ -486,8 +485,7 @@ static bool commit_more(arena_impl* impl, size_t size, bool is_page_full) {
 	DEBUG(impl, "arena_alloc: %zu remaining. Needed: %zu", remaining, needed);
 
 	if (needed > reserved) {
-		LOG_ERR("arena_alloc: not enough space in growable arena for "
-				"%zu. (%zu left)",
+		LOG_ERR("not enough space in growable arena for %zu. (%zu left)",
 				needed, reserved);
 		return false;
 	}
@@ -498,8 +496,7 @@ static bool commit_more(arena_impl* impl, size_t size, bool is_page_full) {
 	if (!is_page_full) { next_page = platform_memory_next_page(impl->current); }
 
 	if (!platform_memory_commit(next_page, needed_align)) {
-		LOG_ERR("arena_alloc: couldn't commit %zu bytes out of "
-				"growable arena.",
+		LOG_ERR("couldn't commit %zu bytes out of growable arena.",
 				needed_align);
 		return false;
 	}

@@ -7,7 +7,7 @@
 
 array_t* _array_create(arena_t* arena, size_t size, size_t elem_size) {
 	if (!arena || size == 0 || elem_size == 0) {
-		LOG_ERR("array_create: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return NULL;
 	}
 
@@ -21,12 +21,12 @@ array_t* _array_create(arena_t* arena, size_t size, size_t elem_size) {
 	arena_checkpoint* cp = arena_get_checkpoint(arena);
 	array_impl* arr = arena_alloc(arena, sizeof(array_impl));
 	if (!arr) {
-		LOG_ERR("array_create: couldn't allocate array");
+		LOG_ERR("couldn't allocate array");
 		return NULL;
 	}
 	void* memory = arena_alloc(arena, size * elem_size);
 	if (!memory) {
-		LOG_ERR("array_create: couldn't allocate array buffer");
+		LOG_ERR("couldn't allocate array buffer");
 		arena_restore_checkpoint(arena, cp, false);
 		return NULL;
 	}
@@ -41,7 +41,7 @@ array_t* _array_create(arena_t* arena, size_t size, size_t elem_size) {
 
 size_t _array_size(array_t* array) {
 	if (!array) {
-		LOG_ERR("array_size: invalid array");
+		LOG_ERR("invalid array");
 		return 0;
 	}
 	array_impl* arr = (array_impl*)array;
@@ -50,7 +50,7 @@ size_t _array_size(array_t* array) {
 
 size_t _array_stride(array_t* array) {
 	if (!array) {
-		LOG_ERR("array_stride: invalid array");
+		LOG_ERR("invalid array");
 		return 0;
 	}
 	array_impl* arr = (array_impl*)array;
@@ -59,7 +59,7 @@ size_t _array_stride(array_t* array) {
 
 bool _array_at(array_t* array, void** out, size_t index) {
 	if (!array || index >= _array_size(array)) {
-		LOG_ERR("array_at: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
@@ -72,7 +72,7 @@ bool _array_at(array_t* array, void** out, size_t index) {
 
 bool _array_at_const(array_t* array, void const** out, size_t index) {
 	if (!array || index >= _array_size(array)) {
-		LOG_ERR("array_at: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
@@ -85,7 +85,7 @@ bool _array_at_const(array_t* array, void const** out, size_t index) {
 
 bool _array_get(array_t* array, void* out, size_t index) {
 	if (!array || !out || index >= _array_size(array)) {
-		LOG_ERR("array_at: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
@@ -98,7 +98,7 @@ bool _array_get(array_t* array, void* out, size_t index) {
 
 bool _array_set(array_t* array, void* value, size_t index) {
 	if (!array || index >= _array_size(array)) {
-		LOG_ERR("array_set: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
@@ -112,7 +112,7 @@ bool _array_set(array_t* array, void* value, size_t index) {
 
 void _array_clear(array_t* array) {
 	if (!array) {
-		LOG_ERR("array_clear: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return;
 	}
 

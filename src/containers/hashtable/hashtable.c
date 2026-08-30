@@ -16,7 +16,7 @@ static bool _is_elem_null(void* elem, uint32_t elem_size) {
 hashtable_t* hashtable_create(arena_t* arena, uint32_t count,
 							  uint32_t elem_size, hash_fn func) {
 	if (!arena || count == 0 || elem_size == 0) {
-		LOG_ERR("hashtable_create: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return NULL;
 	}
 
@@ -30,13 +30,13 @@ hashtable_t* hashtable_create(arena_t* arena, uint32_t count,
 
 	ht_impl* ret = arena_push(arena, ht_impl);
 	if (!ret) {
-		LOG_ERR("hashtable_create: allocation failed");
+		LOG_ERR("allocation failed");
 		return NULL;
 	}
 
 	ret->memory = arena_alloc(arena, allocation_size);
 	if (!ret->memory) {
-		LOG_ERR("hashtable_create: allocation failed");
+		LOG_ERR("allocation failed");
 		return NULL;
 	}
 
@@ -50,20 +50,20 @@ hashtable_t* hashtable_create(arena_t* arena, uint32_t count,
 
 bool hashtable_insert(hashtable_t* ht, string key, void* elem) {
 	if (!ht || !key.len || !elem) {
-		LOG_ERR("hashtable_insert: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
 	ht_impl* h = (ht_impl*)ht;
 	if (h->alloc_count == h->max_allocs) {
-		LOG_ERR("hashtable_insert: hashtable is full");
+		LOG_ERR("hashtable is full");
 		return false;
 	}
 
 	size_t index = h->func(&key, h->max_allocs);
 	void* addr = (char*)h->memory + (index * h->elem_size);
 	if (!_is_elem_null(addr, h->elem_size)) {
-		LOG_ERR("hashtable_insert: collision");
+		LOG_ERR("collision");
 		return false;
 	}
 	memcpy(addr, elem, h->elem_size);
@@ -75,13 +75,13 @@ bool hashtable_insert(hashtable_t* ht, string key, void* elem) {
 
 LIB_EXPORT bool hashtable_get(hashtable_t* ht, void* out, string key) {
 	if (!ht || !key.len || !out) {
-		LOG_ERR("hashtable_get: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
 	ht_impl* h = (ht_impl*)ht;
 	if (h->alloc_count == 0) {
-		LOG_ERR("hashtable_get: hashtable is empty");
+		LOG_ERR("hashtable is empty");
 		return false;
 	}
 
@@ -89,7 +89,7 @@ LIB_EXPORT bool hashtable_get(hashtable_t* ht, void* out, string key) {
 	void* addr = (char*)h->memory + (index * h->elem_size);
 
 	if (_is_elem_null(addr, h->elem_size)) {
-		LOG_ERR("hashtable_insert: no data for key");
+		LOG_ERR("no data for key");
 		return false;
 	}
 
@@ -100,7 +100,7 @@ LIB_EXPORT bool hashtable_get(hashtable_t* ht, void* out, string key) {
 
 uint32_t hashtable_usage(hashtable_t* ht) {
 	if (!ht) {
-		LOG_ERR("hashtable_reset: invalid parameter");
+		LOG_ERR("invalid parameter");
 		return 0;
 	}
 	return ((ht_impl*)ht)->alloc_count;
@@ -108,7 +108,7 @@ uint32_t hashtable_usage(hashtable_t* ht) {
 
 LIB_EXPORT void hashtable_reset(hashtable_t* ht) {
 	if (!ht) {
-		LOG_ERR("hashtable_reset: invalid parameter");
+		LOG_ERR("invalid parameter");
 		return;
 	}
 

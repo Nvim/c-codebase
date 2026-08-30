@@ -87,36 +87,36 @@ bool gpu_validate_image_ci(gpu_image_ci* ci) {
 
 	if (is_depth_usage(ci->usage)) {
 		if (has_another_usage(ci->usage, GPU_IMAGE_USAGE_DEPTH_TARGET)) {
-			LOG_ERR("gpu_validate_image_ci: depth image has invalid usages");
+			LOG_ERR("depth image has invalid usages");
 			return false;
 		}
 
 		if (ci->type != GPU_IMAGE_TYPE_2D) {
-			LOG_ERR("gpu_validate_image_ci: depth images must be 2D");
+			LOG_ERR("depth images must be 2D");
 			return false;
 		}
 
 		if (!is_depth_format(ci->format)) {
-			LOG_ERR("gpu_validate_image_ci: invalid format for depth image");
+			LOG_ERR("invalid format for depth image");
 			return false;
 		}
 	}
 
 	if (!is_array_type(ci->type) && ci->array_layers != 1) {
-		LOG_ERR("gpu_validate_image_ci: invalid array layers count");
+		LOG_ERR("invalid array layers count");
 		return false;
 	}
 
 	if (ci->type == GPU_IMAGE_TYPE_CUBE_ARRAY) {
 		if (ci->array_layers % 6 != 0) {
-			LOG_ERR("gpu_validate_image_ci: invalid array layers count");
+			LOG_ERR("invalid array layers count");
 			return false;
 		}
 	}
 
 	if (ci->type == GPU_IMAGE_TYPE_CUBE) {
 		if (ci->array_layers != 6) {
-			LOG_ERR("gpu_validate_image_ci: invalid array layers count");
+			LOG_ERR("invalid array layers count");
 			return false;
 		}
 	}
@@ -131,26 +131,24 @@ bool is_buffer_staging(gpu_buffer_usage usage) {
 
 bool gpu_validate_buffer_ci(gpu_buffer_ci* ci) {
 	if (!ci) {
-		LOG_ERR("gpu_validate_buffer_ci: invalid parameter");
+		LOG_ERR("invalid parameter");
 		return false;
 	}
 
 	if (ci->usage == GPU_BUFFER_USAGE_STAGING_DOWN) {
-		LOG_ERR("gpu_validate_buffer_ci: unsupported usage");
+		LOG_ERR("unsupported usage");
 		return false;
 	}
 
 	if (ci->usage == GPU_BUFFER_USAGE_INDEX &&
 		ci->memory_preference == GPU_BUFFER_MEMORY_MAPPED) {
-		LOG_WARN("gpu_validate_buffer_ci: ignoring memory preference for index "
-				 "buffer");
+		LOG_WARN("ignoring memory preference for index buffer");
 		ci->memory_preference = GPU_BUFFER_MEMORY_GPU;
 	}
 
 	if (is_buffer_staging(ci->usage) &&
 		ci->memory_preference == GPU_BUFFER_MEMORY_GPU) {
-		LOG_WARN("gpu_validate_buffer_ci: ignoring memory preference for "
-				 "staging buffer");
+		LOG_WARN("ignoring memory preference for staging buffer");
 		ci->memory_preference = GPU_BUFFER_MEMORY_MAPPED;
 	}
 	return true;

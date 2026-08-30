@@ -22,7 +22,6 @@ LIB_EXPORT bool text_renderer_load_atlas_from_file(text_renderer_t* renderer,
 												   arena_t* scratch, path path,
 												   font_atlas_info atlas_info);
 
-
 /**
  * @brief Add text to draw for current frame
  *
@@ -33,9 +32,8 @@ LIB_EXPORT bool text_renderer_load_atlas_from_file(text_renderer_t* renderer,
  * @param scale Text scale. Must be between TEXT_MIN_SCALE and TEXT_MAX_SCALE
  * @return True on success, false on failure.
  */
-LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer,
-												string text, float x, float y,
-												float scale);
+LIB_EXPORT bool text_renderer_add_text(text_renderer_t* renderer, string text,
+									   float x, float y, float scale);
 
 /**
  * [NOTE] Post-processing step on top of framebuffer.

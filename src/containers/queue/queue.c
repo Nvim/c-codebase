@@ -19,7 +19,7 @@ static void* _queue_get_at(queue_impl* q, size_t idx) {
 
 queue_t* queue_create(arena_t* arena, size_t max_size, size_t elem_size) {
 	if (!arena || max_size == 0 || elem_size == 0) {
-		LOG_ERR("queue_create: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return NULL;
 	}
 
@@ -32,13 +32,13 @@ queue_t* queue_create(arena_t* arena, size_t max_size, size_t elem_size) {
 	arena_checkpoint* cp = arena_get_checkpoint(arena);
 	queue_impl* impl = arena_alloc(arena, sizeof(queue_impl));
 	if (!impl) {
-		LOG_ERR("queue_create: couldn't allocate queue header");
+		LOG_ERR("couldn't allocate queue header");
 		return NULL;
 	}
 
 	impl->data = arena_alloc(arena, buffer_size);
 	if (!impl) {
-		LOG_ERR("queue_create: couldn't allocate queue buffer");
+		LOG_ERR("couldn't allocate queue buffer");
 		arena_restore_checkpoint(arena, cp, true);
 		return NULL;
 	}
@@ -54,13 +54,13 @@ queue_t* queue_create(arena_t* arena, size_t max_size, size_t elem_size) {
 
 bool queue_enqueue(queue_t* queue, void* data) {
 	if (!queue || !data) {
-		LOG_ERR("queue_push: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
 	queue_impl* impl = (queue_impl*)queue;
 	if (_queue_full(impl)) {
-		LOG_ERR("queue_push: queue is full");
+		LOG_ERR("queue is full");
 		return false;
 	}
 
@@ -75,13 +75,13 @@ bool queue_enqueue(queue_t* queue, void* data) {
 
 bool queue_dequeue(queue_t* queue, void* ret) {
 	if (!queue || !ret) {
-		LOG_ERR("queue_pop: invalid parameters");
+		LOG_ERR("invalid parameters");
 		return false;
 	}
 
 	queue_impl* impl = (queue_impl*)queue;
 	if (_queue_empty(impl)) {
-		LOG_ERR("queue_push: queue is empty");
+		LOG_ERR("queue is empty");
 		return false;
 	}
 
@@ -96,7 +96,7 @@ bool queue_dequeue(queue_t* queue, void* ret) {
 
 LIB_EXPORT bool queue_full(queue_t* queue) {
 	if (!queue) {
-		LOG_ERR("queue_get_usage: invalid parameter");
+		LOG_ERR("invalid parameter");
 		return false;
 	}
 	return _queue_full((queue_impl*)queue);
@@ -104,7 +104,7 @@ LIB_EXPORT bool queue_full(queue_t* queue) {
 
 LIB_EXPORT bool queue_empty(queue_t* queue) {
 	if (!queue) {
-		LOG_ERR("queue_get_usage: invalid parameter");
+		LOG_ERR("invalid parameter");
 		return false;
 	}
 	return _queue_empty((queue_impl*)queue);
@@ -112,7 +112,7 @@ LIB_EXPORT bool queue_empty(queue_t* queue) {
 
 size_t queue_get_usage(queue_t* queue) {
 	if (!queue) {
-		LOG_ERR("queue_get_usage: invalid parameter");
+		LOG_ERR("invalid parameter");
 		return 0;
 	}
 
@@ -122,7 +122,7 @@ size_t queue_get_usage(queue_t* queue) {
 
 size_t queue_get_remaining(queue_t* queue) {
 	if (!queue) {
-		LOG_ERR("queue_get_usage: invalid parameter");
+		LOG_ERR("invalid parameter");
 		return 0;
 	}
 
@@ -132,7 +132,7 @@ size_t queue_get_remaining(queue_t* queue) {
 
 void queue_clear(queue_t* queue) {
 	if (!queue) {
-		LOG_ERR("queue_clear: invalid parameter");
+		LOG_ERR("invalid parameter");
 		return;
 	}
 	queue_impl* impl = (queue_impl*)queue;
