@@ -184,13 +184,61 @@ json_parser json_parser_init(arena_t* arena, string str) {
 	return (json_parser){.arena = arena, .lexer = lexer};
 }
 
-bool json_parser_parse(json_parser* parser, json_node* out) {
+void json_parser_free(json_parser* parser) {
+	if (parser->checkpoint) {
+		arena_restore_checkpoint(parser->arena, parser->checkpoint, true);
+	}
+}
+
+/**
+ * @brief Consume token, expect it to be `type`, allocate a new JSON node, and
+ * call the specific parsing function for this token. Allocation and error
+ * handling is centralized here to keep parsing functions small.
+ */
+static json_node* _json_parse_node(json_parser* parser, json_token_type type) {
+	json_token token = {0};
+	bool r = json_consume_token(&parser->lexer, &token);
+	uint64_t line = parser->lexer.cur_line;
+	if (!r) {
+		LOG_ERR("couldn't consume next token (line %u)", line);
+		return NULL;
+	}
+
+	if (token.type != type) {
+		LOG_ERR("unexpected token `%s` at (line %u). expected %s",
+				json_token_names[token.type], line, json_token_names[type]);
+		return NULL;
+	}
+
+	JSON_PARSE_FN parse_func = json_token_to_parse_fn[token.type];
+	if (!parse_func) {
+		LOG_ERR("unparseable token type `%s`", json_token_names[type]);
+		return NULL;
+	}
+
+	json_node* result = arena_push_z(parser->arena, json_node);
+	if (!result) {
+		LOG_ERR("couldn't allocate JSON node");
+		return NULL;
+	}
+
+	if (!parse_func(parser, result, &token)) {
+		json_parser_free(parser);
+		return NULL;
+	}
+
+	return result;
+}
+
+json_node* json_parser_parse(json_parser* parser) {
 
 	json_parser* p = parser;
 
 	ASSERT(p->lexer.base_str == p->lexer.str);
-	if (!json_peek_token(&p->lexer)) { return false; }
+	if (!json_peek_token(&p->lexer)) { return NULL; }
 	json_token* token = &p->lexer.peeked_token;
+
+	json_node* result = NULL;
 
 	switch (token->type) {
 	case JSON_TOKEN_EOF:
@@ -200,37 +248,18 @@ bool json_parser_parse(json_parser* parser, json_node* out) {
 	case JSON_TOKEN_CLOSE_SQ_BRACKET:
 		LOG_ERR("unexpected token %s at position %u",
 				json_token_names[token->type], token->begin_pos);
-		return false;
+		return NULL;
 	case JSON_TOKEN_OPEN_BRACKET:
-		if (!json_parse_array(p, out)) {
-			LOG_ERR("error parsing array node at line %u", p->lexer.cur_line);
-			return false;
-		}
-		break;
 	case JSON_TOKEN_OPEN_SQ_BRACKET:
-		if (!json_parse_object(p, out)) {
-			LOG_ERR("error parsing object node at line %u", p->lexer.cur_line);
-			return false;
-		}
-		break;
 	case JSON_TOKEN_KEYWORD:
-		if (!json_parse_keyword(p, out)) {
-			LOG_ERR("error parsing keyword at line %u", p->lexer.cur_line);
-			return false;
-		}
-		break;
 	case JSON_TOKEN_STRING:
-		if (!json_parse_string(p, out)) {
-			LOG_ERR("error parsing string at line %u", p->lexer.cur_line);
-			return false;
-		}
-		break;
-	case JSON_TOKEN_NUMBER:
-		if (!json_parse_number(p, out)) {
-			LOG_ERR("error parsing number at line %u", p->lexer.cur_line);
-			return false;
-		}
-		break;
+	case JSON_TOKEN_NUMBER: result = _json_parse_node(parser, token->type);
+	}
+
+	if (!result) {
+		LOG_ERR("error parsing node at line %u (position %u)",
+				p->lexer.cur_line, token->begin_pos);
+		return NULL;
 	}
 
 	// Top-level can only have single node. If anything else is left, error
@@ -241,40 +270,28 @@ bool json_parser_parse(json_parser* parser, json_node* out) {
 				"Expected EOF",
 				json_token_names[token->type], p->lexer.cur_line,
 				token->begin_pos);
-		return false;
+		json_parser_free(parser);
+		return NULL;
 	}
 
-	return true;
+	return result;
 }
 
-bool json_parse_keyword(json_parser* parser, json_node* out) {
-	json_token token = {0};
-
-	bool r = json_consume_token(&parser->lexer, &token);
-	uint64_t line = parser->lexer.cur_line;
-	if (!r) {
-		LOG_ERR("couldn't consume next token (line %u)", line);
-		return false;
-	}
-
-	if (token.type != JSON_TOKEN_KEYWORD) {
-		LOG_ERR("unexpected token `%s` at (line %u). expected keyword",
-				json_token_names[token.type], line);
-		return false;
-	}
+bool json_parse_keyword(UNUSED json_parser* parser, json_node* out,
+						json_token* token) {
 
 	out->key = STRING_EMPTY;
-	if (string_compare(token.value.s, str("null"))) {
+	if (string_compare(token->value.s, str("null"))) {
 		out->value_type = JSON_VALUE_NULL;
-	} else if (string_compare(token.value.s, str("true"))) {
+	} else if (string_compare(token->value.s, str("true"))) {
 		out->value_type = JSON_VALUE_BOOLEAN;
 		out->value.boolean = true;
-	} else if (string_compare(token.value.s, str("false"))) {
+	} else if (string_compare(token->value.s, str("false"))) {
 		out->value_type = JSON_VALUE_BOOLEAN;
 		out->value.boolean = false;
 	} else {
 		LOG_ERR("couldn't parse keyword at line %u: " STR_FMT,
-				STR_FMT_ARGS(token.value.s));
+				STR_FMT_ARGS(token->value.s));
 		return false;
 	}
 
@@ -289,28 +306,15 @@ bool json_parse_keyword(json_parser* parser, json_node* out) {
  *  - no leading or trailing '.'
  * [TODO]: exponent notation, enforce length check, don't always assume double
  */
-bool json_parse_number(json_parser* parser, json_node* out) {
-	json_token token = {0};
-
-	bool r = json_consume_token(&parser->lexer, &token);
-	uint64_t line = parser->lexer.cur_line;
-	if (!r) {
-		LOG_ERR("couldn't consume next token (line %u)", line);
-		return false;
-	}
-
-	if (token.type != JSON_TOKEN_NUMBER) {
-		LOG_ERR("unexpected token `%s` at (line %u). expected number",
-				json_token_names[token.type], line);
-		return false;
-	}
+bool json_parse_number(UNUSED json_parser* parser, json_node* out,
+					   json_token* token) {
 
 	bool dot_seen = false;
 	uint32_t decimal_count = 1; // post-dot digit
 	double res = 0.f;
 	int sign = 1;
 
-	char* c = token.value.s.str;
+	char* c = token->value.s.str;
 	if (*c == '-') {
 		sign = -1;
 		c++;
@@ -349,23 +353,10 @@ bool json_parse_number(json_parser* parser, json_node* out) {
 	return true;
 }
 
-bool json_parse_string(json_parser* parser, json_node* out) {
-	json_token token = {0};
+bool json_parse_string(UNUSED json_parser* parser, json_node* out,
+					   json_token* token) {
 
-	bool r = json_consume_token(&parser->lexer, &token);
-	uint64_t line = parser->lexer.cur_line;
-	if (!r) {
-		LOG_ERR("couldn't consume next token (line %u)", line);
-		return false;
-	}
-
-	if (token.type != JSON_TOKEN_STRING) {
-		LOG_ERR("unexpected token `%s` at (line %u). expected string",
-				json_token_names[token.type], line);
-		return false;
-	}
-
-	char* c = token.value.s.str;
+	char* c = token->value.s.str;
 	if (*c != '"') return false;
 
 	size_t len = 0;
@@ -384,15 +375,17 @@ bool json_parse_string(json_parser* parser, json_node* out) {
 }
 
 // TODO
-bool json_parse_array(json_parser* parser, json_node* out) {
+bool json_parse_array(json_parser* parser, json_node* out, json_token* token) {
 	(void)parser;
 	(void)out;
+	(void)token;
 	return false;
 }
 
 // TODO
-bool json_parse_object(json_parser* parser, json_node* out) {
+bool json_parse_object(json_parser* parser, json_node* out, json_token* token) {
 	(void)parser;
 	(void)out;
+	(void)token;
 	return false;
 }

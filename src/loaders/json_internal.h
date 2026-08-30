@@ -1,3 +1,4 @@
+#include <allocators/arena.h>
 #include <loaders/json_loader.h>
 
 typedef enum json_token_type {
@@ -56,14 +57,27 @@ static char const* json_token_names[] = {
 /* == Parse == */
 typedef struct json_parser {
 	arena_t* arena;
+	arena_checkpoint* checkpoint; // Used to revert arena on parsing error
 	json_lexer lexer;
 } json_parser;
 
-bool json_parse_string(json_parser* parser, json_node* out);
-bool json_parse_keyword(json_parser* parser, json_node* out);
-bool json_parse_number(json_parser* parser, json_node* out);
-bool json_parse_array(json_parser* parser, json_node* out);
-bool json_parse_object(json_parser* parser, json_node* out);
+bool json_parse_string(json_parser* parser, json_node* out, json_token* token);
+bool json_parse_keyword(json_parser* parser, json_node* out, json_token* token);
+bool json_parse_number(json_parser* parser, json_node* out, json_token* token);
+bool json_parse_array(json_parser* parser, json_node* out, json_token* token);
+bool json_parse_object(json_parser* parser, json_node* out, json_token* token);
 
 json_parser json_parser_init(arena_t* arena, string str);
-bool json_parser_parse(json_parser* parser, json_node* out);
+json_node* json_parser_parse(json_parser* parser);
+void json_parser_free(json_parser* parser);
+
+typedef bool (*JSON_PARSE_FN)(json_parser* parser, json_node* out,
+							  json_token* token);
+
+static const JSON_PARSE_FN json_token_to_parse_fn[] = {
+	[JSON_TOKEN_OPEN_BRACKET] = json_parse_object,
+	[JSON_TOKEN_OPEN_SQ_BRACKET] = json_parse_array,
+	[JSON_TOKEN_KEYWORD] = json_parse_keyword,
+	[JSON_TOKEN_STRING] = json_parse_string,
+	[JSON_TOKEN_NUMBER] = json_parse_number,
+};

@@ -11,11 +11,11 @@ int main(void) {
 
 	json_parser parser = json_parser_init(arena, json_content);
 
-	json_node node;
-	ASSERT(json_parser_parse(&parser, &node));
+	json_node* node = json_parser_parse(&parser);
+	ASSERT(node);
 
-	ASSERT(node.value_type == JSON_VALUE_NUMBER);
-	ASSERT(node.value.number == 123.345);
+	ASSERT(node->value_type == JSON_VALUE_NUMBER);
+	ASSERT(node->value.number == 123.345);
 
 	return 0;
 }
