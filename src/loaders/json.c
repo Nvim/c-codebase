@@ -184,9 +184,9 @@ bool json_consume_token(json_lexer* lexer, json_token* out) {
 }
 
 // Parse
-json_parser json_parser_init(arena_t* arena, string str) {
+json_parser json_parser_init(arena_t* arena, string str, int64_t max_depth) {
 	json_lexer lexer = json_lexer_init(str.str);
-	return (json_parser){.arena = arena, .lexer = lexer};
+	return (json_parser){.arena = arena, .lexer = lexer, .depth = max_depth};
 }
 
 void json_parser_free(json_parser* parser) {
@@ -398,7 +398,25 @@ static bool _peek_and_expect_value(json_parser* parser) {
 UNUSED static bool _peek_and_expect(json_parser* parser,
 									json_token_type expected) {
 	if (!json_peek_token(&parser->lexer)) { return false; }
-	if (parser->lexer.peeked_token.type != expected) { return false; }
+	json_token* peeked = &parser->lexer.peeked_token;
+	if (expected != peeked->type) {
+		LOG_ERR("unexpected `%s` token at line %u (position %u)",
+				json_token_names[peeked->type], parser->lexer.cur_line,
+				peeked->begin_pos);
+		return false;
+	}
+	return true;
+}
+
+static bool _consume_and_expect(json_parser* parser, json_token* out,
+								json_token_type expected) {
+	if (!json_consume_token(&parser->lexer, out)) { return false; }
+	if (out->type != expected) {
+		LOG_ERR("unexpected `%s` token at line %u (position %u)",
+				json_token_names[out->type], parser->lexer.cur_line,
+				out->begin_pos);
+		return false;
+	}
 	return true;
 }
 
@@ -409,14 +427,21 @@ bool json_parse_array(json_parser* parser, json_node* out, json_token* token) {
 
 	// Empty array:
 	if (parser->lexer.peeked_token.type == JSON_TOKEN_CLOSE_SQ_BRACKET) {
-		json_token token;
-		if (!json_consume_token(&parser->lexer, &token)) { return false; }
+		json_token tok;
+		if (!json_consume_token(&parser->lexer, &tok)) { return false; }
 		out->value_type = JSON_VALUE_ARRAY;
 		out->value.array = (json_array){
 			.size = 0,
 			.first = NULL,
 		};
 		return true;
+	}
+
+	// Depth check:
+	parser->depth--;
+	if (parser->depth == 0) {
+		LOG_ERR("couldn't parse json array: max depth reached");
+		return false;
 	}
 
 	// Expect and parse a value:
@@ -453,6 +478,7 @@ bool json_parse_array(json_parser* parser, json_node* out, json_token* token) {
 		{
 			elem->index = prev->index + 1;
 			elem->node = node;
+			elem->next = NULL;
 		}
 		prev->next = elem;
 		prev = elem;
@@ -463,9 +489,11 @@ bool json_parse_array(json_parser* parser, json_node* out, json_token* token) {
 
 	// No comma, expect & consume ']'
 	json_token t = {0};
-	if (!json_consume_token(&parser->lexer, &t)) { return false; }
-	if (t.type != JSON_TOKEN_CLOSE_SQ_BRACKET) { return false; }
+	if (!_consume_and_expect(parser, &t, JSON_TOKEN_CLOSE_SQ_BRACKET)) {
+		return false;
+	}
 
+	parser->depth++;
 	{
 		out->value_type = JSON_VALUE_ARRAY;
 		out->value.array = (json_array){
@@ -476,10 +504,93 @@ bool json_parse_array(json_parser* parser, json_node* out, json_token* token) {
 	return true;
 }
 
-// TODO
 bool json_parse_object(json_parser* parser, json_node* out, json_token* token) {
-	(void)parser;
-	(void)out;
-	(void)token;
-	return false;
+	ASSERT(token->type == JSON_TOKEN_OPEN_BRACKET);
+
+	if (!json_peek_token(&parser->lexer)) { return false; }
+
+	// Empty object:
+	if (parser->lexer.peeked_token.type == JSON_TOKEN_CLOSE_BRACKET) {
+		json_token tok = {0};
+		if (!json_consume_token(&parser->lexer, &tok)) { return false; }
+		out->value_type = JSON_VALUE_OBJECT;
+		out->value.object = (json_object){
+			.size = 0,
+			.first = NULL,
+		};
+		return true;
+	}
+
+	// Depth check:
+	parser->depth--;
+	if (parser->depth == 0) {
+		LOG_ERR("couldn't parse json object: max depth reached");
+		return false;
+	}
+
+	json_object_elem *first, *elem = NULL;
+	uint64_t size = 0;
+
+	while (true) {
+		json_token tok = {0};
+
+		// String key:
+		if (!_consume_and_expect(parser, &tok, JSON_TOKEN_STRING)) {
+			return false;
+		}
+		string key = tok.value.s;
+
+		// Colon:
+		if (!_consume_and_expect(parser, &tok, JSON_TOKEN_COLON)) {
+			return false;
+		}
+
+		// Peek and expect value:
+		if (!_peek_and_expect_value(parser)) { return false; }
+
+		// Parse the peeked value:
+		json_node* node =
+			_json_parse_node(parser, parser->lexer.peeked_token.type);
+		if (!node) { return false; }
+
+		// Allocate new object element:
+		json_object_elem* new_elem =
+			arena_push_z(parser->arena, json_object_elem);
+		if (!new_elem) { return false; }
+		{
+			new_elem->key = key;
+			new_elem->value = node;
+			new_elem->next = NULL;
+		}
+
+		if (size == 0) {
+			first = new_elem;
+		} else {
+			elem->next = new_elem;
+		}
+
+		elem = new_elem;
+		size++;
+
+		if (!json_peek_token(&parser->lexer)) { return false; }
+		if (parser->lexer.peeked_token.type != JSON_TOKEN_COMMA) { break; }
+	}
+
+	// No comma, expect & consume '}'
+	json_token t = {0};
+	if (!_consume_and_expect(parser, &t, JSON_TOKEN_CLOSE_BRACKET)) {
+		return false;
+	}
+
+	parser->depth++;
+
+	{
+		out->value_type = JSON_VALUE_OBJECT;
+		out->value.object = (json_object){
+			.first = first,
+			.size = size,
+		};
+	}
+
+	return true;
 }

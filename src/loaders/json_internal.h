@@ -59,6 +59,7 @@ typedef struct json_parser {
 	arena_t* arena;
 	arena_checkpoint* checkpoint; // Used to revert arena on parsing error
 	json_lexer lexer;
+	int64_t depth; // Entering object/array decrements it. Error when hits 0.
 } json_parser;
 
 bool json_parse_string(json_parser* parser, json_node* out, json_token* token);
@@ -67,7 +68,7 @@ bool json_parse_number(json_parser* parser, json_node* out, json_token* token);
 bool json_parse_array(json_parser* parser, json_node* out, json_token* token);
 bool json_parse_object(json_parser* parser, json_node* out, json_token* token);
 
-json_parser json_parser_init(arena_t* arena, string str);
+json_parser json_parser_init(arena_t* arena, string str, int64_t max_depth);
 json_node* json_parser_parse(json_parser* parser);
 void json_parser_free(json_parser* parser);
 
