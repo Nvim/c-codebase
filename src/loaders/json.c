@@ -163,6 +163,11 @@ bool json_peek_token(json_lexer* lexer) {
 	return true;
 }
 
+/**
+ * @brief Consume the next token on the stream and return it in `out`.
+ * If `json_peek_token` was called before, peeked token will be consumed and
+ * returned immediately without additional parsing.
+ */
 bool json_consume_token(json_lexer* lexer, json_token* out) {
 	if (!lexer->has_peeked) {
 		// Peek first
@@ -280,7 +285,6 @@ json_node* json_parser_parse(json_parser* parser) {
 bool json_parse_keyword(UNUSED json_parser* parser, json_node* out,
 						json_token* token) {
 
-	out->key = STRING_EMPTY;
 	if (string_compare(token->value.s, str("null"))) {
 		out->value_type = JSON_VALUE_NULL;
 	} else if (string_compare(token->value.s, str("true"))) {
@@ -346,7 +350,6 @@ bool json_parse_number(UNUSED json_parser* parser, json_node* out,
 		c++;
 	}
 
-	out->key = STRING_EMPTY;
 	out->value_type = JSON_VALUE_NUMBER;
 	out->value.number = res * sign;
 
@@ -374,12 +377,103 @@ bool json_parse_string(UNUSED json_parser* parser, json_node* out,
 	return true;
 }
 
-// TODO
+/**
+ * @brief Returns true if token can be parsed as a value. i.e:
+ * opening brackets, keyword, string or number.
+ */
+static bool _is_token_value(json_token* token) {
+	json_token_type t = token->type;
+	if (t == JSON_TOKEN_OPEN_BRACKET || t == JSON_TOKEN_OPEN_SQ_BRACKET)
+		return true;
+
+	return (t >= JSON_TOKEN_KEYWORD);
+}
+
+static bool _peek_and_expect_value(json_parser* parser) {
+	if (!json_peek_token(&parser->lexer)) { return false; }
+	if (!_is_token_value(&parser->lexer.peeked_token)) { return false; }
+	return true;
+}
+
+UNUSED static bool _peek_and_expect(json_parser* parser,
+									json_token_type expected) {
+	if (!json_peek_token(&parser->lexer)) { return false; }
+	if (parser->lexer.peeked_token.type != expected) { return false; }
+	return true;
+}
+
 bool json_parse_array(json_parser* parser, json_node* out, json_token* token) {
-	(void)parser;
-	(void)out;
-	(void)token;
-	return false;
+	ASSERT(token->type == JSON_TOKEN_OPEN_SQ_BRACKET);
+
+	if (!json_peek_token(&parser->lexer)) { return false; }
+
+	// Empty array:
+	if (parser->lexer.peeked_token.type == JSON_TOKEN_CLOSE_SQ_BRACKET) {
+		json_token token;
+		if (!json_consume_token(&parser->lexer, &token)) { return false; }
+		out->value_type = JSON_VALUE_ARRAY;
+		out->value.array = (json_array){
+			.size = 0,
+			.first = NULL,
+		};
+		return true;
+	}
+
+	// Expect and parse a value:
+	if (!_is_token_value(&parser->lexer.peeked_token)) { return false; }
+	json_node* node = _json_parse_node(parser, parser->lexer.peeked_token.type);
+	if (!node) { return false; }
+
+	// Allocate linked-list element for it:
+	json_array_elem* prev = arena_push_z(parser->arena, json_array_elem);
+	if (!prev) { return false; }
+	{
+		prev->index = 0;
+		prev->node = node;
+	}
+	json_array_elem* first = prev;
+
+	// Keep going as long as we got commas
+	if (!json_peek_token(&parser->lexer)) { return false; }
+	while (parser->lexer.peeked_token.type == JSON_TOKEN_COMMA) {
+		// Consume comma:
+		json_token token;
+		if (!json_consume_token(&parser->lexer, &token)) { return false; }
+
+		// Peek and expect value:
+		if (!_peek_and_expect_value(parser)) { return false; }
+
+		// Parse the peeked value:
+		node = _json_parse_node(parser, parser->lexer.peeked_token.type);
+		if (!node) { return false; }
+
+		// Allocate new array element:
+		json_array_elem* elem = arena_push_z(parser->arena, json_array_elem);
+		if (!elem) { return false; }
+		{
+			elem->index = prev->index + 1;
+			elem->node = node;
+		}
+		prev->next = elem;
+		prev = elem;
+
+		// Peek again
+		if (!json_peek_token(&parser->lexer)) { return false; }
+	}
+
+	// No comma, expect & consume ']'
+	json_token t = {0};
+	if (!json_consume_token(&parser->lexer, &t)) { return false; }
+	if (t.type != JSON_TOKEN_CLOSE_SQ_BRACKET) { return false; }
+
+	{
+		out->value_type = JSON_VALUE_ARRAY;
+		out->value.array = (json_array){
+			.size = prev->index + 1,
+			.first = first,
+		};
+	}
+	return true;
 }
 
 // TODO
