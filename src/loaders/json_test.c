@@ -11,7 +11,7 @@
 static arena_t* arena = NULL;
 
 void setUp(void) {
-	arena = arena_create(1024);
+	arena = arena_create(8192);
 	TEST_ASSERT_NOT_NULL(arena);
 }
 
@@ -379,6 +379,185 @@ void test_json_tokenize_keywords(void) {
 	TEST_ASSERT_FALSE(json_consume_token(&bad_lexer, &bad_token));
 }
 
+void test_json_parse_invalid(void) {
+
+	string invalid_inputs[] = {
+		str("{"),
+		str("}"),
+		str("["),
+		str("]"),
+		str("\"unclosed string"),
+		str("{\"key\":}"),
+		str("{\"key\": \"value\""),
+		str("{\"key\": \"value\",}"),
+		str("{,}"),
+		str("{\"a\": 1, \"b\": 2,}"),
+		str("[1, 2,]"),
+		str("[,]"),
+		str("[1,, 2]"),
+		str("{: \"value\"}"),
+		str("{\"key\" :}"),
+		str("\"key\": \"value\""),
+		str("{key: \"value\"}"),
+		str("{Key: \"value\"}"),
+		str("{123: \"value\"}"),
+		str("truee"),
+		str("TrUe"),
+		str("FALSE"),
+		str("nulll"),
+		str("nil"),
+		str("undefined"),
+		str("NaN"),
+		str("Infinity"),
+		str("-Infinity"),
+		str("0123"),
+		str("00.5"),
+		str(".5"),
+		str("1..5"),
+		str("1e10"),
+		str("1E5"),
+		str("1.2e3"),
+		str("+123"),
+		str("+0"),
+		str("."),
+		str(".."),
+		str("1."),
+		str("1.2.3"),
+		str(""),
+		str(" "),
+		str("{\"a\" \"b\": \"c\"}"),
+		str("{\"a\": \"b\" \"c\": \"d\"}"),
+		str("{key: value}"),
+		str("{'key': 'value'}"),
+		str("[1; 2; 3]"),
+		str("{key=\"value\"}"),
+		str("[1|2|3]"),
+		str("// this is not json"),
+		str("# not json either"),
+		str("/* comment */ {}"),
+		str("{\"a\": true false}"),
+		str("null null"),
+		str("1 2 3"),
+		str("\x01"),
+		str("\x1F"),
+		str("\x7F"),
+		str("\\x41"),
+		str("\\z"),
+		str("\\"),
+		str("\x08\x08"),
+		str("[trailing,comma,]"),
+		str("{\"nested\": [{\"another\": \"missing close\"}"),
+		str("\t{\r\n\"tabs\tand\r\ncrlf\"\r\n}\t\r\n"),
+		// str("{\"emoji\": \"😀🎉\"}"), // this is good
+	};
+
+	uint64_t base_usage = arena_get_usage(arena);
+	for (uint64_t i = 0; i < countof(invalid_inputs); ++i) {
+		json_parser parser = json_parser_init(arena, invalid_inputs[i], 100);
+
+		TEST_ASSERT_NULL(json_parser_parse(&parser));
+		TEST_ASSERT_EQUAL(base_usage, arena_get_usage(arena));
+	}
+}
+
+void test_json_parse_valid(void) {
+	string const valid_inputs[] = {
+		str("0"),
+		str("1"),
+		str("-1"),
+		str("10"),
+		str("-10"),
+		str("100"),
+		str("-100"),
+		str("0.5"),
+		str("-0.5"),
+		str("1.5"),
+		str("-1.5"),
+		str("3.14"),
+		str("-3.14"),
+		str("123.456"),
+		str("-123.456"),
+		str("0.0"),
+		str("-0.0"),
+		str("1.0"),
+		str("0.1"),
+		str("0.01"),
+		str("true"),
+		str("false"),
+		str("null"),
+		str("\"\""),
+		str("\"a\""),
+		str("\"abc\""),
+		str("\"Hello World\""),
+		str("\"a b c\""),
+		str("\"quote\\\"inside\""),
+		str("\"back\\\\slash\""),
+		str("\"tab\\there\""),
+		str("\"newline\\nhere\""),
+		str("\"carriage\\rreturn\""),
+		str("\"form\\ffeed\""),
+		str("\"backspace\\bchar\""),
+		str("\"forward\\/slash\""),
+		str("[]"),
+		str("[ ]"),
+		str("[1]"),
+		str("[1, 2]"),
+		str("[1, 2, 3]"),
+		str("[true]"),
+		str("[false]"),
+		str("[null]"),
+		str("[\"a\"]"),
+		str("[\"a\", \"b\"]"),
+		str("[\"a\", \"b\", \"c\"]"),
+		str("[true, false, null]"),
+		str("[1, true, \"str\", null]"),
+		str("[[1]]"),
+		str("[[1, 2], [3, 4]]"),
+		str("[[]]"),
+		str("[[[]]]"),
+		str("{}"),
+		str("{ }"),
+		str("{\"a\": 1}"),
+		str("{\"a\": \"b\"}"),
+		str("{\"a\": true}"),
+		str("{\"a\": false}"),
+		str("{\"a\": null}"),
+		str("{\"a\": 1, \"b\": 2}"),
+		str("{\"a\": 1, \"b\": 2, \"c\": 3}"),
+		str("{\"a\": \"b\", \"c\": \"d\"}"),
+		str("{\"a\": [1, 2, 3]}"),
+		str("{\"a\": {\"b\": 1}}"),
+		str("{\"a\": {\"b\": {\"c\": 1}}}"),
+		str("{\"a\": [], \"b\": {}}"),
+		str("[{\"a\": 1}]"),
+		str("[{\"a\": 1}, {\"b\": 2}]"),
+		str("{\"a\": [{\"b\": [{\"c\": 1}]}]}"),
+		str("[\"\", \" \", \"  \"]"),
+		str("{\"k1\": \"v1\", \"k2\": \"v2\"}"),
+		str("{\"empty_arr\": [], \"empty_obj\": {}}"),
+		str("[1, [2, [3, [4, [5]]]]]"),
+		str("{\"nested\": {\"deep\": {\"deeper\": {\"deepest\": \"val\"}}}}"),
+		str("[true, true, true]"),
+		str("[null, null, null]"),
+		str("{\"\": \"empty key\"}"),
+		str("{\" \": \"space key\"}"),
+		str("[[[[[1]]]]]"),
+		str("{\"a\": 1, \"b\": [1, 2], \"c\": {\"d\": true}}"),
+		str("[null]"),
+		str("{\"num\": 0, \"neg\": -1, \"float\": 1.5, \"bool\": true, "
+			"\"str\": "
+			"\"hi\"}"),
+	};
+
+	for (uint64_t i = 0; i < countof(valid_inputs); ++i) {
+		json_parser parser = json_parser_init(arena, valid_inputs[i], 100);
+
+		TEST_ASSERT_NOT_NULL(json_parser_parse(&parser));
+
+		json_parser_free(&parser);
+	}
+}
+
 int main(void) {
 	UNITY_BEGIN();
 
@@ -390,6 +569,8 @@ int main(void) {
 	RUN_TEST(test_json_tokenize_number_good);
 	RUN_TEST(test_json_tokenize_number_bad);
 	RUN_TEST(test_json_tokenize_keywords);
+	RUN_TEST(test_json_parse_invalid);
+	RUN_TEST(test_json_parse_valid);
 
 	return UNITY_END();
 }

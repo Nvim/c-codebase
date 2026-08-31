@@ -41,7 +41,9 @@ bool json_lex_number(char const* num_str, json_token* out) {
 			frac_digits = true;
 		} else {
 			// first digit can't be a leading 0
-			if (!int_digits && c == '0') return false;
+			if (!int_digits && c == '0') {
+				if (isdigit(num_str[pos])) { return false; }
+			}
 			int_digits = true;
 		}
 	}
@@ -186,7 +188,11 @@ bool json_consume_token(json_lexer* lexer, json_token* out) {
 // Parse
 json_parser json_parser_init(arena_t* arena, string str, int64_t max_depth) {
 	json_lexer lexer = json_lexer_init(str.str);
-	return (json_parser){.arena = arena, .lexer = lexer, .depth = max_depth};
+	arena_checkpoint* check = arena_get_checkpoint(arena);
+	return (json_parser){.arena = arena,
+						 .lexer = lexer,
+						 .checkpoint = check,
+						 .depth = max_depth};
 }
 
 void json_parser_free(json_parser* parser) {
@@ -228,6 +234,7 @@ static json_node* _json_parse_node(json_parser* parser, json_token_type type) {
 	}
 
 	if (!parse_func(parser, result, &token)) {
+		LOG_ERR("couldn't parse node for token %s", json_token_names[type]);
 		json_parser_free(parser);
 		return NULL;
 	}
@@ -325,11 +332,16 @@ bool json_parse_number(UNUSED json_parser* parser, json_node* out,
 	}
 
 	ASSERT(isdigit(*c));
-	if (*c - 48 == 0) { ASSERT(*(c + 1) == '.'); }
+	if (*c - 48 == 0) {
+		// must be '0' or '0.xxx'
+		if (token->length != 1) {
+			if (*(c + 1) != '.') { return false; }
+		}
+	}
 
 	while (*c != '\0' && *c != EOF) {
 		if (*c == '.') {
-			ASSERT(!dot_seen);
+			if (dot_seen) { return false; }
 			dot_seen = true;
 			c++;
 			continue;
@@ -360,7 +372,6 @@ bool json_parse_string(UNUSED json_parser* parser, json_node* out,
 					   json_token* token) {
 
 	char* c = token->value.s.str;
-	if (*c != '"') return false;
 
 	size_t len = 0;
 	char const* base = c;
@@ -371,6 +382,7 @@ bool json_parse_string(UNUSED json_parser* parser, json_node* out,
 	}
 
 	// [TODO]: allocate and copy it!
+	out->value_type = JSON_VALUE_STRING;
 	out->value.string.len = len;
 	out->value.string.str = (char*)base;
 
@@ -412,9 +424,9 @@ static bool _consume_and_expect(json_parser* parser, json_token* out,
 								json_token_type expected) {
 	if (!json_consume_token(&parser->lexer, out)) { return false; }
 	if (out->type != expected) {
-		LOG_ERR("unexpected `%s` token at line %u (position %u)",
-				json_token_names[out->type], parser->lexer.cur_line,
-				out->begin_pos);
+		LOG_ERR("expected `%s` but got `%s` at line %u (position %u).",
+				json_token_names[expected], json_token_names[out->type],
+				parser->lexer.cur_line, out->begin_pos);
 		return false;
 	}
 	return true;
@@ -534,11 +546,12 @@ bool json_parse_object(json_parser* parser, json_node* out, json_token* token) {
 	while (true) {
 		json_token tok = {0};
 
-		// String key:
-		if (!_consume_and_expect(parser, &tok, JSON_TOKEN_STRING)) {
+		// String key, parse it to get node
+		json_node* key_node = _json_parse_node(parser, JSON_TOKEN_STRING);
+		if (!key_node || key_node->value_type != JSON_VALUE_STRING) {
 			return false;
 		}
-		string key = tok.value.s;
+		string key = key_node->value.string;
 
 		// Colon:
 		if (!_consume_and_expect(parser, &tok, JSON_TOKEN_COLON)) {
@@ -572,8 +585,10 @@ bool json_parse_object(json_parser* parser, json_node* out, json_token* token) {
 		elem = new_elem;
 		size++;
 
+		// If not comma, exit, else consume:
 		if (!json_peek_token(&parser->lexer)) { return false; }
 		if (parser->lexer.peeked_token.type != JSON_TOKEN_COMMA) { break; }
+		if(!json_consume_token(&parser->lexer, &tok)) { return false; }
 	}
 
 	// No comma, expect & consume '}'
