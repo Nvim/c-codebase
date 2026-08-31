@@ -558,19 +558,65 @@ void test_json_parse_valid(void) {
 	}
 }
 
+void test_json_parse_nodes(void) {
+	string json_content = str("[ 123, 456, 789, { \"key\": 999 }, {\n} ]");
+	json_parser parser = json_parser_init(arena, json_content, 100);
+	json_node* node = json_parser_parse(&parser);
+	TEST_ASSERT_NOT_NULL(node);
+
+	TEST_ASSERT_EQUAL(JSON_VALUE_ARRAY, node->value_type);
+	TEST_ASSERT_EQUAL(5, node->value.array.size);
+
+	json_array_elem* elem = node->value.array.first;
+
+	for (uint32_t i = 0; i < 3; i++) {
+		TEST_ASSERT_EQUAL(JSON_VALUE_NUMBER, elem->node->value_type);
+		elem = elem->next;
+	}
+
+	TEST_ASSERT_EQUAL(JSON_VALUE_OBJECT, elem->node->value_type);
+	TEST_ASSERT_EQUAL(3, elem->index);
+
+	TEST_ASSERT_EQUAL(1, elem->node->value.object.size);
+	json_object_elem* obj = elem->node->value.object.first;
+	TEST_ASSERT_NULL(obj->next);
+
+	TEST_ASSERT_TRUE(string_compare(obj->key, str("key")));
+	TEST_ASSERT_EQUAL(JSON_VALUE_NUMBER, obj->value->value_type);
+	TEST_ASSERT_EQUAL(999.f, obj->value->value.number);
+
+	elem = elem->next;
+	TEST_ASSERT_NULL(elem->next);
+	TEST_ASSERT_EQUAL(JSON_VALUE_OBJECT, elem->node->value_type);
+	TEST_ASSERT_EQUAL(0, elem->node->value.object.size);
+	TEST_ASSERT_NULL(elem->node->value.object.first);
+}
+
+void test_json_max_depth(void) {
+	string json_content = str("[ { \"key\": [ [ 1, 2, 3 ] ] } ]");
+	{
+		json_parser parser = json_parser_init(arena, json_content, 5);
+		json_node* node = json_parser_parse(&parser);
+		TEST_ASSERT_NOT_NULL(node);
+	}
+	{
+		json_parser parser = json_parser_init(arena, json_content, 4);
+		json_node* node = json_parser_parse(&parser);
+		TEST_ASSERT_NULL(node);
+	}
+}
+
 int main(void) {
 	UNITY_BEGIN();
 
-	// [TODO]: replace by `json_parse_xxx` variants (or nuke?)
-	// RUN_TEST(test_json_read_whitespace);
-	// RUN_TEST(test_json_read_bool_good);
-	// RUN_TEST(test_json_read_number_good);
 	RUN_TEST(test_json_tokenize_good);
 	RUN_TEST(test_json_tokenize_number_good);
 	RUN_TEST(test_json_tokenize_number_bad);
 	RUN_TEST(test_json_tokenize_keywords);
 	RUN_TEST(test_json_parse_invalid);
 	RUN_TEST(test_json_parse_valid);
+	RUN_TEST(test_json_parse_nodes);
+	RUN_TEST(test_json_max_depth);
 
 	return UNITY_END();
 }

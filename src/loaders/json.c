@@ -588,7 +588,7 @@ bool json_parse_object(json_parser* parser, json_node* out, json_token* token) {
 		// If not comma, exit, else consume:
 		if (!json_peek_token(&parser->lexer)) { return false; }
 		if (parser->lexer.peeked_token.type != JSON_TOKEN_COMMA) { break; }
-		if(!json_consume_token(&parser->lexer, &tok)) { return false; }
+		if (!json_consume_token(&parser->lexer, &tok)) { return false; }
 	}
 
 	// No comma, expect & consume '}'
