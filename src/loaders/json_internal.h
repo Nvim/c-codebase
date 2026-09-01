@@ -41,19 +41,6 @@ bool json_lex_string(char const* s, json_token* out);
 bool json_peek_token(json_lexer* lexer);
 bool json_consume_token(json_lexer* lexer, json_token* out);
 
-static char const* json_token_names[] = {
-	[JSON_TOKEN_EOF] = "EOF",
-	[JSON_TOKEN_COMMA] = "comma",
-	[JSON_TOKEN_COLON] = "colon",
-	[JSON_TOKEN_OPEN_BRACKET] = "open curly bracket",
-	[JSON_TOKEN_OPEN_SQ_BRACKET] = "open square bracket",
-	[JSON_TOKEN_CLOSE_BRACKET] = "close curly bracket",
-	[JSON_TOKEN_CLOSE_SQ_BRACKET] = "close square bracket",
-	[JSON_TOKEN_KEYWORD] = "keyword",
-	[JSON_TOKEN_STRING] = "string",
-	[JSON_TOKEN_NUMBER] = "number",
-};
-
 /* == Parse == */
 typedef struct json_parser {
 	arena_t* arena;

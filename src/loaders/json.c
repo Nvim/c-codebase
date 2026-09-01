@@ -5,6 +5,19 @@
 #include <math.h>
 #include <string.h>
 
+static char const* json_token_names[] = {
+	[JSON_TOKEN_EOF] = "EOF",
+	[JSON_TOKEN_COMMA] = "comma",
+	[JSON_TOKEN_COLON] = "colon",
+	[JSON_TOKEN_OPEN_BRACKET] = "open curly bracket",
+	[JSON_TOKEN_OPEN_SQ_BRACKET] = "open square bracket",
+	[JSON_TOKEN_CLOSE_BRACKET] = "close curly bracket",
+	[JSON_TOKEN_CLOSE_SQ_BRACKET] = "close square bracket",
+	[JSON_TOKEN_KEYWORD] = "keyword",
+	[JSON_TOKEN_STRING] = "string",
+	[JSON_TOKEN_NUMBER] = "number",
+};
+
 json_lexer json_lexer_init(char const* base) {
 	return (json_lexer){
 		.has_peeked = false,
@@ -373,18 +386,12 @@ bool json_parse_string(UNUSED json_parser* parser, json_node* out,
 
 	char* c = token->value.s.str;
 
-	size_t len = 0;
-	char const* base = c;
+	// [TODO]: process non-ASCII and weird escape sequences (headache)
+	while (*c != '"') { c++; }
 
-	while (*c != '"') {
-		len++;
-		c++;
-	}
-
-	// [TODO]: allocate and copy it!
+	// Copy from string to parser's arena
 	out->value_type = JSON_VALUE_STRING;
-	out->value.string.len = len;
-	out->value.string.str = (char*)base;
+	string_copy(parser->arena, &out->value.string, token->value.s);
 
 	return true;
 }

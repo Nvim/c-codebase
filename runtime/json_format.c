@@ -77,42 +77,53 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
-	arena_t* arena = arena_create(64 * MEMORY_KIB);
-	if (!arena) { return 1; }
+	arena_t* fs_arena = arena_create(64 * MEMORY_KIB);
+	if (!fs_arena) { return 1; }
 	if (!arena_pool_init()) { return 1; }
 	scratch_arena scratch;
 	if (!arena_get_scratch(NULL, &scratch)) { return 1; }
 
 	string arg_str;
-	if (!string_create(arena, &arg_str, argv[1])) {
-		LOG_ERR("couldn't create string from args");
-		goto error;
+	if (!string_create(fs_arena, &arg_str, argv[1])) {
+		LOG_FATAL("couldn't create string from args");
+		goto fs_error;
 	}
 
 	path filepath;
-	if (!path_create(arena, scratch.arena, arg_str, &filepath)) {
-		LOG_ERR("couldn't create path from args");
-		goto error;
+	if (!path_create(fs_arena, scratch.arena, arg_str, &filepath)) {
+		LOG_FATAL("couldn't create path from args");
+		goto fs_error;
 	}
 
-	fs_file_read_result result = fs_read_all_file(arena, filepath);
+	fs_file_read_result result = fs_read_all_file(fs_arena, filepath);
 	if (!result.ok) {
-		LOG_ERR("couldn't read file " STR_FMT, STR_FMT_ARGS(filepath));
-		goto error;
+		LOG_FATAL("couldn't read file " STR_FMT, STR_FMT_ARGS(filepath));
+		goto fs_error;
 	}
 
 	printf(STR_FMT "\n", STR_FMT_ARGS(result.str));
 
-	json_parser parser = json_parser_init(arena, result.str, 256);
+	arena_t* parse_arena = arena_create(64 * MEMORY_KIB);
+	if (!parse_arena) { goto fs_error; }
+	json_parser parser = json_parser_init(parse_arena, result.str, 256);
 	json_node* root = json_parser_parse(&parser);
-	if (!root) { goto error; }
+
+	// No need for this anymore, everything is copied to parser's arena
+	arena_destroy(fs_arena);
+	arena_clear_scratch(scratch);
+
+	if (!root) {
+		arena_destroy(parse_arena);
+		LOG_FATAL("couldn't parse JSON file");
+		return 1;
+	}
 
 	print_node(root, 1);
 
 	return 0;
 
-error:
-	arena_destroy(arena);
+fs_error:
+	arena_destroy(fs_arena);
 	arena_clear_scratch(scratch);
 	return 1;
 }
