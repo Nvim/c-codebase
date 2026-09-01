@@ -405,6 +405,12 @@ void arena_restore_checkpoint(arena_t* arena, arena_checkpoint* checkpoint,
 	if (zero || impl->flags & ARENA_ZERO_ALWAYS) { memset(p, 0, offset); }
 }
 
+/* == Arena Pools == */
+static arena_pool g_arena_pool = {
+	.init = false,
+	.arenas = {0},
+};
+
 bool arena_pool_init(void) {
 	if (g_arena_pool.init) {
 		LOG_ERR("arena pool is already initialized");

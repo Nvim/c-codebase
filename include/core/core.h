@@ -4,9 +4,8 @@
 #include <core/log.h>
 #include <platform/platform.h>
 
-// [TODO]: support GCC too
-#if !defined(__clang__)
-#error "Unsupported compiler"
+#if !defined(__clang__) && !defined(__GNUC__)
+#warning "Unsupported compiler"
 #endif
 
 #define UNUSED __attribute__((unused))

@@ -568,12 +568,6 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		}
 		ASSERT(state->surface.capabilities.minImageCount);
 
-		VkPhysicalDeviceSurfaceInfo2KHR surface_info = {0};
-		{
-			surface_info.sType =
-				VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR;
-			surface_info.surface = state->surface.surface;
-		}
 		uint32_t surface_formats_count = 0;
 		vkGetPhysicalDeviceSurfaceFormatsKHR(state->physical_device,
 											 state->surface.surface,
@@ -951,6 +945,21 @@ void vulkan_cmd_end_rendering(gpu_api* self, gpu_command_buffer cmd) {
 	cmd_data->state = CMDBUF_RECORDING;
 }
 
+static VkImageUsageFlags const gpu_image_state_to_vk_state_flags[] = {
+	[GPU_IMAGE_STATE_NONE] = 0,
+
+	// [TODO]: Not sure about how to handle GENERAL:
+	[GPU_IMAGE_STATE_GENERAL] =
+		VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+	[GPU_IMAGE_STATE_SHADER_READ] = VK_IMAGE_USAGE_SAMPLED_BIT,
+	[GPU_IMAGE_STATE_SHADER_WRITE] = VK_IMAGE_USAGE_STORAGE_BIT,
+	[GPU_IMAGE_STATE_RENDER_TARGET] = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+	[GPU_IMAGE_STATE_DEPTH_READ] = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+	[GPU_IMAGE_STATE_DEPTH_WRITE] = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+	[GPU_IMAGE_STATE_TRANSFER_SRC] = VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+	[GPU_IMAGE_STATE_TRANSFER_DST] = VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+};
+
 bool vulkan_cmd_transition_image(gpu_api* self, gpu_command_buffer cmd_handle,
 								 gpu_image img_handle,
 								 gpu_image_state new_state) {
@@ -999,8 +1008,8 @@ bool vulkan_cmd_transition_image(gpu_api* self, gpu_command_buffer cmd_handle,
 	}
 
 	vk_image_barrier(cmd_data->command_buffer, img_data->image,
-					 gpu_state_to_vk_image_barrier[img_data->gpu_state],
-					 gpu_state_to_vk_image_barrier[new_state]);
+					 gpu_state_to_vk_image_barrier(img_data->gpu_state),
+					 gpu_state_to_vk_image_barrier(new_state));
 
 	// [TODO]: sync nightmare i won't think about it for now
 	img_data->gpu_state = new_state;
@@ -2111,9 +2120,9 @@ bool vulkan_cmd_copy_to_image(struct gpu_api* self, gpu_command_buffer cmd,
 	}
 
 	// Barrier to TRANSFER_DST:
-	vk_image_barrier_info from = gpu_state_to_vk_image_barrier[data->gpu_state];
+	vk_image_barrier_info from = gpu_state_to_vk_image_barrier(data->gpu_state);
 	vk_image_barrier_info to =
-		gpu_state_to_vk_image_barrier[GPU_IMAGE_STATE_TRANSFER_DST];
+		gpu_state_to_vk_image_barrier(GPU_IMAGE_STATE_TRANSFER_DST);
 	vk_image_barrier(cmd_buf, data->image, from, to);
 	data->gpu_state = GPU_IMAGE_STATE_TRANSFER_DST;
 
@@ -2267,14 +2276,14 @@ bool vulkan_cmd_blit_to_image(gpu_api* self, gpu_command_buffer cmd,
 	// Transition source & destination:
 	vk_image_barrier(
 		cmd_buf, src_data->image,
-		gpu_state_to_vk_image_barrier[src_data->gpu_state],
-		gpu_state_to_vk_image_barrier[GPU_IMAGE_STATE_TRANSFER_SRC]);
+		gpu_state_to_vk_image_barrier(src_data->gpu_state),
+		gpu_state_to_vk_image_barrier(GPU_IMAGE_STATE_TRANSFER_SRC));
 	src_data->gpu_state = GPU_IMAGE_STATE_TRANSFER_SRC;
 
 	vk_image_barrier(
 		cmd_buf, dst_data->image,
-		gpu_state_to_vk_image_barrier[dst_data->gpu_state],
-		gpu_state_to_vk_image_barrier[GPU_IMAGE_STATE_TRANSFER_DST]);
+		gpu_state_to_vk_image_barrier(dst_data->gpu_state),
+		gpu_state_to_vk_image_barrier(GPU_IMAGE_STATE_TRANSFER_DST));
 	dst_data->gpu_state = GPU_IMAGE_STATE_TRANSFER_DST;
 
 	VkImageBlit2 reg = {0};
@@ -2604,6 +2613,44 @@ void vulkan_cmd_full_pipeline_barrier(gpu_api* self, gpu_command_buffer cmd) {
 	}
 	vkCmdPipelineBarrier2(cmd_buf, &dep_info);
 }
+
+static vk_buffer_barrier_info gpu_buffer_access_to_vk_state_flags[] = {
+	[GPU_BUFFER_ACCESS_TRANSFER_WRITE] =
+		{
+			.access = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+			.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+		},
+	[GPU_BUFFER_ACCESS_INDEX_READ] =
+		{
+			.access = VK_ACCESS_2_INDEX_READ_BIT,
+			.stage = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT,
+		},
+	[GPU_BUFFER_ACCESS_INDIRECT_DRAW_READ] =
+		{
+			.access = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
+			.stage = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
+		},
+	[GPU_BUFFER_ACCESS_VERTEX_SHADER_READ] =
+		{
+			.access = VK_ACCESS_2_SHADER_READ_BIT,
+			.stage = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
+		},
+	[GPU_BUFFER_ACCESS_VERTEX_SHADER_WRITE] =
+		{
+			.access = VK_ACCESS_2_SHADER_WRITE_BIT,
+			.stage = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
+		},
+	[GPU_BUFFER_ACCESS_FRAGMENT_SHADER_READ] =
+		{
+			.access = VK_ACCESS_2_SHADER_READ_BIT,
+			.stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+		},
+	[GPU_BUFFER_ACCESS_FRAGMENT_SHADER_WRITE] =
+		{
+			.access = VK_ACCESS_2_SHADER_WRITE_BIT,
+			.stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+		},
+};
 
 bool vulkan_cmd_buffer_barrier(gpu_api* self, gpu_command_buffer cmd,
 							   gpu_buffer buf_handle, gpu_buffer_access from,

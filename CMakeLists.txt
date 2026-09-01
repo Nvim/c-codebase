@@ -39,7 +39,6 @@ target_compile_options(compile_flags
         -Wextra
         -Werror
         -Wvla
-        -Wno-gnu-zero-variadic-macro-arguments
         -pedantic
         -fPIC
 )

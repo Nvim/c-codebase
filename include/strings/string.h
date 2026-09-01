@@ -21,9 +21,14 @@ typedef struct u64_array u64_array;
 /**
  * @brief Turns a temporary string literal into a length-based string
  */
-#define str(literal) (string){(char*)literal, countof(literal) - 1}
+#define str(literal) (string){literal, countof(literal) - 1}
+#define str_init(literal) {literal, countof(literal) - 1}
 
-static string const STRING_EMPTY = str("");
+static char STRING_EMPTY_STORAGE[] = "";
+static string const STRING_EMPTY = {
+    STRING_EMPTY_STORAGE,
+    0
+};
 
 /**
  * @brief Invalid position returned by search functions.

@@ -330,21 +330,6 @@ static VkMemoryBarrier2 const vk_full_pipeline_barrier = {
 		VK_ACCESS_2_MEMORY_READ_BIT_KHR | VK_ACCESS_2_MEMORY_WRITE_BIT_KHR,
 };
 
-static VkImageUsageFlags gpu_image_state_to_vk_state_flags[] = {
-	[GPU_IMAGE_STATE_NONE] = 0,
-
-	// [TODO]: Not sure about how to handle GENERAL:
-	[GPU_IMAGE_STATE_GENERAL] =
-		VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-	[GPU_IMAGE_STATE_SHADER_READ] = VK_IMAGE_USAGE_SAMPLED_BIT,
-	[GPU_IMAGE_STATE_SHADER_WRITE] = VK_IMAGE_USAGE_STORAGE_BIT,
-	[GPU_IMAGE_STATE_RENDER_TARGET] = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-	[GPU_IMAGE_STATE_DEPTH_READ] = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-	[GPU_IMAGE_STATE_DEPTH_WRITE] = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-	[GPU_IMAGE_STATE_TRANSFER_SRC] = VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-	[GPU_IMAGE_STATE_TRANSFER_DST] = VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-};
-
 typedef struct vk_image_barrier_info {
 	VkImageLayout layout;
 	VkAccessFlags2 access;
@@ -360,71 +345,75 @@ typedef struct vk_image_barrier_info {
  * https://github.com/KhronosGroup/Vulkan-Docs/wiki/Synchronization-Examples#graphics-to-graphics-dependencies
  * https://docs.vulkan.org/tutorial/latest/Building_a_Simple_Engine/Engine_Architecture/05_rendering_pipeline.html#_image_layout_transition_barrier_configuration_and_resource_specification
  */
-static vk_image_barrier_info gpu_state_to_vk_image_barrier[] = {
-	[GPU_IMAGE_STATE_NONE] =
-		{
-			.layout = VK_IMAGE_LAYOUT_UNDEFINED,
-			.access = VK_ACCESS_2_NONE,
-			.stage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-		},
-	[GPU_IMAGE_STATE_GENERAL] =
-		{
-			// [TODO]: won't use it for color attachment, but it technically
-			// could?
-			.layout = VK_IMAGE_LAYOUT_GENERAL,
-			.access =
-				VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
-			.stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-		},
-	[GPU_IMAGE_STATE_SHADER_READ] =
-		{
-			.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			.access = VK_ACCESS_2_SHADER_READ_BIT,
-			.stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-		},
-	[GPU_IMAGE_STATE_SHADER_WRITE] =
-		{
-			.layout = VK_IMAGE_LAYOUT_GENERAL,
-			.access =
-				VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT,
-			.stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-		},
-	[GPU_IMAGE_STATE_RENDER_TARGET] =
-		{
-			.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			.access = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
-					  VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-			.stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-		},
-	[GPU_IMAGE_STATE_DEPTH_READ] =
-		{
-			.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-			.access = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
-			.stage = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-		},
-	[GPU_IMAGE_STATE_DEPTH_WRITE] =
-		{
-			.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-			.access = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-			.stage = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-		},
-	[GPU_IMAGE_STATE_TRANSFER_SRC] =
-		{
-			.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-			.access = VK_ACCESS_2_TRANSFER_READ_BIT,
-			.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-		},
-	[GPU_IMAGE_STATE_TRANSFER_DST] =
-		{
-			.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			.access = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-			.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-		},
-};
+static inline vk_image_barrier_info
+gpu_state_to_vk_image_barrier(gpu_image_state s) {
+	static vk_image_barrier_info gpu_state_to_vk_image_barrier[] = {
+		[GPU_IMAGE_STATE_NONE] =
+			{
+				.layout = VK_IMAGE_LAYOUT_UNDEFINED,
+				.access = VK_ACCESS_2_NONE,
+				.stage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+			},
+		[GPU_IMAGE_STATE_GENERAL] =
+			{
+				// [TODO]: won't use it for color attachment, but it technically
+				// could?
+				.layout = VK_IMAGE_LAYOUT_GENERAL,
+				.access =
+					VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
+				.stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+			},
+		[GPU_IMAGE_STATE_SHADER_READ] =
+			{
+				.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+				.access = VK_ACCESS_2_SHADER_READ_BIT,
+				.stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+			},
+		[GPU_IMAGE_STATE_SHADER_WRITE] =
+			{
+				.layout = VK_IMAGE_LAYOUT_GENERAL,
+				.access =
+					VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT,
+				.stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+			},
+		[GPU_IMAGE_STATE_RENDER_TARGET] =
+			{
+				.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				.access = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+						  VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+				.stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+			},
+		[GPU_IMAGE_STATE_DEPTH_READ] =
+			{
+				.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+				.access = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+				.stage = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+			},
+		[GPU_IMAGE_STATE_DEPTH_WRITE] =
+			{
+				.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+				.access = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+				.stage = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+			},
+		[GPU_IMAGE_STATE_TRANSFER_SRC] =
+			{
+				.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				.access = VK_ACCESS_2_TRANSFER_READ_BIT,
+				.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+			},
+		[GPU_IMAGE_STATE_TRANSFER_DST] =
+			{
+				.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				.access = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+				.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+			},
+	};
+	return gpu_state_to_vk_image_barrier[s];
+}
 
 static inline VkImageLayout
 _gpu_image_state_to_vk_image_layout(gpu_image_state s) {
-	return gpu_state_to_vk_image_barrier[s].layout;
+	return gpu_state_to_vk_image_barrier(s).layout;
 }
 
 void vk_image_barrier(VkCommandBuffer cmd_buf, VkImage image,
@@ -445,44 +434,6 @@ typedef struct vk_buffer_barrier_info {
 	VkAccessFlags2 access;
 	VkPipelineStageFlags2 stage;
 } vk_buffer_barrier_info;
-
-static vk_buffer_barrier_info gpu_buffer_access_to_vk_state_flags[] = {
-	[GPU_BUFFER_ACCESS_TRANSFER_WRITE] =
-		{
-			.access = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-			.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-		},
-	[GPU_BUFFER_ACCESS_INDEX_READ] =
-		{
-			.access = VK_ACCESS_2_INDEX_READ_BIT,
-			.stage = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT,
-		},
-	[GPU_BUFFER_ACCESS_INDIRECT_DRAW_READ] =
-		{
-			.access = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
-			.stage = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
-		},
-	[GPU_BUFFER_ACCESS_VERTEX_SHADER_READ] =
-		{
-			.access = VK_ACCESS_2_SHADER_READ_BIT,
-			.stage = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
-		},
-	[GPU_BUFFER_ACCESS_VERTEX_SHADER_WRITE] =
-		{
-			.access = VK_ACCESS_2_SHADER_WRITE_BIT,
-			.stage = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
-		},
-	[GPU_BUFFER_ACCESS_FRAGMENT_SHADER_READ] =
-		{
-			.access = VK_ACCESS_2_SHADER_READ_BIT,
-			.stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-		},
-	[GPU_BUFFER_ACCESS_FRAGMENT_SHADER_WRITE] =
-		{
-			.access = VK_ACCESS_2_SHADER_WRITE_BIT,
-			.stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-		},
-};
 
 void vk_buffer_barrier(VkCommandBuffer cmd_buf, VkBuffer image,
 					   vk_buffer_barrier_info from, vk_buffer_barrier_info to);

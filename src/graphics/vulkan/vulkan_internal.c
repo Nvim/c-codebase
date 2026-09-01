@@ -508,7 +508,7 @@ bool vk_transition_to_present(vk_api_state* state, gpu_frame* frame) {
 	vk_image_data* img =
 		vk_image_pool_get(state->image_pool, to_vk_img(frame->framebuffer));
 
-	vk_image_barrier_info from = gpu_state_to_vk_image_barrier[img->gpu_state];
+	vk_image_barrier_info from = gpu_state_to_vk_image_barrier(img->gpu_state);
 	static vk_image_barrier_info const to = {
 		.layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 		.stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -735,6 +735,8 @@ VkPrimitiveTopology gpu_to_vk_primitive_type(gpu_primitive_type t) {
 	case GPU_PRIMITIVE_TYPE_LINESTRIP: return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
 	case GPU_PRIMITIVE_TYPE_POINTLIST: return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
 	}
+	ASSERT(false);
+	return 0;
 }
 
 VkCompareOp gpu_to_vk_compare_op(gpu_compare_op op) {
@@ -746,6 +748,8 @@ VkCompareOp gpu_to_vk_compare_op(gpu_compare_op op) {
 	case GPU_COMPARE_OP_ALWAYS: return VK_COMPARE_OP_ALWAYS;
 	case GPU_COMPARE_OP_NEVER: return VK_COMPARE_OP_NEVER;
 	}
+	ASSERT(false);
+	return 0;
 }
 
 VkCullModeFlagBits gpu_to_vk_cull_mode(gpu_cull_mode m) {
@@ -754,6 +758,8 @@ VkCullModeFlagBits gpu_to_vk_cull_mode(gpu_cull_mode m) {
 	case GPU_CULL_MODE_FRONT: return VK_CULL_MODE_FRONT_BIT;
 	case GPU_CULL_MODE_BACK: return VK_CULL_MODE_BACK_BIT;
 	}
+	ASSERT(false);
+	return 0;
 }
 
 VkPolygonMode gpu_to_vk_polygon_mode(gpu_polygon_mode m) {
@@ -762,6 +768,8 @@ VkPolygonMode gpu_to_vk_polygon_mode(gpu_polygon_mode m) {
 	case GPU_POLYGON_LINE: return VK_POLYGON_MODE_LINE;
 	case GPU_POLYGON_POINT: return VK_POLYGON_MODE_POINT;
 	}
+	ASSERT(false);
+	return 0;
 }
 
 VkFrontFace gpu_to_vk_winding(gpu_winding w) {
@@ -769,6 +777,8 @@ VkFrontFace gpu_to_vk_winding(gpu_winding w) {
 	case GPU_WINDING_CLOCKWISE: return VK_FRONT_FACE_CLOCKWISE;
 	case GPU_WINDING_COUNTER_CLOCKWISE: return VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	}
+	ASSERT(false);
+	return 0;
 }
 
 gpu_image_extent vk_to_gpu_image_extent(VkExtent2D e) {
@@ -782,11 +792,13 @@ VkExtent2D gpu_to_vk_image_extent(gpu_image_extent e) {
 gpu_frame vk_to_gpu_frame(vk_frame* f) {
 	return (gpu_frame){
 		.frame_index = f->frame_idx,
-		.framebuffer = {.handle = vk_image_pool_unwrap(f->rendertarget)},
-		.framebuffer_view = {.handle = vk_image_view_pool_unwrap(
-								 f->rendertarget_view)},
+		.framebuffer =
+			(gpu_image){.handle = vk_image_pool_unwrap(f->rendertarget)},
+		.framebuffer_view =
+			(gpu_image_view){
+				.handle = vk_image_view_pool_unwrap(f->rendertarget_view)},
 		.frame_cmd = (gpu_command_buffer){
-			.handle = f->frame_sync->command_buffer.raw_handle.handle}};
+			.handle = f->frame_sync->command_buffer.raw_handle}};
 }
 
 VkImageSubresourceRange vk_full_subresource_range(VkImageUsageFlagBits usage,
@@ -864,6 +876,8 @@ VkFormat gpu_to_vk_image_format(gpu_image_format f) {
 
 	case IMAGE_FORMAT_D16: return VK_FORMAT_D16_UNORM;
 	}
+	ASSERT(false);
+	return 0;
 }
 
 gpu_image_format vk_to_gpu_image_format(VkFormat f) {
@@ -897,6 +911,7 @@ VkShaderStageFlags gpu_to_vk_shader_stage(gpu_shader_type t) {
 	case GPU_SHADER_FRAGMENT: return VK_SHADER_STAGE_FRAGMENT_BIT;
 	case GPU_SHADER_COMPUTE: return VK_SHADER_STAGE_COMPUTE_BIT;
 	}
+	ASSERT(false);
 	return 0;
 }
 
@@ -908,6 +923,7 @@ VkImageViewType gpu_to_vk_image_type(gpu_image_type t) {
 	case GPU_IMAGE_TYPE_CUBE_ARRAY: return VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
 	}
 	ASSERT(false);
+	return 0;
 }
 
 VkFilter gpu_to_vk_filter(gpu_sampler_filter_mode f) {
@@ -915,12 +931,16 @@ VkFilter gpu_to_vk_filter(gpu_sampler_filter_mode f) {
 	case GPU_SAMPLER_FILTER_NEAREST: return VK_FILTER_NEAREST;
 	case GPU_SAMPLER_FILTER_LINEAR: return VK_FILTER_LINEAR;
 	}
+	ASSERT(false);
+	return 0;
 }
 VkSamplerMipmapMode gpu_to_vk_mipmap_mode(gpu_sampler_mipmap_mode m) {
 	switch (m) {
 	case GPU_SAMPLER_MIPMAP_NEAREST: return VK_SAMPLER_MIPMAP_MODE_NEAREST;
 	case GPU_SAMPLER_MIPMAP_LINEAR: return VK_SAMPLER_MIPMAP_MODE_LINEAR;
 	}
+	ASSERT(false);
+	return 0;
 }
 VkSamplerAddressMode gpu_to_vk_address_mode(gpu_sampler_address_mode m) {
 	switch (m) {
@@ -930,6 +950,8 @@ VkSamplerAddressMode gpu_to_vk_address_mode(gpu_sampler_address_mode m) {
 	case GPU_SAMPLER_ADRESS_CLAMP:
 		return VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
 	}
+	ASSERT(false);
+	return 0;
 }
 
 VkBufferUsageFlagBits2 gpu_to_vk_buffer_usage(gpu_buffer_usage u) {
@@ -945,6 +967,7 @@ VkBufferUsageFlagBits2 gpu_to_vk_buffer_usage(gpu_buffer_usage u) {
 	case GPU_BUFFER_USAGE_INDIRECT:
 		ret |= VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT;
 		ret |= VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT;
+		break;
 	case GPU_BUFFER_USAGE_STAGING_UP:
 		ret |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 		break;
@@ -994,6 +1017,8 @@ VkAttachmentStoreOp gpu_to_vk_store_op(gpu_target_store_op op) {
 	case GPU_STORE_OP_STORE: return VK_ATTACHMENT_STORE_OP_STORE;
 	case GPU_STORE_OP_DONT_CARE: return VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	}
+	ASSERT(false);
+	return 0;
 }
 
 VkAttachmentLoadOp gpu_to_vk_load_op(gpu_target_load_op op) {
@@ -1001,6 +1026,8 @@ VkAttachmentLoadOp gpu_to_vk_load_op(gpu_target_load_op op) {
 	case GPU_LOAD_OP_LOAD: return VK_ATTACHMENT_LOAD_OP_LOAD;
 	case GPU_LOAD_OP_CLEAR: return VK_ATTACHMENT_LOAD_OP_CLEAR;
 	}
+	ASSERT(false);
+	return 0;
 }
 
 VkClearColorValue gpu_to_vk_color(gpu_color col) {

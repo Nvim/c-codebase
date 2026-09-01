@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
 		if (strncmp(arg, "--x11", 5) == 0) { type = PLATFORM_TYPE_LINUX_X11; }
 	}
 
-	LOG_INFO("platform init for type %s", platform_type_names[type]);
+	LOG_INFO("platform init for type %s", platform_type_name(type));
 
 	ASSERT(platform_init(type));
 	window_size sz = {.width = 1600, .height = 900};

@@ -11,8 +11,8 @@ string fs_format_memory_size(arena_t* arena, size_t size) {
 		return ret;
 	}
 
-	static string const units[4] = {str("bytes"), str("KiB"), str("MiB"),
-									str("GiB")};
+	static string const units[4] = {str_init("bytes"), str_init("KiB"),
+									str_init("MiB"), str_init("GiB")};
 	uint32_t i = 0;
 	double s = size;
 	for (; i < countof(units); i++) {

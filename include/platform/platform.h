@@ -16,11 +16,14 @@ typedef enum platform_type {
 	PLATFORM_TYPE_UNKOWN,
 } platform_type;
 
-static char const* platform_type_names[] = {
-	[PLATFORM_TYPE_LINUX_X11] = "X11",
-	[PLATFORM_TYPE_LINUX_WAYLAND] = "Wayland",
-	[PLATFORM_TYPE_UNKOWN] = "Unknown (x11 fallback)",
-};
+static inline char const* platform_type_name(platform_type t) {
+	static char const* names[] = {
+		[PLATFORM_TYPE_LINUX_X11] = "X11",
+		[PLATFORM_TYPE_LINUX_WAYLAND] = "Wayland",
+		[PLATFORM_TYPE_UNKOWN] = "Unknown (x11 fallback)",
+	};
+	return names[t];
+}
 
 /**
  * @brief Initialize the platform API. Must be called first before using other
@@ -66,9 +69,9 @@ LIB_EXPORT double platform_get_time_s(void);
 
 /* ********************************[ MEMORY ]******************************** */
 
-LIB_EXPORT static size_t const MEMORY_GIB = 1024UL * 1024UL * 1024UL;
-LIB_EXPORT static size_t const MEMORY_MIB = 1024UL * 1024UL;
-LIB_EXPORT static size_t const MEMORY_KIB = 1024UL;
+static size_t const MEMORY_GIB = 1024UL * 1024UL * 1024UL;
+static size_t const MEMORY_MIB = 1024UL * 1024UL;
+static size_t const MEMORY_KIB = 1024UL;
 
 /**
  * @brief Queries the OS memory page size

@@ -173,4 +173,6 @@ uint32_t gpu_get_format_bytes_per_pixel(gpu_image_format f) {
 	case IMAGE_FORMAT_R_SNORM:
 	case IMAGE_FORMAT_R_SRGB: return 1;
 	}
+	ASSERT(false);
+	return 1;
 }

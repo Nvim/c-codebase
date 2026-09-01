@@ -195,7 +195,7 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 
 	/*  == Buffers == */
 	// [TODO]: Support copy flow. This assumes shared memory
-	gpu_buffer_ci indirect_ci = {0};
+	UNUSED gpu_buffer_ci indirect_ci = {0};
 	{
 		indirect_ci.usage = GPU_BUFFER_USAGE_INDIRECT;
 		indirect_ci.size = MAX_CHARS * sizeof(gpu_indirect_draw_command) * 2;

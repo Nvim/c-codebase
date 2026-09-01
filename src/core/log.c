@@ -4,6 +4,14 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+static char const* log_prefixes[] = {
+	[COLOR_FATAL] = "[FATAL]", //
+	[COLOR_ERR] = "[ERR]",	   //
+	[COLOR_WARN] = "[WARN]",   //
+	[COLOR_INFO] = "[INFO]",   //
+	[COLOR_DEBUG] = "[DEBUG]", //
+};
+
 LIB_EXPORT void log_out(FILE* stream, enum log_color color,
 						char const* filename, int linenum, char const* func,
 						char const* msg, ...) {
