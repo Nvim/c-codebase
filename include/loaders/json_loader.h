@@ -1,6 +1,7 @@
 #ifndef JSON_LOADER_H
 #define JSON_LOADER_H
 
+#include <strings/path.h>
 #include <strings/string.h>
 
 typedef enum json_value_type {
@@ -47,5 +48,8 @@ typedef struct json_node {
 		json_object object;
 	} value;
 } json_node;
+
+LIB_EXPORT json_node* load_json(arena_t* arena, arena_t* scratch,
+								path filename);
 
 #endif // !JSON_LOADER_H

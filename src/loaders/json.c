@@ -1,6 +1,7 @@
 #include "json_internal.h"
 
 #include <ctype.h>
+#include <filesystem/filesystem.h>
 #include <loaders/json_loader.h>
 #include <math.h>
 #include <string.h>
@@ -615,4 +616,22 @@ bool json_parse_object(json_parser* parser, json_node* out, json_token* token) {
 	}
 
 	return true;
+}
+
+json_node* load_json(arena_t* arena, arena_t* scratch, path filename) {
+	if (!arena || !scratch || !filename.len) {
+		LOG_ERR("invalid parameters");
+		return NULL;
+	}
+
+	fs_file_read_result result = fs_read_all_file(scratch, filename);
+	if (!result.ok) {
+		LOG_ERR("couldn't read file " STR_FMT, STR_FMT_ARGS(filename));
+		return NULL;
+	}
+
+	json_parser parser = json_parser_init(arena, result.str, 256);
+	json_node* root = json_parser_parse(&parser);
+
+	return root;
 }
