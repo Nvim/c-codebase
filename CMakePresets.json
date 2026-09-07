@@ -84,10 +84,25 @@
 		{
 			"name": "base",
 			"hidden": true,
-			"output": { "outputOnFailure": true }
+			"output": { "outputOnFailure": true },
+			"filter": { "exclude": { "name": "game" } }
 		},
-		{ "name": "debug-clang", "inherits": "base", "configurePreset": "debug-clang" },
-		{ "name": "debug-asan", "inherits": "base", "configurePreset": "debug-asan" }
+		{
+			"name": "debug-clang",
+			"inherits": "base",
+			"configurePreset": "debug-clang"
+		},
+		{
+			"name": "debug-asan",
+			"inherits": "base",
+			"configurePreset": "debug-asan"
+		},
+		{
+			"name": "run-game",
+			"configurePreset": "debug-clang",
+			"filter": { "include": { "name": "game" } },
+			"output": { "verbosity": "verbose" }
+		}
 	],
 	"workflowPresets": [
 		{
@@ -122,6 +137,15 @@
 			"steps": [
 				{ "type": "configure", "name": "debug-clang" },
 				{ "type": "build", "name": "debug-clang" }
+			]
+		},
+		{
+			"name": "game",
+			"displayName": "Debug Build & run game with Clang",
+			"steps": [
+				{ "type": "configure", "name": "debug-clang" },
+				{ "type": "build", "name": "debug-clang" },
+				{ "type": "test", "name": "run-game" }
 			]
 		}
 	]

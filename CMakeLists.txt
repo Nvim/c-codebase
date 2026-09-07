@@ -7,9 +7,6 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-include(FetchContent)
-set(FETCHCONTENT_BASE_DIR "${CMAKE_SOURCE_DIR}/thirdparty")
-
 if(NOT CMAKE_BUILD_TYPE)
 	set(CMAKE_BUILD_TYPE Debug CACHE STRING "Set build mode to debug" FORCE)
 endif()
@@ -68,7 +65,7 @@ target_compile_definitions(compile_flags
 
 target_include_directories(compile_flags
     INTERFACE
-        ${PROJECT_SOURCE_DIR}/include
+		${CMAKE_SOURCE_DIR}/include
 )
 
 if(NOT MSVC)

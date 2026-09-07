@@ -1,3 +1,5 @@
+add_subdirectory(game)
+
 add_executable(platform_demo platform_demo.c)
 target_link_libraries(platform_demo PUBLIC
 	compile_flags
