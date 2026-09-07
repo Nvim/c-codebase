@@ -1,0 +1,128 @@
+{
+	"version": 10,
+	"cmakeMinimumRequired": {
+		"major": 4,
+		"minor": 1,
+		"patch": 0
+	},
+	"configurePresets": [
+		{
+			"name": "base",
+			"hidden": true,
+			"generator": "Ninja",
+			"binaryDir": "${sourceDir}/build/${presetName}",
+			"cacheVariables": {
+				"CMAKE_COLOR_DIAGNOSTICS": true,
+				"CMAKE_EXPORT_COMPILE_COMMANDS": true
+			}
+		},
+		{
+			"name": "gcc",
+			"hidden": true,
+			"inherits": "base",
+			"cacheVariables": {
+				"CMAKE_C_COMPILER": "gcc",
+				"CMAKE_CXX_COMPILER": "g++"
+			}
+		},
+		{
+			"name": "clang",
+			"hidden": true,
+			"inherits": "base",
+			"cacheVariables": {
+				"CMAKE_C_COMPILER": "clang",
+				"CMAKE_CXX_COMPILER": "clang++"
+			}
+		},
+		{
+			"name": "debug-gcc",
+			"displayName": "Debug (GCC)",
+			"description": "Debug build with GCC",
+			"inherits": "gcc",
+			"cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+		},
+		{
+			"name": "debug-clang",
+			"displayName": "Debug (Clang)",
+			"description": "Debug build with Clang",
+			"inherits": "clang",
+			"cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+		},
+		{
+			"name": "debug-asan",
+			"displayName": "ASan",
+			"description": "Debug build with ASan",
+			"inherits": "clang",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug",
+				"ENABLE_ASAN": true
+			}
+		},
+		{
+			"name": "release-gcc",
+			"displayName": "Release (GCC)",
+			"description": "Release build with GCC",
+			"inherits": "gcc",
+			"cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+		},
+		{
+			"name": "release-clang",
+			"displayName": "Release (Clang)",
+			"description": "Release build with Clang",
+			"inherits": "clang",
+			"cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+		}
+	],
+	"buildPresets": [
+		{ "name": "debug-clang", "configurePreset": "debug-clang" },
+		{ "name": "release-clang", "configurePreset": "release-clang" },
+		{ "name": "debug-gcc", "configurePreset": "debug-gcc" },
+		{ "name": "release-gcc", "configurePreset": "release-gcc" },
+		{ "name": "asan", "configurePreset": "debug-asan" }
+	],
+	"testPresets": [
+		{
+			"name": "base",
+			"hidden": true,
+			"output": { "outputOnFailure": true }
+		},
+		{ "name": "debug-clang", "inherits": "base", "configurePreset": "debug-clang" },
+		{ "name": "debug-asan", "inherits": "base", "configurePreset": "debug-asan" }
+	],
+	"workflowPresets": [
+		{
+			"name": "test-clang",
+			"displayName": "Configure, Build & Test (Clang Debug)",
+			"steps": [
+				{ "type": "configure", "name": "debug-clang" },
+				{ "type": "build", "name": "debug-clang" },
+				{ "type": "test", "name": "debug-clang" }
+			]
+		},
+		{
+			"name": "test-asan",
+			"displayName": "Configure, Build & Test (ASan)",
+			"steps": [
+				{ "type": "configure", "name": "debug-asan" },
+				{ "type": "build", "name": "asan" },
+				{ "type": "test", "name": "debug-asan" }
+			]
+		},
+		{
+			"name": "gcc",
+			"displayName": "Configure and Build with GCC",
+			"steps": [
+				{ "type": "configure", "name": "debug-gcc" },
+				{ "type": "build", "name": "debug-gcc" }
+			]
+		},
+		{
+			"name": "clang",
+			"displayName": "Configure and Build with Clang",
+			"steps": [
+				{ "type": "configure", "name": "debug-clang" },
+				{ "type": "build", "name": "debug-clang" }
+			]
+		}
+	]
+}
