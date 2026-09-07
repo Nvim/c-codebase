@@ -1,12 +1,12 @@
-add_executable(main main.c)
-target_link_libraries(main PUBLIC
+add_executable(platform_demo platform_demo.c)
+target_link_libraries(platform_demo PUBLIC
 	compile_flags
 	platform
 	core
 )
 
-add_executable(vk vk.c)
-target_link_libraries(vk PRIVATE
+add_executable(gpu_demo gpu_demo.c)
+target_link_libraries(gpu_demo PRIVATE
 	compile_flags
 	platform
 	core
