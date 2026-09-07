@@ -41,6 +41,7 @@ target_compile_options(compile_flags
         -Wvla
         -pedantic
         -fPIC
+		-Wno-gnu-zero-variadic-macro-arguments
 )
 
 target_compile_definitions(compile_flags
