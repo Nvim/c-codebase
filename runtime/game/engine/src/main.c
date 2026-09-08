@@ -1,5 +1,6 @@
 #include <engine/engine_api.h>
 #include <engine/game_api.h>
+#include <engine/input.h>
 
 #include <dlfcn.h>
 #include <stdlib.h>
@@ -9,7 +10,8 @@ typedef game_api (*PFN_game_get_functions)(engine_api const*);
 static string engine_get_version(void) { return str("0.0.1"); }
 
 static engine_api const engine_funcs = {
-	.engine_get_version = engine_get_version,
+	.get_version = engine_get_version,
+	.get_input_state = engine_input_get_state,
 };
 
 static PFN_game_get_functions resolve_game_functions(void* dll_handle) {

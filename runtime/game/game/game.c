@@ -12,7 +12,7 @@ static engine_api const* engine_ptr = NULL;
 static bool game_init(engine_api const* engine_api) {
 	LOG_DEBUG("initializing game..");
 	engine_ptr = engine_api;
-	string engine_version = engine_api->engine_get_version();
+	string engine_version = engine_api->get_version();
 	LOG_DEBUG("game intialized with engine API version " STR_FMT,
 			  STR_FMT_ARGS(engine_version));
 	return true;
