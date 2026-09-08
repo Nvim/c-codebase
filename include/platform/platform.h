@@ -204,6 +204,7 @@ LIB_EXPORT void platform_poll(void);
 
 /**
  * @note: Only INPUT_ACTION_PRESSED and INPUT_ACTION_RELEASED are supported.
+ * Held only is a placeholder for now.
  */
 typedef enum key_action {
 	INPUT_ACTION_PRESSED = 1 << 0,
@@ -211,6 +212,22 @@ typedef enum key_action {
 	INPUT_ACTION_HELD = 1 << 2,
 	INPUT_ACTION_COUNT = 1 << 3,
 } key_action;
+
+typedef struct platform_keyboard_state {
+	bool pressed_keys[INPUT_KEY_COUNT];
+} platform_keyboard_state;
+
+typedef struct platform_mouse_state {
+	bool pressed_buttons[INPUT_BUTTON_COUNT];
+} platform_mouse_state;
+
+LIB_EXPORT bool platform_is_key_down(input_key key);
+
+LIB_EXPORT bool platform_is_button_down(input_mouse_button button);
+
+LIB_EXPORT void platform_get_keyboard_state(platform_keyboard_state* out);
+
+LIB_EXPORT void platform_get_mouse_state(platform_mouse_state* out);
 
 typedef void (*key_callback)(window_t* window, input_key key,
 							 key_action action);

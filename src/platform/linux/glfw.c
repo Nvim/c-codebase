@@ -73,7 +73,7 @@ bool platform_init(platform_type type) {
 }
 
 // [NOTE] glfwTerminate crashes on Wayland
-LIB_EXPORT void platform_destroy(void) { /* glfwTerminate(); */ }
+void platform_destroy(void) { /* glfwTerminate(); */ }
 
 window_t* platform_create_window(window_size size, char const* name) {
 	// [TODO]: Someday another API might be supported who knows
@@ -127,6 +127,20 @@ void platform_destroy_window(UNUSED window_t* window) {
 }
 
 void platform_poll(void) { glfwPollEvents(); }
+
+bool platform_is_key_down(input_key key) { return _key_state[key]; }
+
+bool platform_is_button_down(input_mouse_button button) {
+	return _mouse_state[button];
+}
+
+void platform_get_keyboard_state(platform_keyboard_state* out) {
+	memcpy(out->pressed_keys, _key_state, sizeof(_key_state));
+}
+
+void platform_get_mouse_state(platform_mouse_state* out) {
+	memcpy(out->pressed_buttons, _mouse_state, sizeof(_mouse_state));
+}
 
 void platform_register_key_callback(input_key key, key_action action,
 									key_callback callback) {
