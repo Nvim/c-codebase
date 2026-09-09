@@ -1,12 +1,27 @@
 #include "engine.h"
 
 #include <core/log.h>
+#include <string.h>
 
-int main(void) {
+static platform_type _parse_platform_arg(int argc, char** argv);
+
+int main(int argc, char** argv) {
 
 	int exit_status = 0;
 
-	if (!engine_init()) {
+	platform_type pf_type = _parse_platform_arg(argc, argv);
+
+	engine_config config = {0};
+	{
+		config.platform_type = pf_type;
+		config.window_size = (window_size){1280, 720};
+		config.window_title = "engine";
+		config.max_engine_memory_bytes = 2 * MEMORY_GIB;
+		config.max_game_memory_bytes = 2 * MEMORY_GIB;
+		config.max_frame_memory_bytes = 0; // TODO
+	}
+
+	if (!engine_init(config)) {
 		LOG_FATAL("couldn't initialize engine");
 		return 1;
 	}
@@ -22,4 +37,27 @@ int main(void) {
 	}
 
 	return exit_status;
+}
+
+static platform_type _parse_platform_arg(int argc, char** argv) {
+	platform_type type = PLATFORM_TYPE_UNKOWN;
+#ifdef PLATFORM_LINUX_WAYLAND
+	type = PLATFORM_TYPE_LINUX_WAYLAND;
+#else
+	type = PLATFORM_TYPE_LINUX_X11;
+#endif // PLATFORM_LINUX_WAYLAND
+
+	if (argc == 2) {
+		char* arg = argv[1];
+		if (strncmp(arg, "--wayland", 9) == 0) {
+			type = PLATFORM_TYPE_LINUX_WAYLAND;
+		} else if (strncmp(arg, "--x11", 5) == 0) {
+			type = PLATFORM_TYPE_LINUX_X11;
+		} else {
+			LOG_WARN("unknown platform flag. falling back to default");
+		}
+	}
+
+	LOG_DEBUG("initializing engine for platform %s", platform_type_name(type));
+	return type;
 }
