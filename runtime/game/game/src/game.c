@@ -30,11 +30,10 @@ static bool game_shutdown(void) {
 	return true;
 }
 
-game_api game_get_functions(void) {
-	return (game_api){
-		.game_get_version = game_get_version,
-		.game_init = game_init,
-		.game_update = game_update,
-		.game_shutdown = game_shutdown,
-	};
+void game_get_functions(game_api* out) {
+	*out = (game_api){0};
+	out->game_get_version = game_get_version;
+	out->game_init = game_init;
+	out->game_update = game_update;
+	out->game_shutdown = game_shutdown;
 }

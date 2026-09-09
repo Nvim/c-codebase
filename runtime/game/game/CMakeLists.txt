@@ -7,4 +7,10 @@ set_target_properties(
 )
 
 target_link_libraries(game PRIVATE compile_flags engine_api core containers)
-target_sources(game PRIVATE game.c)
+
+file(
+	GLOB_RECURSE GAME_SRC
+    CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
+)
+target_sources(game PRIVATE ${GAME_SRC})

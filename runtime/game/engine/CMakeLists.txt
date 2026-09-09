@@ -1,5 +1,5 @@
 # == Engine entrypoint == #
-add_executable(engine_exe src/main.c)
+add_executable(engine_exe)
 
 # build/{preset}/runtime/game
 set_target_properties(
@@ -12,6 +12,13 @@ target_link_libraries(
     engine_exe
     PRIVATE compile_flags platform core graphics loaders
 )
+
+file(
+    GLOB_RECURSE ENGINE_SRC
+    CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
+)
+target_sources(engine_exe PRIVATE ${ENGINE_SRC})
 
 # == Engine public API, game can include == #
 # [NOTE]: although includes are visible, game will only get access to engine
