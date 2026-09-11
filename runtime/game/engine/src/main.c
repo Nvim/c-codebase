@@ -5,6 +5,9 @@
 
 static platform_type _parse_platform_arg(int argc, char** argv);
 
+static double const GAME_TICKRATE_S = 60;
+static double const GAME_TIMESTEP_S = 1.f / (float)GAME_TICKRATE_S;
+
 int main(int argc, char** argv) {
 
 	int exit_status = 0;
@@ -19,6 +22,7 @@ int main(int argc, char** argv) {
 		config.max_engine_memory_bytes = 2 * MEMORY_GIB;
 		config.max_game_memory_bytes = 2 * MEMORY_GIB;
 		config.max_frame_memory_bytes = 0; // TODO
+		config.game_timestep_s = GAME_TIMESTEP_S;
 	}
 
 	if (!engine_init(config)) {

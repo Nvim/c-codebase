@@ -1,19 +1,36 @@
 #include "engine.h"
 
-#include <allocators/arena.h>
 #include <engine/engine_api.h>
 #include <engine/game_api.h>
 #include <engine/input.h>
 
+#include <allocators/arena.h>
+#include <graphics/graphics.h>
+
 #include <dlfcn.h>
 #include <stdlib.h>
 
+#define MAX_FRAMETIME_S 0.33
+
 typedef void (*PFN_game_get_functions)(game_api* out);
+
+typedef struct engine_timer {
+	// double render_target_frametime_s; // from config
+	double game_timestep_s; // [TODO]: from game init
+
+	// runtime state
+	uint64_t current_frame;
+	double previous_time_s;
+	double current_time_s;
+
+	double frame_time_s;
+	double frame_accumulator_s;
+} engine_timer;
 
 typedef struct engine_state {
 	bool init;
 	bool running;
-	uint64_t current_frame;
+	engine_timer timer;
 
 	bool game_loaded;
 	void* game_dll_handle;
@@ -25,6 +42,8 @@ typedef struct engine_state {
 
 	arena_t* engine_arena;
 	arena_t* game_arena;
+
+	gpu_api gpu;
 } engine_state;
 
 static engine_state _state = {0};
@@ -94,6 +113,11 @@ static bool _create_arenas(void) {
 	}
 	_state.game_arena = arena_create_from_config(arena_ci);
 
+	if (!arena_pool_init()) {
+		LOG_ERR("couldn't initialize arena pool");
+		return false;
+	}
+
 	return _state.game_arena && _state.engine_arena;
 }
 
@@ -114,6 +138,30 @@ static bool _load_game(void) {
 	return true;
 }
 
+static bool _init_gpu(void) {
+	gpu_api_config gpu_ci = {0};
+	{
+		gpu_ci.app_name = "todo";
+		gpu_ci.frames_in_flight = 3;
+		gpu_ci.target_image_format = IMAGE_FORMAT_RGBA_SRGB;
+		gpu_ci.type = GRAPHICS_API_VULKAN;
+		gpu_ci.present_mode = GPU_PRESENT_MODE_VSYNC;
+		// TODO: config limits
+	}
+
+	scratch_arena scratch = {0};
+	if (!arena_get_scratch(NULL, &scratch)) { return false; }
+
+	if (!gpu_create_api(gpu_ci, &_state.gpu)) { return false; }
+	_state.gpu.initialize(&_state.gpu, _state.window, _state.engine_arena,
+						  scratch.arena);
+
+	arena_clear_scratch(scratch);
+
+	return _state.gpu.is_init;
+}
+
+// [TODO]: destroy scratch arena pool as well
 static bool _destroy_arenas(void) {
 	if (!_state.init) { return false; }
 	if (_state.running) {
@@ -155,9 +203,26 @@ bool engine_init(engine_config config) {
 	}
 	_state.config = config;
 
+	// Timing:
+	{
+		_state.timer.game_timestep_s = config.game_timestep_s;
+		// _state.timer.render_target_frametime_s = config.target_frametime_s;
+		_state.timer.current_time_s = platform_get_time_s();
+		_state.timer.previous_time_s = _state.timer.current_time_s;
+	}
+
+	// Input:
+	if (!engine_input_init()) { LOG_ERR("couldn't initialize input"); }
+
 	// Arenas:
 	if (!_create_arenas()) {
 		LOG_ERR("couldn't create arenas");
+		return false;
+	}
+
+	// GPU:
+	if (!_init_gpu()) {
+		LOG_ERR("couldn't initialize gpu");
 		return false;
 	}
 
@@ -187,21 +252,88 @@ bool engine_run(void) {
 
 	_state.running = true;
 
-	// Step game a few frames
-	// [TODO]: real game loop
-	double time_ms = 0.f;
-	double const delta_ms = 16.66f;
-	while (time_ms < 10 * delta_ms) {
+	engine_timer* t = &_state.timer;
+	gpu_api* gpu = &_state.gpu;
+	bool _quit = false;
 
-		platform_poll();
-		if (!game_funcs.game_update(delta_ms)) {
-			LOG_ERR("couldn't update game");
-			exit_status = false;
-			break;
+	while (!_quit && !game_funcs.game_should_quit()) {
+
+		{ // Timer update
+			double new_time_s = platform_get_time_s();
+			t->frame_time_s = new_time_s - t->current_time_s;
+			t->previous_time_s = t->current_time_s;
+			t->current_time_s = new_time_s;
+			t->frame_accumulator_s += MIN(t->frame_time_s, MAX_FRAMETIME_S);
 		}
 
-		time_ms += delta_ms;
-		_state.current_frame++;
+		{ // Poll input
+			platform_poll();
+			if (platform_window_should_close(_state.window)) { break; }
+
+			engine_input_state const* input_state = engine_input_update();
+			game_funcs.game_process_input(input_state);
+		}
+
+		// Begin GPU frame
+		gpu_command_buffer cmd = {0};
+		gpu_frame frame = {0};
+		{
+			gpu_frame_result frame_res = gpu->begin_frame(gpu);
+			if (frame_res.status == FRAME_ERROR) {
+				_quit = true;
+				break;
+			}
+			if (frame_res.status == FRAME_SKIP) {
+				gpu->end_frame(gpu, &frame_res.frame);
+				LOG_INFO("SKIPPING FRAME");
+				continue;
+			}
+			frame = frame_res.frame;
+			cmd = frame.frame_cmd;
+		}
+
+		// Step game many times at fixed rate
+		LOG_WARN("=== ENGINE FRAME ===");
+		while (t->frame_accumulator_s >= t->game_timestep_s) {
+			if (!game_funcs.game_update(t->game_timestep_s)) {
+				LOG_ERR("couldn't update game");
+				exit_status = false;
+				break;
+			}
+
+			t->frame_accumulator_s -= t->game_timestep_s;
+		}
+
+		if (exit_status == false) break;
+
+		// Game draws only once per frame
+		game_funcs.game_draw();
+
+		{ // GPU Draw frame:
+			gpu_color_target color_target = {
+				.clear_color = (gpu_color){.floats = {.1f, .1f, .1f, 1.f}},
+				.load_op = GPU_LOAD_OP_CLEAR,
+				.store_op = GPU_STORE_OP_STORE,
+				.target = frame.framebuffer_view,
+			};
+			gpu_render_state s = {
+				.color_target_count = 1,
+				.color_targets = {color_target},
+			};
+
+			gpu->cmd_reset_viewport(gpu, cmd);
+			gpu->cmd_reset_scissor(gpu, cmd);
+			gpu->cmd_begin_rendering(gpu, cmd, &s);
+			gpu->cmd_end_rendering(gpu, cmd);
+			ASSERT(gpu->end_frame(gpu, &frame));
+		}
+
+		/**
+		 * [NOTE]: no sleep because vsync is on. don't know if I should rely on
+		 * sleep or vsync yet.
+		 */
+
+		t->current_frame++;
 	}
 
 	_state.running = false;
@@ -225,10 +357,15 @@ bool engine_shutdown(void) {
 	}
 	_state.running = false;
 
+	_state.gpu.wait_idle(&_state.gpu);
+	_state.gpu.destroy(&_state.gpu);
+
 	if (!_destroy_arenas()) {
 		LOG_ERR("couldn't destroy arenas");
 		return false;
 	}
+
+	engine_input_shutdown();
 
 	_destroy_platform();
 	_state.init = false;

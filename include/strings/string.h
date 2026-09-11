@@ -25,10 +25,7 @@ typedef struct u64_array u64_array;
 #define str_init(literal) {literal, countof(literal) - 1}
 
 static char STRING_EMPTY_STORAGE[] = "";
-static string const STRING_EMPTY = {
-    STRING_EMPTY_STORAGE,
-    0
-};
+static string const STRING_EMPTY = {STRING_EMPTY_STORAGE, 0};
 
 /**
  * @brief Invalid position returned by search functions.
