@@ -9,7 +9,7 @@ add_subdirectory(
 )
 
 target_link_libraries(vma PRIVATE GPUOpen::VulkanMemoryAllocator)
-target_compile_options(vma PRIVATE -fPIC)
+target_compile_options(vma PRIVATE -fPIC -Wno-nullability-completeness)
 target_sources(vma PRIVATE vma.cpp)
 
 target_link_libraries(graphics PUBLIC Vulkan::Vulkan)
