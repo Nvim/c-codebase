@@ -583,8 +583,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		if (surface_formats_count == 0 ||
 			(surface_formats_count == 1 &&
 			 surface_formats[0].format == VK_FORMAT_UNDEFINED)) {
-			LOG_ERR(
-				"vulkan_initialize: no valid surface formats available (huh?)");
+			LOG_ERR("no valid surface formats available (huh?)");
 			return;
 		}
 
@@ -640,11 +639,44 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 
 		uint32_t sc_img_count = CLAMP(buffering, sc_min, sc_max);
 
+		// Query supported present modes:
+		uint32_t present_modes_count = 0;
+		vkGetPhysicalDeviceSurfacePresentModesKHR(state->physical_device,
+												  state->surface.surface,
+												  &present_modes_count, NULL);
+
+		VkPresentModeKHR* present_modes = arena_push_array_z(
+			state->arena, VkPresentModeKHR, present_modes_count);
+
+		vkGetPhysicalDeviceSurfacePresentModesKHR(
+			state->physical_device, state->surface.surface,
+			&present_modes_count, present_modes);
+
+		if (present_modes_count == 0) {
+			LOG_ERR("no present modes available");
+			return;
+		}
+
+		// Check requested mode is supported:
+		VkPresentModeKHR requested_mode =
+			gpu_to_vk_present_mode(self->config.present_mode);
+		bool found = false;
+		for (uint32_t i = 0; i < present_modes_count; i++) {
+			if (requested_mode == present_modes[i]) {
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
+			LOG_ERR("requested present mode isn't available");
+			return;
+		}
+
 		if (!vk_swapchain_create(
 				&state->swapchain, arena, state->device, &state->surface,
 				win_size.width, win_size.height, sc_img_count,
 				state->rendertarget_format, state->rendertarget_color_space,
-				state->image_pool, state->image_view_pool)) {
+				state->image_pool, state->image_view_pool, requested_mode)) {
 			LOG_ERR("couldn't create swapchain");
 			return;
 		}

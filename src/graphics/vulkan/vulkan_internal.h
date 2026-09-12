@@ -205,7 +205,8 @@ bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
 						 vk_surface* surface, uint32_t width, uint32_t height,
 						 uint32_t min_image_count, VkFormat image_format,
 						 VkColorSpaceKHR color_space, vk_image_pool image_pool,
-						 vk_image_view_pool view_pool);
+						 vk_image_view_pool view_pool,
+						 VkPresentModeKHR present_mode);
 bool vk_swapchain_refresh(vk_swapchain* swapchain, VkDevice device,
 						  vk_surface* surface, uint32_t width, uint32_t height);
 bool vk_swapchain_get_current_image(vk_swapchain* swapchain, VkImage* out);
@@ -552,5 +553,7 @@ VkAttachmentStoreOp gpu_to_vk_store_op(gpu_target_store_op op);
 VkAttachmentLoadOp gpu_to_vk_load_op(gpu_target_load_op op);
 
 VkClearColorValue gpu_to_vk_color(gpu_color col);
+
+VkPresentModeKHR gpu_to_vk_present_mode(gpu_present_mode mode);
 
 #endif // !VULKAN_UTIL_H

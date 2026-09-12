@@ -293,7 +293,6 @@ bool engine_run(void) {
 		}
 
 		// Step game many times at fixed rate
-		LOG_WARN("=== ENGINE FRAME ===");
 		while (t->frame_accumulator_s >= t->game_timestep_s) {
 			if (!game_funcs.game_update(t->game_timestep_s)) {
 				LOG_ERR("couldn't update game");

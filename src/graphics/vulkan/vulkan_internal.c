@@ -87,7 +87,8 @@ bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
 						 vk_surface* surface, uint32_t width, uint32_t height,
 						 uint32_t min_image_count, VkFormat image_format,
 						 VkColorSpaceKHR color_space, vk_image_pool image_pool,
-						 vk_image_view_pool view_pool) {
+						 vk_image_view_pool view_pool,
+						 VkPresentModeKHR present_mode) {
 	VkExtent2D sc_extent = surface->capabilities.currentExtent;
 	if (sc_extent.width == 0xFFFFFFFF) {
 		sc_extent = (VkExtent2D){.width = width, .height = height};
@@ -104,7 +105,7 @@ bool vk_swapchain_create(vk_swapchain* out, arena_t* arena, VkDevice device,
 		.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
 		.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
 		.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, // TODO: from args
-		.presentMode = VK_PRESENT_MODE_FIFO_KHR				 // TODO: from args
+		.presentMode = present_mode,						 // TODO: from args
 	};
 
 	out->img_count = 0;
@@ -1037,4 +1038,14 @@ VkClearColorValue gpu_to_vk_color(gpu_color col) {
 		.float32[2] = col.floats[2],
 		.float32[3] = col.floats[3],
 	};
+}
+
+VkPresentModeKHR gpu_to_vk_present_mode(gpu_present_mode mode) {
+	switch (mode) {
+	case GPU_PRESENT_MODE_IMMEDIATE: return VK_PRESENT_MODE_IMMEDIATE_KHR;
+	case GPU_PRESENT_MODE_VSYNC: return VK_PRESENT_MODE_FIFO_KHR;
+	case GPU_PRESENT_MODE_MAILBOX: return VK_PRESENT_MODE_MAILBOX_KHR;
+	}
+	ASSERT(false);
+	return 0;
 }
