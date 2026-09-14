@@ -51,6 +51,13 @@ typedef union vec4 {
 	};
 } vec4;
 
+/**
+ * Column-major matrix.
+ *
+ * m0..m2 = column 0
+ * m3..m4 = column 1
+ * m6..m8 = column 2
+ */
 typedef union mat3 {
 	rmat3 raw;
 	vec3 cols[3]; // 3 column vectors
@@ -61,6 +68,14 @@ typedef union mat3 {
 	};
 } mat3;
 
+/**
+ * Column-major matrix.
+ *
+ * m0..m3   = column 0
+ * m4..m7   = column 1
+ * m8..m11  = column 2
+ * m12..m15 = column 3
+ */
 typedef union mat4 {
 	rmat4 raw;
 	vec4 cols[4]; // 4 column vectors
@@ -125,5 +140,13 @@ LIB_EXPORT mat3 mat_rotate_2d(float rad);
 LIB_EXPORT mat4 mat_scale_3d(float scale);
 LIB_EXPORT mat4 mat_translate_3d(vec3 translation);
 LIB_EXPORT mat4 mat_rotate_3d(vec3 axis, float rad);
+
+/**
+ * [NOTE]: These assume Vulkan NDC (Y up, Z in range [0, 1]).
+ */
+LIB_EXPORT mat4 mat_projection_ortho(float left, float right, float top,
+									 float bottom, float near, float far);
+LIB_EXPORT mat4 mat_projection_ortho_centered(float screen_width,
+											  float screen_height);
 
 #endif //! MATH_H

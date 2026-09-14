@@ -464,3 +464,27 @@ mat4 mat_rotate_3d(vec3 axis, float rad) {
 		.m15 = 1.f,
 	};
 }
+
+mat4 mat_projection_ortho(float left, float right, float top, float bottom,
+						  float near, float far) {
+	mat4 ret = mat4_identity();
+
+	ret.cols[0].x = 2.f / (right - left);
+	ret.cols[1].y = -2.f / (top - bottom); // Flipped Y
+	ret.cols[2].z = 1.f / (far - near);	   // Depth range [0,1]
+
+	ret.cols[3] = (vec4){
+		.x = -(right + left) / (right - left),
+		.y = (top + bottom) / (top - bottom), //
+		.z = -near / (far - near),
+		.w = 1.f,
+	};
+
+	return ret;
+}
+
+mat4 mat_projection_ortho_centered(float screen_width, float screen_height) {
+	return mat_projection_ortho(-screen_width * 0.5f, screen_width * 0.5f,
+								screen_height * 0.5f, -screen_height * 0.5f,
+								0.f, 1.f);
+}
