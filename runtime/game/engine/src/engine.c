@@ -1,4 +1,5 @@
 #include "engine.h"
+#include "renderer.h"
 
 #include <engine/engine_api.h>
 #include <engine/game_api.h>
@@ -41,6 +42,7 @@ typedef struct engine_state {
 	engine_config config;
 
 	arena_t* engine_arena;
+	arena_t* frame_arena;
 	arena_t* game_arena;
 
 	gpu_api gpu;
@@ -94,6 +96,7 @@ static bool _unload_game_dll(void* handle) {
 	return true;
 }
 
+// TODO: sizes
 static bool _create_arenas(void) {
 	engine_config config = _state.config;
 	arena_create_info arena_ci = {0};
@@ -105,6 +108,7 @@ static bool _create_arenas(void) {
 		arena_ci.flags = ARENA_GROWING;
 	}
 	_state.engine_arena = arena_create_from_config(arena_ci);
+	_state.frame_arena = arena_create_from_config(arena_ci);
 
 	{
 		arena_ci.initial_size =
@@ -225,6 +229,16 @@ bool engine_init(engine_config config) {
 		LOG_ERR("couldn't initialize gpu");
 		return false;
 	}
+
+	scratch_arena scratch;
+	ASSERT(arena_get_scratch(NULL, &scratch));
+	if (!renderer_init(_state.engine_arena, scratch.arena, _state.frame_arena,
+					   &_state.gpu)) {
+		LOG_ERR("couldn't initialize renderer");
+		return false;
+	}
+
+	arena_clear_scratch(scratch);
 
 	// Game
 	if (!_load_game()) {

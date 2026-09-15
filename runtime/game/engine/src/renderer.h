@@ -4,6 +4,22 @@
 #include <core/math.h>
 #include <graphics/graphics.h>
 
+typedef struct buffered_buffer {
+	gpu_buffer buffers[GPU_MAX_BUFFERING];
+	gpu_device_address addresses[GPU_MAX_BUFFERING];
+	void* maps[GPU_MAX_BUFFERING];
+	uint8_t count;
+	uint8_t current;
+} buffered_buffer;
+
+typedef struct renderer_camera {
+	mat4 world_from_model; // model
+	mat4 view_from_world;  // view
+	mat4 clip_from_view;   // projection
+
+	vec2 translation;
+} renderer_camera;
+
 typedef struct renderer {
 	arena_t* arena;		  // permanent allocs
 	arena_t* frame_arena; // frame allocs
@@ -11,14 +27,20 @@ typedef struct renderer {
 	gpu_api* gpu;
 	gpu_pipeline pipeline;
 	gpu_buffer staging_buffer; // [TODO]: should i use a single one ?
-	gpu_buffer draw_buffer[3]; // [TODO]: get buffered_buffer from text renderer
-} renderer;
+	buffered_buffer draw_buffer;
 
-typedef struct renderer_camera {
-	mat4 mat_model;
-	mat4 mat_view;
-	mat4 mat_proj;
-} renderer_camera;
+	/**
+	 * If false, device doesn't have (enough) unified memory and we must upload
+	 * data with staging buffers and transfer commands.
+	 * If true, use CPU-mapped unified memory for quick uploads with memcpy.
+	 */
+	bool use_uma;
+
+	gpu_frame* cur_frame; // If null, no frame is in flight (call begin_frame)
+	bool pass_in_flight;
+
+	renderer_camera camera; // [TODO]: move out of here
+} renderer;
 
 typedef struct renderer_texture {
 	gpu_image image;
@@ -44,11 +66,14 @@ typedef struct renderer_buffer_ci {
 	gpu_buffer_usage usage;
 } renderer_buffer_ci;
 
-bool renderer_init(arena_t* arena, gpu_api_config* config);
+/* *******************************[ RENDERER ]******************************* */
+renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
+						gpu_api* gpu);
 
 bool renderer_shutdown(renderer* renderer);
 
-// Frame flow
+/* == Frame flow == */
+
 // begin gpu frame
 bool renderer_begin_frame(renderer* renderer);
 
@@ -61,9 +86,10 @@ bool renderer_end_pass(renderer* renderer);
 // submit & present gpu frame
 bool renderer_end_frame(renderer* renderer);
 
-// Draw Commands
+/* == Draw Commands == */
+void renderer_draw_quad(vec2 position, vec3 color);
 
-// Resource creation
+/* == Resource creation == */
 bool renderer_load_texture(renderer* renderer, renderer_texture* out,
 						   renderer_texture_ci ci);
 
@@ -75,5 +101,13 @@ bool renderer_load_texture(renderer* renderer, renderer_texture* out,
  */
 bool renderer_create_buffer(renderer* renderer, gpu_buffer* out,
 							renderer_buffer_ci ci);
+
+/* ********************************[ CAMERA ]******************************** */
+
+mat4 renderer_camera_get_mvp(renderer_camera* camera);
+
+mat4 renderer_camera_get_mvp_a(arena_t* arena, renderer_camera* camera);
+
+void renderer_camera_translate_by(vec2 offset);
 
 #endif // !RENDERER_H

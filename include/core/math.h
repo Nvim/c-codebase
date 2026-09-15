@@ -4,9 +4,9 @@
 #include "visibility.h"
 #include <stdbool.h>
 
-double const PI = 3.14159265358979323846f;
-double const DEG2RAD = PI / 180.0f;
-double const RAD2DEG = (180.0f / PI);
+static double const PI = 3.14159265358979323846f;
+static double const DEG2RAD = PI / 180.0f;
+static double const RAD2DEG = (180.0f / PI);
 
 /**
  * r-prefix types are raw/array versions included in all union wrappers
