@@ -109,6 +109,7 @@ typedef uint32_t gpu_image_usage;
 typedef enum {
 	GPU_SHADER_VERTEX,
 	GPU_SHADER_FRAGMENT,
+	GPU_SHADER_VERTEX_AND_FRAGMENT, // Both stages in same file
 	GPU_SHADER_COMPUTE,
 } gpu_shader_type;
 

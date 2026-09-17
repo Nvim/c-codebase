@@ -910,6 +910,8 @@ VkShaderStageFlags gpu_to_vk_shader_stage(gpu_shader_type t) {
 	switch (t) {
 	case GPU_SHADER_VERTEX: return VK_SHADER_STAGE_VERTEX_BIT;
 	case GPU_SHADER_FRAGMENT: return VK_SHADER_STAGE_FRAGMENT_BIT;
+	case GPU_SHADER_VERTEX_AND_FRAGMENT:
+		return VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 	case GPU_SHADER_COMPUTE: return VK_SHADER_STAGE_COMPUTE_BIT;
 	}
 	ASSERT(false);

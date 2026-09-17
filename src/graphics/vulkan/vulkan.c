@@ -1672,8 +1672,12 @@ gpu_pipeline vulkan_create_pipeline(gpu_api* self, gpu_pipeline_ci* ci) {
 			LOG_ERR("gpu_to_invalid shader handles");
 			return ret;
 		}
-		ASSERT(vs->stage == VK_SHADER_STAGE_VERTEX_BIT &&
-			   fs->stage == VK_SHADER_STAGE_FRAGMENT_BIT);
+
+		ASSERT((vs->stage & VK_SHADER_STAGE_VERTEX_BIT) ==
+			   VK_SHADER_STAGE_VERTEX_BIT);
+		ASSERT((fs->stage & VK_SHADER_STAGE_FRAGMENT_BIT) ==
+			   VK_SHADER_STAGE_FRAGMENT_BIT);
+
 		VkPipelineViewportStateCreateInfo viewport_ci = {0};
 		{
 			viewport_ci.sType =
@@ -1718,11 +1722,11 @@ gpu_pipeline vulkan_create_pipeline(gpu_api* self, gpu_pipeline_ci* ci) {
 			{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 			 .stage = VK_SHADER_STAGE_VERTEX_BIT,
 			 .module = vs->module,
-			 .pName = "main"},
+			 .pName = "vertMain"},
 			{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 			 .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
 			 .module = fs->module,
-			 .pName = "main"}};
+			 .pName = "fragMain"}};
 
 		// No need for vertex input:
 		VkPipelineVertexInputStateCreateInfo vert_input_ci = {

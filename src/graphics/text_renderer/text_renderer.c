@@ -145,30 +145,20 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 		return NULL;
 	}
 
-	/* == Shaders == */
-	gpu_shader vs = {0}, fs = {0};
-	{ // Vertex shader
+	/* == Shader == */
+	gpu_shader shader = {0};
+	{ // Unified shader
 		fs_file_read_result res =
-			fs_read_all_file(arena, str("build/shaders/text.slang.vert.spirv"));
+			fs_read_all_file(arena, str("build/shaders/text.slang.spv"));
 		ASSERT(res.ok);
-		gpu_shader_ci vs_ci = {0};
-		vs_ci.type = GPU_SHADER_VERTEX;
-		vs_ci.code = res.bytes;
-		vs_ci.debug_name = str("text_vs");
-		vs = gpu->create_shader(gpu, &vs_ci);
-	}
-	{ // Fragment shader
-		fs_file_read_result res =
-			fs_read_all_file(arena, str("build/shaders/text.slang.frag.spirv"));
-		ASSERT(res.ok);
-		gpu_shader_ci fs_ci = {0};
-		fs_ci.type = GPU_SHADER_FRAGMENT;
-		fs_ci.code = res.bytes;
-		fs_ci.debug_name = str("text_fs");
-		fs = gpu->create_shader(gpu, &fs_ci);
+		gpu_shader_ci ci = {0};
+		ci.type = GPU_SHADER_VERTEX_AND_FRAGMENT;
+		ci.code = res.bytes;
+		ci.debug_name = str("text_shader");
+		shader = gpu->create_shader(gpu, &ci);
 	}
 
-	if (!check_handle(vs.handle) || !check_handle(fs.handle)) {
+	if (!check_handle(shader.handle)) {
 		LOG_ERR("couldn't create shaders");
 		arena_restore_checkpoint(arena, checkpoint, true);
 		return NULL;
@@ -179,13 +169,12 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 	{
 		gpu_pipeline_builder builder = {0};
 		gpu_pipeline_builder_create(&builder);
-		set_vertex_shader(&builder, vs);
-		set_fragment_shader(&builder, fs);
+		set_vertex_shader(&builder, shader);
+		set_fragment_shader(&builder, shader);
 		add_color_target(&builder, gpu->config.target_image_format, true);
 		pipeline = gpu_pipeline_build(gpu, &builder);
 	}
-	gpu->destroy_shader(gpu, vs);
-	gpu->destroy_shader(gpu, fs);
+	gpu->destroy_shader(gpu, shader);
 	if (!check_handle(pipeline.handle)) {
 		LOG_ERR("couldn't build pipeline");
 		arena_restore_checkpoint(arena, checkpoint, true);
