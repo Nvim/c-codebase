@@ -29,7 +29,9 @@ typedef struct {
 	(pool_handle) { .handle = POOL_INVALID_IDX }
 
 static inline bool check_handle(pool_handle handle) {
-	return handle.handle != POOL_INVALID_IDX;
+	bool ret = handle.handle != POOL_INVALID_IDX;
+	ASSERT(ret);
+	return ret;
 }
 
 ARRAY_DEFINE_TYPE(pool_handle, pool_handle_array)

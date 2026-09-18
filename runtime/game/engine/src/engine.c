@@ -46,6 +46,7 @@ typedef struct engine_state {
 	arena_t* game_arena;
 
 	gpu_api gpu;
+	renderer* renderer;
 } engine_state;
 
 static engine_state _state = {0};
@@ -232,8 +233,9 @@ bool engine_init(engine_config config) {
 
 	scratch_arena scratch;
 	ASSERT(arena_get_scratch(NULL, &scratch));
-	if (!renderer_init(_state.engine_arena, scratch.arena, _state.frame_arena,
-					   &_state.gpu)) {
+	_state.renderer = renderer_init(_state.engine_arena, scratch.arena,
+									_state.frame_arena, &_state.gpu);
+	if (!_state.renderer) {
 		LOG_ERR("couldn't initialize renderer");
 		return false;
 	}
@@ -267,7 +269,6 @@ bool engine_run(void) {
 	_state.running = true;
 
 	engine_timer* t = &_state.timer;
-	gpu_api* gpu = &_state.gpu;
 	bool _quit = false;
 
 	while (!_quit && !game_funcs.game_should_quit()) {
@@ -288,24 +289,6 @@ bool engine_run(void) {
 			game_funcs.game_process_input(input_state);
 		}
 
-		// Begin GPU frame
-		gpu_command_buffer cmd = {0};
-		gpu_frame frame = {0};
-		{
-			gpu_frame_result frame_res = gpu->begin_frame(gpu);
-			if (frame_res.status == FRAME_ERROR) {
-				_quit = true;
-				break;
-			}
-			if (frame_res.status == FRAME_SKIP) {
-				gpu->end_frame(gpu, &frame_res.frame);
-				LOG_INFO("SKIPPING FRAME");
-				continue;
-			}
-			frame = frame_res.frame;
-			cmd = frame.frame_cmd;
-		}
-
 		// Step game many times at fixed rate
 		while (t->frame_accumulator_s >= t->game_timestep_s) {
 			if (!game_funcs.game_update(t->game_timestep_s)) {
@@ -319,26 +302,21 @@ bool engine_run(void) {
 
 		if (exit_status == false) break;
 
-		// Game draws only once per frame
-		game_funcs.game_draw();
+		if (!renderer_begin_frame(_state.renderer)) {
+			LOG_ERR("couldn't begin frame");
+			break;
+		}
 
-		{ // GPU Draw frame:
-			gpu_color_target color_target = {
-				.clear_color = (gpu_color){.floats = {.1f, .1f, .1f, 1.f}},
-				.load_op = GPU_LOAD_OP_CLEAR,
-				.store_op = GPU_STORE_OP_STORE,
-				.target = frame.framebuffer_view,
-			};
-			gpu_render_state s = {
-				.color_target_count = 1,
-				.color_targets = {color_target},
-			};
+		if (renderer_should_draw(_state.renderer)) {
+			// Game draws only once per frame
+			game_funcs.game_draw();
+			renderer_begin_pass(_state.renderer);
+			renderer_end_pass(_state.renderer);
+		}
 
-			gpu->cmd_reset_viewport(gpu, cmd);
-			gpu->cmd_reset_scissor(gpu, cmd);
-			gpu->cmd_begin_rendering(gpu, cmd, &s);
-			gpu->cmd_end_rendering(gpu, cmd);
-			ASSERT(gpu->end_frame(gpu, &frame));
+		if (!renderer_end_frame(_state.renderer)) {
+			LOG_ERR("couldn't end frame");
+			break;
 		}
 
 		/**
@@ -363,19 +341,27 @@ bool engine_run(void) {
 bool engine_shutdown(void) {
 	if (!_state.init) { return true; }
 
+	bool exit = true;
 	if (_state.game_loaded) {
-		if (!_unload_game_dll(_state.game_dll_handle)) { return false; }
+		if (!_unload_game_dll(_state.game_dll_handle)) {
+			LOG_ERR("couldn't unload game");
+			exit = false;
+		}
 		_state.game_dll_handle = NULL;
 		_state.game_loaded = false;
 	}
 	_state.running = false;
 
+	if (!renderer_shutdown(_state.renderer)) {
+		LOG_ERR("couldn't destroy renderer");
+		exit = false;
+	}
 	_state.gpu.wait_idle(&_state.gpu);
 	_state.gpu.destroy(&_state.gpu);
 
 	if (!_destroy_arenas()) {
 		LOG_ERR("couldn't destroy arenas");
-		return false;
+		exit = false;
 	}
 
 	engine_input_shutdown();
@@ -383,5 +369,5 @@ bool engine_shutdown(void) {
 	_destroy_platform();
 	_state.init = false;
 
-	return true;
+	return exit;
 }

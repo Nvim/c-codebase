@@ -37,7 +37,6 @@ typedef struct renderer {
 	bool use_uma;
 
 	gpu_frame* cur_frame; // If null, no frame is in flight (call begin_frame)
-	bool pass_in_flight;
 
 	renderer_camera camera; // [TODO]: move out of here
 } renderer;
@@ -76,6 +75,9 @@ bool renderer_shutdown(renderer* renderer);
 
 // begin gpu frame
 bool renderer_begin_frame(renderer* renderer);
+
+// wether we should skip drawing this frame
+bool renderer_should_draw(renderer* renderer);
 
 // begin renderpass (cmd_begin_rendering);
 bool renderer_begin_pass(renderer* renderer);

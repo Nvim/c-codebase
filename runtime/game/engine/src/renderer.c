@@ -81,6 +81,16 @@ void buffered_buffer_destroy(buffered_buffer* bufs, gpu_api* gpu) {
 }
 
 /* *******************************[ RENDERER ]******************************* */
+
+typedef enum renderer_frame_state {
+	FRAME_BEGUN,	   // begun, should render
+	FRAME_SHOULD_SKIP, // begun, should skip
+	FRAME_RENDERING,
+	FRAME_ENDED,
+} renderer_frame_state;
+
+renderer_frame_state _frame_state = FRAME_ENDED;
+
 renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 						gpu_api* gpu) {
 	if (!arena || !frame_arena || !gpu || !gpu->is_init) {
@@ -104,36 +114,25 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		if (mem_info.ratio > 0.8) { uma = true; }
 	}
 
-	gpu_shader vs = {0}, fs = {0};
+	gpu_shader shader = {0};
 	{ // Vertex shader
 		fs_file_read_result res =
-			fs_read_all_file(scratch, str(SHADER_ROOT "quad.slang.vert.spirv"));
+			fs_read_all_file(scratch, str(SHADER_ROOT "quad.slang.spv"));
 		ASSERT(res.ok);
-		gpu_shader_ci vs_ci = {0};
-		vs_ci.type = GPU_SHADER_VERTEX;
-		vs_ci.code = res.bytes;
-		vs_ci.debug_name = str("quad_vs");
-		vs = gpu->create_shader(gpu, &vs_ci);
-		ASSERT(check_handle(vs.handle));
-	}
-	{ // Fragment shader
-		fs_file_read_result res =
-			fs_read_all_file(scratch, str(SHADER_ROOT "quad.slang.frag.spirv"));
-		ASSERT(res.ok);
-		gpu_shader_ci fs_ci = {0};
-		fs_ci.type = GPU_SHADER_FRAGMENT;
-		fs_ci.code = res.bytes;
-		fs_ci.debug_name = str("quad_fs");
-		fs = gpu->create_shader(gpu, &fs_ci);
-		ASSERT(check_handle(fs.handle));
+		gpu_shader_ci ci = {0};
+		ci.type = GPU_SHADER_VERTEX_AND_FRAGMENT;
+		ci.code = res.bytes;
+		ci.debug_name = str("shader");
+		shader = gpu->create_shader(gpu, &ci);
+		ASSERT(check_handle(shader.handle));
 	}
 
 	gpu_pipeline pipeline = {0};
 	{ // Pipeline
 		gpu_pipeline_builder builder = {0};
 		gpu_pipeline_builder_create(&builder);
-		set_vertex_shader(&builder, vs);
-		set_fragment_shader(&builder, fs);
+		set_vertex_shader(&builder, shader);
+		set_fragment_shader(&builder, shader);
 		add_color_target(&builder, gpu->config.target_image_format, false);
 		pipeline = gpu_pipeline_build(gpu, &builder);
 		ASSERT(check_handle(pipeline.handle));
@@ -169,8 +168,7 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		}
 	}
 
-	gpu->destroy_shader(gpu, vs);
-	gpu->destroy_shader(gpu, fs);
+	gpu->destroy_shader(gpu, shader);
 
 	{
 		ret->arena = arena;
@@ -184,15 +182,120 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 	return ret;
 }
 
-bool renderer_shutdown(UNUSED renderer* renderer) { ASSERT(false); }
+bool renderer_shutdown(renderer* renderer) {
+	if (renderer->gpu) {
+		gpu_api* gpu = renderer->gpu;
+		if (_frame_state == FRAME_RENDERING) { renderer_end_pass(renderer); }
+		if (_frame_state == FRAME_BEGUN) { renderer_end_frame(renderer); }
+		gpu->wait_idle(gpu);
+		gpu->destroy_pipeline(gpu, renderer->pipeline);
+		gpu->destroy_buffer(gpu, renderer->staging_buffer);
+		buffered_buffer_destroy(&renderer->draw_buffer, gpu);
+	}
 
-bool renderer_begin_frame(UNUSED renderer* renderer) { ASSERT(false); }
+	return true;
+}
 
-bool renderer_begin_pass(UNUSED renderer* renderer) { ASSERT(false); }
+bool renderer_begin_frame(renderer* renderer) {
+	if (!renderer || !renderer->frame_arena) { return false; }
+	if (_frame_state != FRAME_ENDED) {
+		LOG_ERR("a frame is already in flight");
+		return false;
+	}
 
-bool renderer_end_pass(UNUSED renderer* renderer) { ASSERT(false); }
+	gpu_api* gpu = renderer->gpu;
+	gpu_frame_result res = gpu->begin_frame(gpu);
 
-bool renderer_end_frame(UNUSED renderer* renderer) { ASSERT(false); }
+	if (res.status == FRAME_ERROR) {
+		LOG_ERR("couldn't begin frame");
+		return false;
+	}
+	if (res.status == FRAME_SKIP) {
+		_frame_state = FRAME_SHOULD_SKIP;
+		renderer->cur_frame = NULL;
+		return true;
+	}
+
+	gpu_frame* frame = arena_push_z(renderer->frame_arena, gpu_frame);
+
+	if (!frame) {
+		LOG_ERR("couldn't allocate frame");
+		return false;
+	}
+
+	memcpy(frame, &res.frame, sizeof(res.frame));
+	renderer->cur_frame = frame;
+	_frame_state = FRAME_BEGUN;
+
+	return true;
+}
+
+bool renderer_should_draw(renderer* renderer) {
+	return renderer && _frame_state == FRAME_BEGUN;
+}
+
+bool renderer_begin_pass(renderer* renderer) {
+	if (!renderer || _frame_state != FRAME_BEGUN) {
+		LOG_ERR("can't render: invalid frame state %d", _frame_state);
+		return false;
+	}
+
+	gpu_api* gpu = renderer->gpu;
+	gpu_frame* frame = renderer->cur_frame;
+	gpu_command_buffer cmd = frame->frame_cmd;
+
+	check_handle(frame->framebuffer.handle);
+	check_handle(cmd.handle);
+
+	gpu_color_target color_target = {
+		.clear_color = (gpu_color){.floats = {.1f, .1f, .1f, 1.f}},
+		.load_op = GPU_LOAD_OP_CLEAR,
+		.store_op = GPU_STORE_OP_STORE,
+		.target = frame->framebuffer_view,
+	};
+	gpu_render_state render_state = {
+		.color_target_count = 1,
+		.color_targets = {color_target},
+	};
+
+	gpu->cmd_reset_viewport(gpu, cmd);
+	gpu->cmd_reset_scissor(gpu, cmd);
+	gpu->cmd_begin_rendering(gpu, cmd, &render_state);
+
+	_frame_state = FRAME_RENDERING;
+	return true;
+}
+
+bool renderer_end_pass(UNUSED renderer* renderer) {
+	if (!renderer || _frame_state != FRAME_RENDERING) {
+		LOG_ERR("can't render: invalid frame state %d", _frame_state);
+		return false;
+	}
+
+	gpu_api* gpu = renderer->gpu;
+	gpu_command_buffer cmd = renderer->cur_frame->frame_cmd;
+
+	gpu->cmd_end_rendering(gpu, cmd);
+
+	_frame_state = FRAME_BEGUN;
+	return true;
+}
+
+bool renderer_end_frame(UNUSED renderer* renderer) {
+	if (!renderer ||
+		(_frame_state != FRAME_BEGUN && _frame_state != FRAME_SHOULD_SKIP)) {
+		LOG_ERR("can't render: invalid frame state %d", _frame_state);
+		return false;
+	}
+
+	gpu_api* gpu = renderer->gpu;
+	gpu_frame* frame = renderer->cur_frame;
+
+	bool ret = gpu->end_frame(gpu, frame);
+
+	_frame_state = FRAME_ENDED;
+	return ret;
+}
 
 void renderer_draw_quad(UNUSED vec2 position, UNUSED vec3 color) {
 	ASSERT(false);
