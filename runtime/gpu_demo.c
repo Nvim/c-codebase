@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
 		ci.code = res.bytes;
 		ci.debug_name = str("quad_vs");
 		shader = gpu.create_shader(&gpu, &ci);
-		ASSERT(check_handle(shader.handle));
+		ensure_handle(shader.handle);
 	}
 
 	gpu_pipeline pipeline;
@@ -132,7 +132,7 @@ int main(int argc, char** argv) {
 		set_fragment_shader(&builder, shader);
 		add_color_target(&builder, gpu.config.target_image_format, false);
 		pipeline = gpu_pipeline_build(&gpu, &builder);
-		ASSERT(check_handle(pipeline.handle));
+		ensure_handle(pipeline.handle);
 	}
 
 	gpu.destroy_shader(&gpu, shader);
@@ -154,7 +154,7 @@ int main(int argc, char** argv) {
 		img_ci.array_layers = 1;
 		img_ci.mip_levels = 1;
 		test_image = gpu.create_image(&gpu, &img_ci);
-		ASSERT(check_handle(test_image.handle));
+		ensure_handle(test_image.handle);
 	}
 
 	gpu_data_payload const test_image_data = {
@@ -254,7 +254,7 @@ int main(int argc, char** argv) {
 
 	{ // Upload image and vertices and wait
 		gpu_command_buffer cmd = gpu.create_command_buffer(&gpu);
-		ASSERT(check_handle(cmd.handle));
+		ensure_handle(cmd.handle);
 		gpu.cmd_begin_debug_marker(&gpu, cmd, "UPLOAD PASS");
 		gpu.cmd_transition_image(&gpu, cmd, test_image,
 								 GPU_IMAGE_STATE_TRANSFER_DST);
@@ -318,7 +318,7 @@ int main(int argc, char** argv) {
 			img_ci.mip_levels = 1;
 
 			blitted = gpu.create_image(&gpu, &img_ci);
-			ASSERT(check_handle(blitted.handle));
+			ensure_handle(blitted.handle);
 
 			gpu_image_region region = {.layer = 0, .level = 0};
 
@@ -363,7 +363,7 @@ int main(int argc, char** argv) {
 		view_ci.level_count = GPU_COUNT_REMAINING;
 	}
 	gpu_image_view texture_view = gpu.create_image_view(&gpu, &view_ci);
-	ASSERT(check_handle(texture_view.handle));
+	ensure_handle(texture_view.handle);
 	ASSERT(gpu.get_image_view_shader_index(&gpu, texture_view,
 										   &uniform->image_index));
 

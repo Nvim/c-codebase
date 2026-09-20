@@ -28,7 +28,24 @@ typedef struct {
 #define POOL_INVALID_HANDLE                                                    \
 	(pool_handle) { .handle = POOL_INVALID_IDX }
 
+/**
+ * @brief Verifies that a pool handle isn't POOL_INVALID_IDX. This doesn't
+ * necessarily mean that the handle is valid.
+ * Prefer `pool_is_handle_valid` to ensure a handle isn't null and is still
+ * valid.
+ *
+ */
 static inline bool check_handle(pool_handle handle) {
+	return handle.handle != POOL_INVALID_IDX;
+}
+
+/**
+ * @brief Same as `check_handle`, but asserts before returning.
+ * Prefer `pool_is_handle_valid` to ensure a handle isn't null and is still
+ * valid.
+ *
+ */
+static inline bool ensure_handle(pool_handle handle) {
 	bool ret = handle.handle != POOL_INVALID_IDX;
 	ASSERT(ret);
 	return ret;
