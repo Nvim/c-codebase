@@ -59,6 +59,13 @@ typedef struct {
 } gpu_image_extent;
 
 typedef struct {
+	uint32_t width;
+	uint32_t height;
+	uint32_t x;
+	uint32_t y;
+} gpu_viewport;
+
+typedef struct {
 	gpu_image_extent extent;
 	struct {
 		uint32_t x;
@@ -589,7 +596,7 @@ typedef struct gpu_api {
 	 */
 	void (*cmd_end_rendering)(struct gpu_api*, gpu_command_buffer);
 	void (*cmd_set_viewport)(struct gpu_api*, gpu_command_buffer,
-							 gpu_image_extent extent);
+							 gpu_viewport viewport);
 	void (*cmd_set_scissor)(struct gpu_api*, gpu_command_buffer,
 							gpu_scissor scissor);
 	void (*cmd_reset_viewport)(struct gpu_api*, gpu_command_buffer);

@@ -1334,15 +1334,17 @@ bool vulkan_end_frame(gpu_api* self, gpu_frame* f) {
 }
 
 void vulkan_cmd_set_viewport(gpu_api* self, gpu_command_buffer cmd,
-							 gpu_image_extent extent) {
+							 gpu_viewport viewport) {
 	vk_api_state* state = self->state;
 	vk_cmdbuf_data* cmd_data =
 		vk_cmdbuf_pool_get(state->cmd_pool, to_vk_cmdbuf(cmd));
 
 	ASSERT(cmd_data->state == CMDBUF_RECORDING);
 
-	VkViewport vp = {.width = extent.width,
-					 .height = extent.height,
+	VkViewport vp = {.width = viewport.width,
+					 .height = viewport.height,
+					 .x = viewport.x,
+					 .y = viewport.y,
 					 .minDepth = 0.f,
 					 .maxDepth = 1.f};
 	vkCmdSetViewport(cmd_data->command_buffer, 0, 1, &vp);
