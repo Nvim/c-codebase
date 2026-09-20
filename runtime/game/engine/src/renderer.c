@@ -4,7 +4,7 @@
 
 #include <string.h>
 
-#define SHADER_ROOT "../../../shaders/"
+#define SHADER_ROOT "./"
 
 /* ***************************[ BUFFERED BUFFER ]**************************** */
 
@@ -92,7 +92,7 @@ typedef enum renderer_frame_state {
 renderer_frame_state _frame_state = FRAME_ENDED;
 
 renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
-						gpu_api* gpu) {
+						gpu_api* gpu, gpu_image_extent logical_resolution) {
 	if (!arena || !frame_arena || !gpu || !gpu->is_init) {
 		LOG_ERR("invalid parameters");
 		return NULL;
@@ -117,14 +117,14 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 	gpu_shader shader = {0};
 	{ // Vertex shader
 		fs_file_read_result res =
-			fs_read_all_file(scratch, str(SHADER_ROOT "quad.slang.spv"));
+			fs_read_all_file(scratch, str(SHADER_ROOT "colored_quad.spv"));
 		ASSERT(res.ok);
 		gpu_shader_ci ci = {0};
 		ci.type = GPU_SHADER_VERTEX_AND_FRAGMENT;
 		ci.code = res.bytes;
 		ci.debug_name = str("shader");
 		shader = gpu->create_shader(gpu, &ci);
-		ASSERT(check_handle(shader.handle));
+		ensure_handle(shader.handle);
 	}
 
 	gpu_pipeline pipeline = {0};
@@ -135,7 +135,7 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		set_fragment_shader(&builder, shader);
 		add_color_target(&builder, gpu->config.target_image_format, false);
 		pipeline = gpu_pipeline_build(gpu, &builder);
-		ASSERT(check_handle(pipeline.handle));
+		ensure_handle(pipeline.handle);
 	}
 
 	gpu_buffer staging_buffer = {0};
@@ -150,7 +150,42 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		staging_buffer = gpu->create_buffer(gpu, &ci);
 		if (!check_handle(staging_buffer.handle)) {
 			LOG_ERR("couldn't create staging buffer");
+			return NULL;
 		}
+	}
+	gpu_buffer uniform_buffer = {0};
+	renderer_uniform_data* uniform_ptr = NULL;
+	gpu_device_address uniform_addr = {0};
+	{ // Uniform buffer
+		gpu_buffer_ci ci = {0};
+		{
+			ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
+			ci.size = sizeof(renderer_uniform_data); // TODO: from renderer CI
+			ci.usage = GPU_BUFFER_USAGE_STORAGE;
+		}
+
+		uniform_buffer = gpu->create_buffer(gpu, &ci);
+		if (!check_handle(uniform_buffer.handle)) {
+			LOG_ERR("couldn't create uniform buffer");
+			return NULL;
+		}
+
+		// Map:
+		gpu_buffer_map_result m = gpu->buffer_get_mapped(gpu, uniform_buffer);
+		if (!m.ok) {
+			LOG_ERR("couldn't map uniform buffer");
+			return NULL;
+		}
+		uniform_ptr = m.ptr;
+
+		// Addr:
+		gpu_buffer_device_address_result a =
+			gpu->buffer_get_device_address(gpu, uniform_buffer);
+		if (!a.ok) {
+			LOG_ERR("couldn't get uniform buffer gpu address");
+			return NULL;
+		}
+		uniform_addr = a.address;
 	}
 
 	buffered_buffer draw_buffer = {0};
@@ -165,10 +200,20 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		if (!buffered_buffer_init(&draw_buffer, gpu, &ci,
 								  gpu->config.frames_in_flight, uma)) {
 			LOG_ERR("couldn't init draw buffers");
+			return NULL;
 		}
 	}
 
 	gpu->destroy_shader(gpu, shader);
+
+	renderer_camera camera = {0};
+	{
+		camera.world_position = (vec2){{0.f, 0.f}};
+		camera.clip_from_view = mat_projection_ortho_centered(320, 180);
+
+		// updates view matrix:
+		renderer_camera_translate_by(&camera, (vec2){0});
+	}
 
 	{
 		ret->arena = arena;
@@ -176,8 +221,13 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		ret->gpu = gpu;
 		ret->pipeline = pipeline;
 		ret->staging_buffer = staging_buffer;
+		ret->uniform_buffer = uniform_buffer;
+		ret->uniform_ptr = uniform_ptr;
+		ret->uniform_addr = uniform_addr;
 		ret->draw_buffer = draw_buffer;
 		ret->use_uma = uma;
+		ret->camera = camera;
+		ret->logical_resolution = logical_resolution;
 	}
 	return ret;
 }
@@ -190,6 +240,7 @@ bool renderer_shutdown(renderer* renderer) {
 		gpu->wait_idle(gpu);
 		gpu->destroy_pipeline(gpu, renderer->pipeline);
 		gpu->destroy_buffer(gpu, renderer->staging_buffer);
+		gpu->destroy_buffer(gpu, renderer->uniform_buffer);
 		buffered_buffer_destroy(&renderer->draw_buffer, gpu);
 	}
 
@@ -210,10 +261,11 @@ bool renderer_begin_frame(renderer* renderer) {
 		LOG_ERR("couldn't begin frame");
 		return false;
 	}
+
 	if (res.status == FRAME_SKIP) {
 		_frame_state = FRAME_SHOULD_SKIP;
-		renderer->cur_frame = NULL;
-		return true;
+	} else {
+		_frame_state = FRAME_BEGUN;
 	}
 
 	gpu_frame* frame = arena_push_z(renderer->frame_arena, gpu_frame);
@@ -225,13 +277,45 @@ bool renderer_begin_frame(renderer* renderer) {
 
 	memcpy(frame, &res.frame, sizeof(res.frame));
 	renderer->cur_frame = frame;
-	_frame_state = FRAME_BEGUN;
 
 	return true;
 }
 
 bool renderer_should_draw(renderer* renderer) {
 	return renderer && _frame_state == FRAME_BEGUN;
+}
+
+static gpu_viewport UNUSED _compute_viewport(renderer* renderer) {
+	gpu_viewport ret = {0};
+
+	gpu_api* gpu = renderer->gpu;
+	gpu_image_extent frame_ext = gpu->get_framebuffer_extent(gpu);
+
+	double frame_aspect = frame_ext.width / (double)frame_ext.height;
+	double target_aspect = renderer->logical_resolution.width /
+						   (double)renderer->logical_resolution.height;
+
+	if (target_aspect == frame_aspect) {
+		// happy path, simple scale is enough
+		ret.width = frame_ext.width;
+		ret.height = frame_ext.height;
+	} else if (target_aspect > frame_aspect) {
+		// Framebuffer is narrower than target image.
+		// Black bars top & bottom
+		ret.width = frame_ext.width;
+		ret.height = frame_ext.width / target_aspect;
+		LOG_DEBUG("clamped viewport height: %ux%u", ret.width, ret.height);
+	} else if (target_aspect < frame_aspect) {
+		// Framebuffer wider than rendered image.
+		// Black bars left & right
+		ret.height = frame_ext.height;
+		ret.width = frame_ext.height * target_aspect;
+		LOG_DEBUG("clamped viewport width: %ux%u", ret.width, ret.height);
+	}
+
+	ret.x = (frame_ext.width - ret.width) / 2;
+	ret.y = (frame_ext.height - ret.height) / 2;
+	return ret;
 }
 
 bool renderer_begin_pass(renderer* renderer) {
@@ -258,7 +342,12 @@ bool renderer_begin_pass(renderer* renderer) {
 		.color_targets = {color_target},
 	};
 
-	gpu->cmd_reset_viewport(gpu, cmd);
+	gpu->cmd_transition_image(gpu, cmd, frame->framebuffer,
+							  GPU_IMAGE_STATE_RENDER_TARGET);
+	// gpu_viewport hardcoded = {0};
+	// hardcoded.width = 320;
+	// hardcoded.height = 180;
+	gpu->cmd_set_viewport(gpu, cmd, _compute_viewport(renderer));
 	gpu->cmd_reset_scissor(gpu, cmd);
 	gpu->cmd_begin_rendering(gpu, cmd, &render_state);
 
@@ -266,7 +355,7 @@ bool renderer_begin_pass(renderer* renderer) {
 	return true;
 }
 
-bool renderer_end_pass(UNUSED renderer* renderer) {
+bool renderer_end_pass(renderer* renderer) {
 	if (!renderer || _frame_state != FRAME_RENDERING) {
 		LOG_ERR("can't render: invalid frame state %d", _frame_state);
 		return false;
@@ -281,7 +370,7 @@ bool renderer_end_pass(UNUSED renderer* renderer) {
 	return true;
 }
 
-bool renderer_end_frame(UNUSED renderer* renderer) {
+bool renderer_end_frame(renderer* renderer) {
 	if (!renderer ||
 		(_frame_state != FRAME_BEGUN && _frame_state != FRAME_SHOULD_SKIP)) {
 		LOG_ERR("can't render: invalid frame state %d", _frame_state);
@@ -297,8 +386,30 @@ bool renderer_end_frame(UNUSED renderer* renderer) {
 	return ret;
 }
 
-void renderer_draw_quad(UNUSED vec2 position, UNUSED vec3 color) {
-	ASSERT(false);
+void renderer_draw_quad(renderer* renderer, vec2 position, UNUSED vec3 color) {
+	if (!renderer || _frame_state != FRAME_RENDERING) {
+		LOG_ERR("invalid frame state %d", _frame_state);
+		return;
+	}
+
+	gpu_api* gpu = renderer->gpu;
+	gpu_frame* frame = renderer->cur_frame;
+	gpu_command_buffer cmd = frame->frame_cmd;
+	renderer_uniform_data* u = renderer->uniform_ptr;
+
+	{
+		u->mat_world_from_model =
+			mat_translate_3d((vec3){{position.x, position.y, 0.f}});
+		u->mat_clip_from_world =
+			renderer_camera_get_viewproj(&renderer->camera);
+	}
+
+	gpu->cmd_bind_pipeline(gpu, cmd, renderer->pipeline,
+						   &(gpu_per_frame_data){
+							   .frame_buffer_address = renderer->uniform_addr,
+						   });
+
+	gpu->cmd_draw(gpu, cmd, 6, 1, 0, 0);
 }
 
 bool renderer_load_texture(UNUSED renderer* renderer,
@@ -314,11 +425,20 @@ bool renderer_create_buffer(UNUSED renderer* renderer, UNUSED gpu_buffer* out,
 
 /* ********************************[ CAMERA ]******************************** */
 
-mat4 renderer_camera_get_mvp(UNUSED renderer_camera* camera) { ASSERT(false); }
-
-mat4 renderer_camera_get_mvp_a(UNUSED arena_t* arena,
-							   UNUSED renderer_camera* camera) {
-	ASSERT(false);
+mat4 renderer_camera_get_view(renderer_camera* camera) {
+	return camera->view_from_world;
 }
 
-void renderer_camera_translate_by(UNUSED vec2 offset) { ASSERT(false); }
+mat4 renderer_camera_get_viewproj(renderer_camera* camera) {
+	return mat4_mul(camera->clip_from_view, camera->view_from_world);
+}
+
+void renderer_camera_translate_by(renderer_camera* camera, vec2 offset) {
+
+	camera->world_position.x += offset.x;
+	camera->world_position.y += offset.y;
+
+	camera->view_from_world = mat_translate_3d((vec3){
+		{camera->world_position.x, camera->world_position.y, 0.f},
+	});
+}

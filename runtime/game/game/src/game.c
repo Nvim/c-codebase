@@ -8,7 +8,7 @@
 string game_get_version(void) { return str("0.0.1"); }
 
 static uint64_t _ticks = 0;
-static uint64_t _frames = 0;
+static UNUSED uint64_t _frames = 0;
 
 static engine_api const* engine_ptr = NULL;
 
@@ -26,20 +26,20 @@ static void game_process_input(engine_input_state const* input) {
 }
 
 static bool game_update(double delta) {
-	static double elapsed = 0.f;
+	UNUSED static double elapsed = 0.f;
 	elapsed += delta;
 	if (_ticks > 100) {
-		LOG_WARN("game: 100 ticks passed. time to quit.");
+		// LOG_WARN("game: 100 ticks passed. time to quit.");
 	} else {
-		LOG_INFO("tick %llu: %f s elapsed. (+%f s)", _ticks++, elapsed, delta);
+		// LOG_INFO("tick %llu: %f s elapsed. (+%f s)", _ticks++, elapsed, delta);
 	}
 	return true;
 }
 
-static bool game_should_quit(void) { return _ticks > 100; }
+static bool game_should_quit(void) { return false; }
 
 static void game_draw(void) {
-	LOG_DEBUG("draw for frame %llu (%llu ticks)", _frames++, _ticks);
+	// LOG_DEBUG("draw for frame %llu (%llu ticks)", _frames++, _ticks);
 }
 
 static bool game_shutdown(void) {

@@ -13,12 +13,18 @@ typedef struct buffered_buffer {
 } buffered_buffer;
 
 typedef struct renderer_camera {
-	mat4 world_from_model; // model
-	mat4 view_from_world;  // view
-	mat4 clip_from_view;   // projection
+	// mat4 world_from_model; // model
+	mat4 view_from_world; // view
+	mat4 clip_from_view;  // projection
 
-	vec2 translation;
+	vec2 world_position;
 } renderer_camera;
+
+typedef struct renderer_uniform_data {
+	mat4 mat_clip_from_world;
+	mat4 mat_world_from_model;
+	float time;
+} renderer_uniform_data;
 
 typedef struct renderer {
 	arena_t* arena;		  // permanent allocs
@@ -26,8 +32,11 @@ typedef struct renderer {
 
 	gpu_api* gpu;
 	gpu_pipeline pipeline;
-	gpu_buffer staging_buffer; // [TODO]: should i use a single one ?
 	buffered_buffer draw_buffer;
+	gpu_buffer staging_buffer; // [TODO]: should i use a single one ?
+	gpu_buffer uniform_buffer;
+	renderer_uniform_data* uniform_ptr; // CPU-mapped memory
+	gpu_device_address uniform_addr;	// GPU memory
 
 	/**
 	 * If false, device doesn't have (enough) unified memory and we must upload
@@ -39,6 +48,7 @@ typedef struct renderer {
 	gpu_frame* cur_frame; // If null, no frame is in flight (call begin_frame)
 
 	renderer_camera camera; // [TODO]: move out of here
+	gpu_image_extent logical_resolution;
 } renderer;
 
 typedef struct renderer_texture {
@@ -67,7 +77,7 @@ typedef struct renderer_buffer_ci {
 
 /* *******************************[ RENDERER ]******************************* */
 renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
-						gpu_api* gpu);
+						gpu_api* gpu, gpu_image_extent logical_resolution);
 
 bool renderer_shutdown(renderer* renderer);
 
@@ -89,7 +99,7 @@ bool renderer_end_pass(renderer* renderer);
 bool renderer_end_frame(renderer* renderer);
 
 /* == Draw Commands == */
-void renderer_draw_quad(vec2 position, vec3 color);
+void renderer_draw_quad(renderer* renderer, vec2 position, vec3 color);
 
 /* == Resource creation == */
 bool renderer_load_texture(renderer* renderer, renderer_texture* out,
@@ -106,10 +116,9 @@ bool renderer_create_buffer(renderer* renderer, gpu_buffer* out,
 
 /* ********************************[ CAMERA ]******************************** */
 
-mat4 renderer_camera_get_mvp(renderer_camera* camera);
+mat4 renderer_camera_get_view(renderer_camera* camera);
+mat4 renderer_camera_get_viewproj(renderer_camera* camera);
 
-mat4 renderer_camera_get_mvp_a(arena_t* arena, renderer_camera* camera);
-
-void renderer_camera_translate_by(vec2 offset);
+void renderer_camera_translate_by(renderer_camera* camera, vec2 offset);
 
 #endif // !RENDERER_H

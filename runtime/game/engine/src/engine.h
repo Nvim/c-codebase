@@ -6,10 +6,20 @@
 #include <stdbool.h>
 
 typedef struct engine_config {
-	// platform
+	// platform & windw
 	platform_type platform_type;
 	window_size window_size;
 	char const* window_title;
+
+	/**
+	 * [TODO]: Engine needs these for now because it "owns" and initializes
+	 * camera. In the future, camera projection should be configured by game, so
+	 * logical resolution doesn't leak to engine.
+	 * Replace these with `target_aspect_ratio` instead, which is needed for
+	 * viewport.
+	 */
+	double game_width;
+	double game_height;
 
 	// memory
 	uint64_t max_engine_memory_bytes;

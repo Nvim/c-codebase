@@ -231,10 +231,13 @@ bool engine_init(engine_config config) {
 		return false;
 	}
 
+	gpu_image_extent game_resolution = {config.game_width, config.game_height};
+
 	scratch_arena scratch;
 	ASSERT(arena_get_scratch(NULL, &scratch));
-	_state.renderer = renderer_init(_state.engine_arena, scratch.arena,
-									_state.frame_arena, &_state.gpu);
+	_state.renderer =
+		renderer_init(_state.engine_arena, scratch.arena, _state.frame_arena,
+					  &_state.gpu, game_resolution);
 	if (!_state.renderer) {
 		LOG_ERR("couldn't initialize renderer");
 		return false;
@@ -309,8 +312,11 @@ bool engine_run(void) {
 
 		if (renderer_should_draw(_state.renderer)) {
 			// Game draws only once per frame
+			double const MAX_X = _state.config.game_width / 2.f;
+			double const MAX_Y = _state.config.game_height / 2.f;
 			game_funcs.game_draw();
 			renderer_begin_pass(_state.renderer);
+			renderer_draw_quad(_state.renderer, (vec2){{-MAX_X, -MAX_Y}}, (vec3){0});
 			renderer_end_pass(_state.renderer);
 		}
 
