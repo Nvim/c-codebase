@@ -20,9 +20,16 @@ typedef struct renderer_camera {
 	vec2 world_position;
 } renderer_camera;
 
+// Colored quad
+typedef struct renderer_draw_item {
+	gpu_color color;
+	vec2 position;
+	float scale;
+} renderer_draw_item;
+
 typedef struct renderer_uniform_data {
 	mat4 mat_clip_from_world;
-	mat4 mat_world_from_model;
+	gpu_device_address draw_items;
 	float time;
 } renderer_uniform_data;
 
@@ -32,8 +39,10 @@ typedef struct renderer {
 
 	gpu_api* gpu;
 	gpu_pipeline pipeline;
-	buffered_buffer draw_buffer;
-	gpu_buffer staging_buffer; // [TODO]: should i use a single one ?
+	gpu_buffer staging_buffer;	 // [TODO]: should i use a single one ?
+	buffered_buffer draw_buffer; // gpu_indirect_draw_command
+	buffered_buffer quad_instances_buffer; // renderer_draw_item
+
 	gpu_buffer uniform_buffer;
 	renderer_uniform_data* uniform_ptr; // CPU-mapped memory
 	gpu_device_address uniform_addr;	// GPU memory
@@ -45,7 +54,8 @@ typedef struct renderer {
 	 */
 	bool use_uma;
 
-	gpu_frame* cur_frame; // If null, no frame is in flight (call begin_frame)
+	gpu_frame* cur_frame;
+	uint64_t draw_count; // Draws for current frame. Reset every frame
 
 	renderer_camera camera; // [TODO]: move out of here
 	gpu_image_extent logical_resolution;

@@ -316,7 +316,14 @@ bool engine_run(void) {
 			double const MAX_Y = _state.config.game_height / 2.f;
 			game_funcs.game_draw();
 			renderer_begin_pass(_state.renderer);
-			renderer_draw_quad(_state.renderer, (vec2){{-MAX_X, -MAX_Y}}, (vec3){0});
+			renderer_draw_quad(_state.renderer, (vec2){{-MAX_X, -MAX_Y}},
+							   (vec3){{0.f, .7f, .8f}});
+			renderer_draw_quad(_state.renderer, (vec2){{MAX_X, MAX_Y}},
+							   (vec3){{.8f, .6f, .2f}});
+			renderer_draw_quad(_state.renderer, (vec2){{0.f, 0.f}},
+							   (vec3){{.3f, .2f, .7f}});
+			renderer_draw_quad(_state.renderer, (vec2){{2.f, 0.f}},
+							   (vec3){{.3f, .2f, .7f}});
 			renderer_end_pass(_state.renderer);
 		}
 

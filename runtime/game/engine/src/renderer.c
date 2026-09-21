@@ -115,7 +115,7 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 	}
 
 	gpu_shader shader = {0};
-	{ // Vertex shader
+	{ // Shader
 		fs_file_read_result res =
 			fs_read_all_file(scratch, str(SHADER_ROOT "colored_quad.spv"));
 		ASSERT(res.ok);
@@ -137,6 +137,7 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		pipeline = gpu_pipeline_build(gpu, &builder);
 		ensure_handle(pipeline.handle);
 	}
+	gpu->destroy_shader(gpu, shader);
 
 	gpu_buffer staging_buffer = {0};
 	{ // Staging buffer
@@ -198,13 +199,27 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 			ci.usage = GPU_BUFFER_USAGE_INDIRECT;
 		}
 		if (!buffered_buffer_init(&draw_buffer, gpu, &ci,
-								  gpu->config.frames_in_flight, uma)) {
+								  gpu->config.frames_in_flight, true)) {
 			LOG_ERR("couldn't init draw buffers");
 			return NULL;
 		}
 	}
 
-	gpu->destroy_shader(gpu, shader);
+	buffered_buffer instances_buffer = {0};
+	{ // Draw items buffer
+		gpu_buffer_ci ci = {0};
+		{
+			ci.memory_preference =
+				uma ? GPU_BUFFER_MEMORY_MAPPED : GPU_BUFFER_MEMORY_GPU;
+			ci.size = 8 * MEMORY_MIB; // TODO: from renderer CI
+			ci.usage = GPU_BUFFER_USAGE_STORAGE;
+		}
+		if (!buffered_buffer_init(&instances_buffer, gpu, &ci,
+								  gpu->config.frames_in_flight, true)) {
+			LOG_ERR("couldn't init quad instances buffers");
+			return NULL;
+		}
+	}
 
 	renderer_camera camera = {0};
 	{
@@ -221,11 +236,13 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		ret->gpu = gpu;
 		ret->pipeline = pipeline;
 		ret->staging_buffer = staging_buffer;
+		ret->quad_instances_buffer = instances_buffer;
 		ret->uniform_buffer = uniform_buffer;
 		ret->uniform_ptr = uniform_ptr;
 		ret->uniform_addr = uniform_addr;
 		ret->draw_buffer = draw_buffer;
 		ret->use_uma = uma;
+		ret->draw_count = 0;
 		ret->camera = camera;
 		ret->logical_resolution = logical_resolution;
 	}
@@ -242,6 +259,7 @@ bool renderer_shutdown(renderer* renderer) {
 		gpu->destroy_buffer(gpu, renderer->staging_buffer);
 		gpu->destroy_buffer(gpu, renderer->uniform_buffer);
 		buffered_buffer_destroy(&renderer->draw_buffer, gpu);
+		buffered_buffer_destroy(&renderer->quad_instances_buffer, gpu);
 	}
 
 	return true;
@@ -285,7 +303,7 @@ bool renderer_should_draw(renderer* renderer) {
 	return renderer && _frame_state == FRAME_BEGUN;
 }
 
-static gpu_viewport UNUSED _compute_viewport(renderer* renderer) {
+static gpu_viewport _compute_viewport(renderer* renderer) {
 	gpu_viewport ret = {0};
 
 	gpu_api* gpu = renderer->gpu;
@@ -344,12 +362,16 @@ bool renderer_begin_pass(renderer* renderer) {
 
 	gpu->cmd_transition_image(gpu, cmd, frame->framebuffer,
 							  GPU_IMAGE_STATE_RENDER_TARGET);
-	// gpu_viewport hardcoded = {0};
-	// hardcoded.width = 320;
-	// hardcoded.height = 180;
-	gpu->cmd_set_viewport(gpu, cmd, _compute_viewport(renderer));
+
+	gpu_viewport viewport = _compute_viewport(renderer);
+	gpu->cmd_set_viewport(gpu, cmd, viewport);
 	gpu->cmd_reset_scissor(gpu, cmd);
 	gpu->cmd_begin_rendering(gpu, cmd, &render_state);
+
+	// Uniforms:
+	renderer_uniform_data* u = renderer->uniform_ptr;
+	u->mat_clip_from_world = renderer_camera_get_viewproj(&renderer->camera);
+	u->draw_items = buffered_buffer_get_addr(&renderer->quad_instances_buffer);
 
 	_frame_state = FRAME_RENDERING;
 	return true;
@@ -362,7 +384,35 @@ bool renderer_end_pass(renderer* renderer) {
 	}
 
 	gpu_api* gpu = renderer->gpu;
-	gpu_command_buffer cmd = renderer->cur_frame->frame_cmd;
+	gpu_frame* frame = renderer->cur_frame;
+	gpu_command_buffer cmd = frame->frame_cmd;
+
+	// Add indirect draw calls to buffer:
+	gpu_indirect_draw_command draw = {0};
+	{
+		draw.first_instance = 0;
+		draw.first_vertex = 0;
+		draw.vertex_count = 6 * renderer->draw_count;
+		draw.instance_count = renderer->draw_count;
+	}
+
+	// TODO: support staging
+	gpu_indirect_draw_command* draws_ptr =
+		buffered_buffer_get_mapped(&renderer->draw_buffer);
+	if (!draws_ptr) {
+		LOG_ERR("couldn't get indirect buffer pointer");
+		return false;
+	}
+	draws_ptr[0] = draw;
+
+	gpu->cmd_bind_pipeline(gpu, cmd, renderer->pipeline,
+						   &(gpu_per_frame_data){
+							   .frame_buffer_address = renderer->uniform_addr,
+						   });
+
+	gpu->cmd_draw_indirect(gpu, cmd,
+						   buffered_buffer_get(&renderer->draw_buffer), 0, 1,
+						   sizeof(gpu_indirect_draw_command));
 
 	gpu->cmd_end_rendering(gpu, cmd);
 
@@ -382,6 +432,7 @@ bool renderer_end_frame(renderer* renderer) {
 
 	bool ret = gpu->end_frame(gpu, frame);
 
+	renderer->draw_count = 0;
 	_frame_state = FRAME_ENDED;
 	return ret;
 }
@@ -392,24 +443,21 @@ void renderer_draw_quad(renderer* renderer, vec2 position, UNUSED vec3 color) {
 		return;
 	}
 
-	gpu_api* gpu = renderer->gpu;
 	gpu_frame* frame = renderer->cur_frame;
-	gpu_command_buffer cmd = frame->frame_cmd;
-	renderer_uniform_data* u = renderer->uniform_ptr;
 
-	{
-		u->mat_world_from_model =
-			mat_translate_3d((vec3){{position.x, position.y, 0.f}});
-		u->mat_clip_from_world =
-			renderer_camera_get_viewproj(&renderer->camera);
+	// TODO: support staging upload
+	renderer_draw_item* items =
+		buffered_buffer_get_mapped(&renderer->quad_instances_buffer);
+	if (!items) {
+		LOG_ERR("couldn't get draw items for frame %u", frame->frame_index);
+		return;
 	}
 
-	gpu->cmd_bind_pipeline(gpu, cmd, renderer->pipeline,
-						   &(gpu_per_frame_data){
-							   .frame_buffer_address = renderer->uniform_addr,
-						   });
-
-	gpu->cmd_draw(gpu, cmd, 6, 1, 0, 0);
+	items[renderer->draw_count++] = (renderer_draw_item){
+		.color = {.r = color.r, .g = color.g, .b = color.b, .a = 1.f},
+		.position = {{position.x, position.y}},
+		.scale = 1.f,
+	};
 }
 
 bool renderer_load_texture(UNUSED renderer* renderer,

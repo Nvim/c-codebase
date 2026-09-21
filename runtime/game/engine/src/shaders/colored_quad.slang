@@ -1,5 +1,27 @@
+struct DrawItem {
+	float4 color;
+	float2 position;
+	float scale;
+};
+
+struct UniformData {
+	float4x4 mat_clip_from_world; // view*proj
+	DrawItem* draw_items;
+	float time;
+};
+
+float4x4 translatePosition(float2 pos) {
+	return float4x4(
+		float4(1.f, 0.f, 0.f, pos.x),
+		float4(0.f, 1.f, 0.f, pos.y),
+		float4(0.f, 0.f, 1.f, 0.f),
+		float4(0.f, 0.f, 0.f, 1.f)
+	);
+}
+
 struct Vertex_Out {
 	float4 pos : SV_Position;
+	float4 color : SV_Target1;
 };
 
 struct Vertex {
@@ -9,12 +31,6 @@ struct Vertex {
 	float _pad2;
 };
 
-struct UniformData {
-	float4x4 mat_clip_from_world; // view*proj
-	float4x4 mat_world_from_model; // model
-	float time;
-};
-
 // Push constants
 struct ShaderInput {
 	uint64_t* reserved;
@@ -22,19 +38,21 @@ struct ShaderInput {
 }
 
 [[shader("vertex")]]
-Vertex_Out vertMain(uint vertexID : SV_VertexID, uniform ShaderInput constants) {
+Vertex_Out vertMain(uint vertexID : SV_VertexID, uint instanceId: SV_InstanceID, uniform ShaderInput constants) {
 	Vertex_Out ret;
 
 	uint b = 1 << (vertexID % 6);
 	float4 baseCoord = float4(
-		(0x1C & b) != 0 ? .8f : -.8f,
-		(0xE & b) != 0 ? .8f : -.8f,
+		(0x1C & b) != 0 ? 1.f : -1.f,
+		(0xE & b) != 0 ? 1.f : -1.f,
 		0.f,
 		1.f,
 	);
 
-	float4x4 mvp = mul(constants.uniform.mat_clip_from_world, constants.uniform.mat_world_from_model);
+	DrawItem item = constants.uniform.draw_items[instanceId];
+	float4x4 mvp = mul(constants.uniform.mat_clip_from_world, translatePosition(item.position));
 	ret.pos = mul(mvp, baseCoord);
+	ret.color = item.color;
 	return ret;
 }
 
@@ -46,7 +64,7 @@ struct Fragment_Out {
 Fragment_Out fragMain(Vertex_Out input, uniform ShaderInput constants) {
 	Fragment_Out ret;
 
-	ret.color = float4(.9f, .1f, .85f, 1.f);
+	ret.color = input.color;
 
 	return ret;
 }
