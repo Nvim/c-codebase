@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
 	gpu.initialize(&gpu, win, arena, scratch.arena);
 	ASSERT(gpu.is_init);
 
-	gpu_memory_info mem_info = gpu.get_memory_info(&gpu);
+	UNUSED gpu_memory_info mem_info = gpu.get_memory_info(&gpu);
 	LOG_DEBUG("shared memory ratio: %f", mem_info.ratio);
 
 	arena_clear_scratch(scratch);

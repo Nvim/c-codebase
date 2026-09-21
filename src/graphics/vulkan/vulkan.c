@@ -79,6 +79,7 @@ static bool _instance_exts(arena_t* scratch) {
 	}
 	return false;
 #else
+	(void)scratch;
 	return true;
 #endif
 }
@@ -314,7 +315,7 @@ _memory_lookup(UNUSED arena_t* scratch,
 		bool device_local = (flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 		bool host_visible = (flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 		bool host_coherent = (flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-		bool host_cached = (flags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+		UNUSED bool host_cached = (flags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
 
 		/**
 		 * [NOTE]: We label memory as shared only if it is host coherent.

@@ -9,7 +9,7 @@ target_link_libraries(
 target_sources(loaders PRIVATE qoi.c json.c)
 
 # ---- Tests ----
-add_executable(json_test json_test.c)
+add_executable(json_test json_test.c json.c)
 target_link_libraries(
     json_test
     PRIVATE

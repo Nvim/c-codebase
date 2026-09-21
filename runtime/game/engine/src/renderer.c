@@ -416,11 +416,13 @@ bool renderer_load_texture(UNUSED renderer* renderer,
 						   UNUSED renderer_texture* out,
 						   UNUSED renderer_texture_ci ci) {
 	ASSERT(false);
+	return false;
 }
 
 bool renderer_create_buffer(UNUSED renderer* renderer, UNUSED gpu_buffer* out,
 							UNUSED renderer_buffer_ci ci) {
 	ASSERT(false);
+	return false;
 }
 
 /* ********************************[ CAMERA ]******************************** */

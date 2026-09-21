@@ -15,7 +15,7 @@ static engine_api const* engine_ptr = NULL;
 static bool game_init(engine_api const* engine_api) {
 	LOG_DEBUG("initializing game..");
 	engine_ptr = engine_api;
-	string engine_version = engine_api->get_version();
+	UNUSED string engine_version = engine_api->get_version();
 	LOG_DEBUG("game intialized with engine API version " STR_FMT,
 			  STR_FMT_ARGS(engine_version));
 	return true;
@@ -31,7 +31,8 @@ static bool game_update(double delta) {
 	if (_ticks > 100) {
 		// LOG_WARN("game: 100 ticks passed. time to quit.");
 	} else {
-		// LOG_INFO("tick %llu: %f s elapsed. (+%f s)", _ticks++, elapsed, delta);
+		// LOG_INFO("tick %llu: %f s elapsed. (+%f s)", _ticks++, elapsed,
+		// delta);
 	}
 	return true;
 }
