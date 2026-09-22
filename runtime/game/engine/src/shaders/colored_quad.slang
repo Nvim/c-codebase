@@ -8,12 +8,22 @@ struct UniformData {
 	float4x4 mat_clip_from_world; // view*proj
 	DrawItem* draw_items;
 	float time;
+	float scale;
 };
 
 float4x4 translatePosition(float2 pos) {
 	return float4x4(
 		float4(1.f, 0.f, 0.f, pos.x),
 		float4(0.f, 1.f, 0.f, pos.y),
+		float4(0.f, 0.f, 1.f, 0.f),
+		float4(0.f, 0.f, 0.f, 1.f)
+	);
+}
+
+float4x4 scaleMatrix(float scale) {
+	return float4x4(
+		float4(scale, 0.f, 0.f, 0.f),
+		float4(0.f, scale, 0.f, 0.f),
 		float4(0.f, 0.f, 1.f, 0.f),
 		float4(0.f, 0.f, 0.f, 1.f)
 	);
@@ -50,7 +60,8 @@ Vertex_Out vertMain(uint vertexID : SV_VertexID, uint instanceId: SV_InstanceID,
 	);
 
 	DrawItem item = constants.uniform.draw_items[instanceId];
-	float4x4 mvp = mul(constants.uniform.mat_clip_from_world, translatePosition(item.position));
+	float4x4 model = mul(scaleMatrix(constants.uniform.scale), translatePosition(item.position));
+	float4x4 mvp = mul(constants.uniform.mat_clip_from_world, model);
 	ret.pos = mul(mvp, baseCoord);
 	ret.color = item.color;
 	return ret;

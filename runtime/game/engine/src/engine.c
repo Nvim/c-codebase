@@ -10,6 +10,7 @@
 
 #include <dlfcn.h>
 #include <stdlib.h>
+#include <math.h>
 
 #define MAX_FRAMETIME_S 0.33
 
@@ -312,17 +313,17 @@ bool engine_run(void) {
 
 		if (renderer_should_draw(_state.renderer)) {
 			// Game draws only once per frame
-			double const MAX_X = _state.config.game_width / 2.f;
-			double const MAX_Y = _state.config.game_height / 2.f;
+			double const MAX_X = (_state.config.game_width) / 2.f;
+			double const MAX_Y = (_state.config.game_height) / 2.f;
 			game_funcs.game_draw();
+
+			double posx = sinf(_state.timer.current_time_s)*MAX_X;
 			renderer_begin_pass(_state.renderer);
-			renderer_draw_quad(_state.renderer, (vec2){{-MAX_X, -MAX_Y}},
+			renderer_draw_quad(_state.renderer, (vec2){{-MAX_X+1, -MAX_Y+1}},
 							   (vec3){{0.f, .7f, .8f}});
-			renderer_draw_quad(_state.renderer, (vec2){{MAX_X, MAX_Y}},
+			renderer_draw_quad(_state.renderer, (vec2){{MAX_X-1, MAX_Y-1}},
 							   (vec3){{.8f, .6f, .2f}});
-			renderer_draw_quad(_state.renderer, (vec2){{0.f, 0.f}},
-							   (vec3){{.3f, .2f, .7f}});
-			renderer_draw_quad(_state.renderer, (vec2){{2.f, 0.f}},
+			renderer_draw_quad(_state.renderer, (vec2){{posx, 0.f}},
 							   (vec3){{.3f, .2f, .7f}});
 			renderer_end_pass(_state.renderer);
 		}

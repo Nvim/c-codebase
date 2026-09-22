@@ -368,10 +368,14 @@ bool renderer_begin_pass(renderer* renderer) {
 	gpu->cmd_reset_scissor(gpu, cmd);
 	gpu->cmd_begin_rendering(gpu, cmd, &render_state);
 
+	renderer->camera.clip_from_view =
+		mat_projection_ortho_centered(viewport.width, viewport.height);
+
 	// Uniforms:
 	renderer_uniform_data* u = renderer->uniform_ptr;
 	u->mat_clip_from_world = renderer_camera_get_viewproj(&renderer->camera);
 	u->draw_items = buffered_buffer_get_addr(&renderer->quad_instances_buffer);
+	u->scale = viewport.width / (float)renderer->logical_resolution.width;
 
 	_frame_state = FRAME_RENDERING;
 	return true;

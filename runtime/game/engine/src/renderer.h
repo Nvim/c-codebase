@@ -31,6 +31,7 @@ typedef struct renderer_uniform_data {
 	mat4 mat_clip_from_world;
 	gpu_device_address draw_items;
 	float time;
+	float scale;
 } renderer_uniform_data;
 
 typedef struct renderer {
