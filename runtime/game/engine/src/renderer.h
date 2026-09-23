@@ -33,8 +33,9 @@ typedef struct renderer {
 
 	gpu_api* gpu;
 	gpu_pipeline pipeline;
-	gpu_buffer staging_buffer;	 // [TODO]: should i use a single one ?
-	buffered_buffer draw_buffer; // gpu_indirect_draw_command
+	gpu_buffer staging_buffer; // [TODO]: should i use a single one ?
+	gpu_buffer quad_index_buffer;
+	buffered_buffer draw_buffer;		   // gpu_indirect_draw_command
 	buffered_buffer quad_instances_buffer; // renderer_draw_item
 
 	gpu_buffer uniform_buffer;

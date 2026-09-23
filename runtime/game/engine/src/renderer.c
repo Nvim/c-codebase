@@ -156,6 +156,21 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 			return NULL;
 		}
 	}
+	gpu_buffer quad_index_buffer = {0};
+	{ // Index buffer
+		gpu_buffer_ci ci = {0};
+		{
+			ci.memory_preference = GPU_BUFFER_MEMORY_GPU;
+			ci.size = 6 * sizeof(uint32_t); // TODO: from renderer CI
+			ci.usage = GPU_BUFFER_USAGE_INDEX;
+		}
+
+		quad_index_buffer = gpu->create_buffer(gpu, &ci);
+		if (!check_handle(quad_index_buffer.handle)) {
+			LOG_ERR("couldn't create quad index buffer");
+			return NULL;
+		}
+	}
 	gpu_buffer uniform_buffer = {0};
 	renderer_uniform_data* uniform_ptr = NULL;
 	gpu_device_address uniform_addr = {0};
@@ -232,12 +247,49 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		renderer_camera_translate_by(&camera, (vec2){0});
 	}
 
+	// Upload quad index buffer:
+	{
+		static uint32_t index_data[] = {0, 1, 2, 0, 2, 3};
+
+		gpu_command_buffer cmd = gpu->create_command_buffer(gpu);
+		ensure_handle(cmd.handle);
+		gpu->cmd_begin_debug_marker(gpu, cmd, "RENDERER INIT UPLOAD");
+
+		gpu_data_payload ibuf_payload = {0};
+		{
+			ibuf_payload.data_format = GPU_DATA_SPAN;
+			ibuf_payload.data.span.data = index_data;
+			ibuf_payload.data.span.size = sizeof(index_data);
+			ibuf_payload.offset = 0;
+		}
+		gpu->copy_to_staging_buffer(gpu, staging_buffer, ibuf_payload);
+
+		gpu_buffer_copy_info buf_copy = {0};
+		{
+			buf_copy.size = sizeof(index_data);
+			buf_copy.src = staging_buffer;
+			buf_copy.src_offset = 0;
+			buf_copy.dst = quad_index_buffer;
+		}
+		ASSERT(gpu->cmd_copy_to_buffer(gpu, cmd, &buf_copy));
+
+		gpu->cmd_end_debug_marker(gpu, cmd);
+
+		gpu_fence fence = gpu->create_fence(gpu, false);
+		ASSERT(gpu->submit_command_buffer_fence(gpu, cmd, fence));
+		ASSERT(gpu->wait_fence(gpu, fence, sec_to_ns(1)));
+
+		gpu->destroy_command_buffer(gpu, cmd);
+		gpu->destroy_fence(gpu, fence);
+	}
+
 	{
 		ret->arena = arena;
 		ret->frame_arena = frame_arena;
 		ret->gpu = gpu;
 		ret->pipeline = pipeline;
 		ret->staging_buffer = staging_buffer;
+		ret->quad_index_buffer = quad_index_buffer;
 		ret->quad_instances_buffer = instances_buffer;
 		ret->uniform_buffer = uniform_buffer;
 		ret->uniform_ptr = uniform_ptr;
@@ -259,6 +311,7 @@ bool renderer_shutdown(renderer* renderer) {
 		gpu->wait_idle(gpu);
 		gpu->destroy_pipeline(gpu, renderer->pipeline);
 		gpu->destroy_buffer(gpu, renderer->staging_buffer);
+		gpu->destroy_buffer(gpu, renderer->quad_index_buffer);
 		gpu->destroy_buffer(gpu, renderer->uniform_buffer);
 		buffered_buffer_destroy(&renderer->draw_buffer, gpu);
 		buffered_buffer_destroy(&renderer->quad_instances_buffer, gpu);
@@ -394,16 +447,17 @@ bool renderer_end_pass(renderer* renderer) {
 	gpu_command_buffer cmd = frame->frame_cmd;
 
 	// Add indirect draw calls to buffer:
-	gpu_indirect_draw_command draw = {0};
+	gpu_cmd_indirect_indexed_draw_command draw = {0};
 	{
 		draw.first_instance = 0;
-		draw.first_vertex = 0;
-		draw.vertex_count = 6 * renderer->draw_count;
+		draw.first_index = 0;
+		draw.index_count = 6;
 		draw.instance_count = renderer->draw_count;
+		draw.vertex_offset = 0;
 	}
 
 	// TODO: support staging
-	gpu_indirect_draw_command* draws_ptr =
+	gpu_cmd_indirect_indexed_draw_command* draws_ptr =
 		buffered_buffer_get_mapped(&renderer->draw_buffer);
 	if (!draws_ptr) {
 		LOG_ERR("couldn't get indirect buffer pointer");
@@ -416,9 +470,10 @@ bool renderer_end_pass(renderer* renderer) {
 							   .frame_buffer_address = renderer->uniform_addr,
 						   });
 
-	gpu->cmd_draw_indirect(gpu, cmd,
-						   buffered_buffer_get(&renderer->draw_buffer), 0, 1,
-						   sizeof(gpu_indirect_draw_command));
+	gpu->cmd_bind_index_buffer(gpu, cmd, renderer->quad_index_buffer);
+	gpu->cmd_draw_indirect_indexed(
+		gpu, cmd, buffered_buffer_get(&renderer->draw_buffer), 0,
+		renderer->draw_count, sizeof(gpu_cmd_indirect_indexed_draw_command));
 
 	gpu->cmd_end_rendering(gpu, cmd);
 

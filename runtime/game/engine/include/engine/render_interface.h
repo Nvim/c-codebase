@@ -1,9 +1,9 @@
 #ifndef RENDER_INTERFACCE_H
 #define RENDER_INTERFACCE_H
 
+#include <containers/array.h>
 #include <core/math.h>
 #include <graphics/graphics.h>
-#include <containers/array.h>
 
 #define MAX_DRAW_ITEMS 1024
 

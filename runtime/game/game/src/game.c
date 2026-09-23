@@ -14,7 +14,7 @@ typedef struct game_state {
 } game_state;
 
 // [TODO]: allocate on game arena
-static game_state _state = { 0 };
+static game_state _state = {0};
 
 static engine_api const* engine_ptr = NULL;
 
@@ -29,18 +29,10 @@ static bool game_init(engine_api const* engine_api) {
 }
 
 static void game_process_input(engine_input_state const* input) {
-	if (input->pressed_keys[INPUT_KEY_W]) {
-		_state.player_pos.y += 2.f;
-	}
-	if (input->pressed_keys[INPUT_KEY_A]) {
-		_state.player_pos.x -= 2.f;
-	}
-	if (input->pressed_keys[INPUT_KEY_S]) {
-		_state.player_pos.y -= 2.f;
-	}
-	if (input->pressed_keys[INPUT_KEY_D]) {
-		_state.player_pos.x += 2.f;
-	}
+	if (input->pressed_keys[INPUT_KEY_W]) { _state.player_pos.y += 2.f; }
+	if (input->pressed_keys[INPUT_KEY_A]) { _state.player_pos.x -= 2.f; }
+	if (input->pressed_keys[INPUT_KEY_S]) { _state.player_pos.y -= 2.f; }
+	if (input->pressed_keys[INPUT_KEY_D]) { _state.player_pos.x += 2.f; }
 }
 
 static bool game_update(double delta) {

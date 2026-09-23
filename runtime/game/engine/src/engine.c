@@ -328,7 +328,7 @@ bool engine_run(void) {
 
 			for (uint64_t i = 0; i < packet.draw_count; ++i) {
 				renderer_draw_item* draw = NULL;
-				renderer_draw_item_array_at(draw_items, &draw, 0);
+				renderer_draw_item_array_at(draw_items, &draw, i);
 				if (draw) {
 					renderer_draw_quad(_state.renderer, draw->position,
 									   (vec3){
