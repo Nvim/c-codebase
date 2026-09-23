@@ -7,8 +7,14 @@
 
 string game_get_version(void) { return str("0.0.1"); }
 
-static uint64_t _ticks = 0;
-static UNUSED uint64_t _frames = 0;
+typedef struct game_state {
+	uint64_t ticks;
+	uint64_t frames;
+	vec2 player_pos;
+} game_state;
+
+// [TODO]: allocate on game arena
+static game_state _state = { 0 };
 
 static engine_api const* engine_ptr = NULL;
 
@@ -18,17 +24,29 @@ static bool game_init(engine_api const* engine_api) {
 	UNUSED string engine_version = engine_api->get_version();
 	LOG_DEBUG("game intialized with engine API version " STR_FMT,
 			  STR_FMT_ARGS(engine_version));
+
 	return true;
 }
 
 static void game_process_input(engine_input_state const* input) {
-	if (input->pressed_keys[INPUT_KEY_K]) { LOG_DEBUG("game: key K pressed"); }
+	if (input->pressed_keys[INPUT_KEY_W]) {
+		_state.player_pos.y += 2.f;
+	}
+	if (input->pressed_keys[INPUT_KEY_A]) {
+		_state.player_pos.x -= 2.f;
+	}
+	if (input->pressed_keys[INPUT_KEY_S]) {
+		_state.player_pos.y -= 2.f;
+	}
+	if (input->pressed_keys[INPUT_KEY_D]) {
+		_state.player_pos.x += 2.f;
+	}
 }
 
 static bool game_update(double delta) {
 	UNUSED static double elapsed = 0.f;
 	elapsed += delta;
-	if (_ticks > 100) {
+	if (_state.ticks > 100) {
 		// LOG_WARN("game: 100 ticks passed. time to quit.");
 	} else {
 		// LOG_INFO("tick %llu: %f s elapsed. (+%f s)", _ticks++, elapsed,
@@ -50,7 +68,7 @@ static void game_draw(renderer_packet* out) {
 	ASSERT(player_draw);
 
 	player_draw->color = (gpu_color){.r = .8f, .g = 0.f, .b = .9f, .a = 1.f};
-	player_draw->position = (vec2){.x = 0.f, .y = 0.f};
+	player_draw->position = _state.player_pos;
 	player_draw->scale = 1.f;
 	out->draw_count++;
 	// }

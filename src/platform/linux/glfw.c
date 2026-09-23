@@ -213,7 +213,7 @@ static void _key_callback(GLFWwindow* window, int key, UNUSED int scancode,
 	e = &_key_callbacks[translated];
 	switch (action) {
 	case GLFW_REPEAT:
-		LOG_DEBUG("key %d (GLFW %d) was repeated.", translated, key);
+		// LOG_DEBUG("key %d (GLFW %d) was repeated.", translated, key);
 		if (e && e->callbacks[INPUT_ACTION_HELD]) {
 			e->callbacks[INPUT_ACTION_HELD]((window_t*)window, translated,
 											INPUT_ACTION_HELD);
@@ -221,7 +221,7 @@ static void _key_callback(GLFWwindow* window, int key, UNUSED int scancode,
 		break;
 	case GLFW_PRESS:
 		_key_state[translated] = true;
-		LOG_DEBUG("key %d (GLFW %d) was pressed.", translated, key);
+		// LOG_DEBUG("key %d (GLFW %d) was pressed.", translated, key);
 		if (e && e->callbacks[INPUT_ACTION_PRESSED]) {
 			e->callbacks[INPUT_ACTION_PRESSED]((window_t*)window, translated,
 											   INPUT_ACTION_PRESSED);
@@ -229,7 +229,7 @@ static void _key_callback(GLFWwindow* window, int key, UNUSED int scancode,
 		break;
 	case GLFW_RELEASE:
 		_key_state[translated] = false;
-		LOG_DEBUG("key %d (GLFW %d) was released.", translated, key);
+		// LOG_DEBUG("key %d (GLFW %d) was released.", translated, key);
 		if (e && e->callbacks[INPUT_ACTION_RELEASED]) {
 			e->callbacks[INPUT_ACTION_RELEASED]((window_t*)window, translated,
 												INPUT_ACTION_RELEASED);
@@ -245,7 +245,7 @@ static void _mouse_button_callback(GLFWwindow* window, int button, int action,
 	mouse_button_cb_entry* e = &_mouse_button_callbacks[translated];
 	switch (action) {
 	case GLFW_REPEAT:
-		LOG_DEBUG("button %d (GLFW %d) was repeated.", translated, button);
+		// LOG_DEBUG("button %d (GLFW %d) was repeated.", translated, button);
 		if (e && e->callbacks[INPUT_ACTION_HELD]) {
 			e->callbacks[INPUT_ACTION_HELD]((window_t*)window, translated,
 											INPUT_ACTION_HELD);
@@ -253,7 +253,7 @@ static void _mouse_button_callback(GLFWwindow* window, int button, int action,
 		break;
 	case GLFW_PRESS:
 		_mouse_state[translated] = true;
-		LOG_DEBUG("button %d (GLFW %d) was pressed.", translated, button);
+		// LOG_DEBUG("button %d (GLFW %d) was pressed.", translated, button);
 		if (e && e->callbacks[INPUT_ACTION_PRESSED]) {
 			e->callbacks[INPUT_ACTION_PRESSED]((window_t*)window, translated,
 											   INPUT_ACTION_PRESSED);
@@ -261,7 +261,7 @@ static void _mouse_button_callback(GLFWwindow* window, int button, int action,
 		break;
 	case GLFW_RELEASE:
 		_mouse_state[translated] = false;
-		LOG_DEBUG("button %d (GLFW %d) was released.", translated, button);
+		// LOG_DEBUG("button %d (GLFW %d) was released.", translated, button);
 		if (e && e->callbacks[INPUT_ACTION_RELEASED]) {
 			e->callbacks[INPUT_ACTION_RELEASED]((window_t*)window, translated,
 												INPUT_ACTION_RELEASED);
