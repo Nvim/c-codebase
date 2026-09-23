@@ -1,5 +1,7 @@
 #include "renderer.h"
 
+#include <engine/render_interface.h>
+
 #include <filesystem/filesystem.h>
 
 #include <string.h>

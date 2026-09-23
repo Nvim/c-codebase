@@ -20,13 +20,6 @@ typedef struct renderer_camera {
 	vec2 world_position;
 } renderer_camera;
 
-// Colored quad
-typedef struct renderer_draw_item {
-	gpu_color color;
-	vec2 position;
-	float scale;
-} renderer_draw_item;
-
 typedef struct renderer_uniform_data {
 	mat4 mat_clip_from_world;
 	gpu_device_address draw_items;

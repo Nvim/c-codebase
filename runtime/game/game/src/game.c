@@ -39,8 +39,21 @@ static bool game_update(double delta) {
 
 static bool game_should_quit(void) { return false; }
 
-static void game_draw(void) {
-	// LOG_DEBUG("draw for frame %llu (%llu ticks)", _frames++, _ticks);
+static void game_draw(renderer_packet* out) {
+	uint64_t i = 0;
+	// for (i = 0; i < MAX_DRAW_ITEMS; i++) {
+	renderer_draw_item* player_draw = NULL;
+	if (!renderer_draw_item_array_at(out->draw_items, &player_draw, i)) {
+		LOG_ERR("can't index draw items array");
+		return;
+	}
+	ASSERT(player_draw);
+
+	player_draw->color = (gpu_color){.r = .8f, .g = 0.f, .b = .9f, .a = 1.f};
+	player_draw->position = (vec2){.x = 0.f, .y = 0.f};
+	player_draw->scale = 1.f;
+	out->draw_count++;
+	// }
 }
 
 static bool game_shutdown(void) {

@@ -10,7 +10,6 @@
 
 #include <dlfcn.h>
 #include <stdlib.h>
-#include <math.h>
 
 #define MAX_FRAMETIME_S 0.33
 
@@ -311,20 +310,35 @@ bool engine_run(void) {
 			break;
 		}
 
+		// Game draws only once per frame
 		if (renderer_should_draw(_state.renderer)) {
-			// Game draws only once per frame
-			double const MAX_X = (_state.config.game_width) / 2.f;
-			double const MAX_Y = (_state.config.game_height) / 2.f;
-			game_funcs.game_draw();
+			renderer_draw_item_array draw_items =
+				renderer_draw_item_array_create(_state.frame_arena,
+												MAX_DRAW_ITEMS);
+			if (!draw_items.raw) {
+				LOG_ERR("couldn't allocate frame draw items array");
+				break;
+			}
+			renderer_packet packet = {0};
+			packet.draw_items = draw_items;
 
-			double posx = sinf(_state.timer.current_time_s)*MAX_X;
+			game_funcs.game_draw(&packet);
 			renderer_begin_pass(_state.renderer);
-			renderer_draw_quad(_state.renderer, (vec2){{-MAX_X+1, -MAX_Y+1}},
-							   (vec3){{0.f, .7f, .8f}});
-			renderer_draw_quad(_state.renderer, (vec2){{MAX_X-1, MAX_Y-1}},
-							   (vec3){{.8f, .6f, .2f}});
-			renderer_draw_quad(_state.renderer, (vec2){{posx, 0.f}},
-							   (vec3){{.3f, .2f, .7f}});
+			// LOG_INFO("%u draws from game", packet.draw_count);
+
+			for (uint64_t i = 0; i < packet.draw_count; ++i) {
+				renderer_draw_item* draw = NULL;
+				renderer_draw_item_array_at(draw_items, &draw, 0);
+				if (draw) {
+					renderer_draw_quad(_state.renderer, draw->position,
+									   (vec3){
+										   .r = draw->color.r,
+										   .g = draw->color.g,
+										   .b = draw->color.b,
+									   });
+				}
+			}
+
 			renderer_end_pass(_state.renderer);
 		}
 
@@ -332,6 +346,8 @@ bool engine_run(void) {
 			LOG_ERR("couldn't end frame");
 			break;
 		}
+
+		arena_reset(_state.frame_arena);
 
 		/**
 		 * [NOTE]: no sleep because vsync is on. don't know if I should rely on

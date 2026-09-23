@@ -12,9 +12,11 @@
 #ifndef ARRAY_H
 #define ARRAY_H
 
+#include <core/core.h>
+#include <visibility.h>
+
 #include <stdbool.h>
 #include <stddef.h>
-#include <visibility.h>
 
 typedef struct arena_t arena_t;
 
