@@ -577,6 +577,15 @@ typedef struct gpu_api {
 
 	gpu_memory_info (*get_memory_info)(struct gpu_api*);
 
+	/**
+	 * @brief Trigger a manual framebuffer resize in case it isn't handled by
+	 * platform. This is necessary on Wayland. Should be called from a platform
+	 * window resize callback.
+	 *
+	 * @param new_size New framebuffer size.
+	 */
+	void (*framebuffer_resize)(struct gpu_api*, window_size new_size);
+
 	/* == Frame Flow ======================================================== */
 	/**
 	 * @brief Begin a new frame. Previous frame must have been ended.

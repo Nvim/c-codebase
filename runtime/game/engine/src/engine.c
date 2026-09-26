@@ -190,6 +190,14 @@ static void _destroy_platform(void) {
 	_state.window = NULL;
 }
 
+static void _framebuffer_callback(window_size new_size) {
+	if (_state.config.platform_type == PLATFORM_TYPE_LINUX_WAYLAND) {
+		if (_state.gpu.is_init) {
+			_state.gpu.framebuffer_resize(&_state.gpu, new_size);
+		}
+	}
+}
+
 bool engine_init(engine_config config) {
 
 	if (_state.init || _state.running) { return false; }
@@ -206,6 +214,9 @@ bool engine_init(engine_config config) {
 		LOG_ERR("couldn't create window");
 		return false;
 	}
+
+	platform_register_framebuffer_size_callback(_framebuffer_callback);
+
 	_state.config = config;
 
 	// Timing:

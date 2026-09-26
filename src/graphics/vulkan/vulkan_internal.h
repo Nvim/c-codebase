@@ -166,7 +166,8 @@ bool vk_surface_get_capabilities(vk_surface* surface, VkPhysicalDevice device);
 void vk_surface_destroy(vk_surface* surface, VkInstance instance);
 
 typedef struct vk_swapchain {
-	bool must_refresh; // recreate at beginning of next frame
+	bool must_refresh; // recreate once resizing is finished
+	bool resizing;	   // true while acquire/present return out of date
 
 	VkSwapchainKHR swapchain;
 	vk_image_array images;

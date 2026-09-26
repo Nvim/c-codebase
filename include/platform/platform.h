@@ -236,6 +236,8 @@ typedef void (*mouse_button_callback)(window_t* window,
 									  input_mouse_button button,
 									  key_action action);
 
+typedef void (*framebuffer_callback)(window_size new_size);
+
 /**
  * @brief Register a callback to run for the given key/action combinaison.
  *
@@ -262,5 +264,13 @@ LIB_EXPORT void
 platform_register_mouse_button_callback(input_mouse_button button,
 										key_action action,
 										mouse_button_callback callback);
+
+/**
+ * @brief Register a callback to run when window is resized. A single callback
+ * can be registered at a time.
+ *
+ */
+LIB_EXPORT void
+platform_register_framebuffer_size_callback(framebuffer_callback callback);
 
 #endif

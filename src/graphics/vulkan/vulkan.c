@@ -859,6 +859,20 @@ gpu_memory_info vulkan_get_memory_info(gpu_api* self) {
 	};
 }
 
+void vulkan_framebuffer_resize(struct gpu_api* self, window_size new_size) {
+	vk_api_state* state = self->state;
+
+	VkExtent2D ext = state->swapchain.ci.imageExtent;
+
+	if ((int)ext.width == new_size.width &&
+		(int)ext.height == new_size.height) {
+		return;
+	}
+
+	state->swapchain.must_refresh = true;
+	state->swapchain.resizing = true;
+}
+
 void vulkan_wait_idle(gpu_api* self) {
 	vk_api_state* state = self->state;
 	check_result(vkDeviceWaitIdle(state->device));
@@ -1322,6 +1336,8 @@ bool vulkan_end_frame(gpu_api* self, gpu_frame* f) {
 			state->swapchain.must_refresh = true;
 		}
 	}
+	// reset this even if we're not presenting
+	state->swapchain.img_index = 0;
 
 	// Reset frame's command buffer
 	// [TODO]: Should I reset it? Validation errors if I do
@@ -2810,6 +2826,7 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->initialize = vulkan_initialize;
 		out->destroy = vulkan_destroy;
 		out->get_memory_info = vulkan_get_memory_info;
+		out->framebuffer_resize = vulkan_framebuffer_resize;
 		out->wait_idle = vulkan_wait_idle;
 
 		/* == Frame Flow ==================================================== */

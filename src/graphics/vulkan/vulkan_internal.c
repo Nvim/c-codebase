@@ -280,7 +280,6 @@ vk_present_result vk_swapchain_present(vk_swapchain* swapchain, VkQueue queue) {
 
 	if (res != VK_SUCCESS) { return PRESENT_ERROR; }
 
-	swapchain->img_index = 0;
 	return PRESENT_SUCCESS;
 }
 
@@ -391,9 +390,9 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 	// vkDeviceWaitIdle.
 	// We don't wait on frame's fence, because the frame was skipped and the
 	// fence never signalled. It can be safely reset instead.
-	if (state->swapchain.must_refresh) {
+	if (state->swapchain.must_refresh && !state->swapchain.resizing) {
 		state->swapchain.must_refresh = false;
-		LOG_INFO("handling out of date swapchain");
+		LOG_INFO("refreshing swapchain");
 		if (!vk_surface_get_capabilities(&state->surface,
 										 state->physical_device)) {
 			LOG_ERR("vulkan_begin_frame: couldn't get surface capabilities");
@@ -452,6 +451,7 @@ bool vk_begin_frame(vk_api_state* state, vk_frame* out,
 				return false;
 			}
 			out->has_rendertarget = true;
+			state->swapchain.resizing = false;
 		}
 	}
 
@@ -988,7 +988,8 @@ VmaAllocationCreateInfo gpu_to_vk_buffer_memory(gpu_buffer_ci* ci) {
 		return ret;
 	}
 	if (is_buffer_staging(ci->usage)) {
-		// [NOTE]: Could use HOST_ACCESS_SEQUENTIAL_WRITE_BIT instead of random?
+		// [NOTE]: Could use HOST_ACCESS_SEQUENTIAL_WRITE_BIT instead of
+		// random?
 		ret.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
 		ret.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
 					VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;

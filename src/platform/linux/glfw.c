@@ -46,6 +46,7 @@ typedef struct mouse_button_cb_entry {
 
 static key_cb_entry _key_callbacks[INPUT_KEY_COUNT] = {0};
 static mouse_button_cb_entry _mouse_button_callbacks[INPUT_KEY_COUNT] = {0};
+static framebuffer_callback _framebuffer_callback = {0};
 
 static void _key_callback(GLFWwindow* window, int key, int scancode, int action,
 						  int mods);
@@ -176,6 +177,11 @@ void platform_register_mouse_button_callback(input_mouse_button button,
 	}
 }
 
+void platform_register_framebuffer_size_callback(
+	framebuffer_callback callback) {
+	_framebuffer_callback = callback;
+}
+
 static VkSurfaceKHR _create_vk_surface(window_t* window, VkInstance instance);
 
 bool platform_init_graphics_api(gpu_api_type type,
@@ -289,11 +295,10 @@ static void scroll_callback(GLFWwindow* window, double xoffset,
 
 static void framebuffer_size_callback(GLFWwindow* window, int width,
 									  int height) {
-	// TODO
 	(void)window;
-	(void)width;
-	(void)height;
-	LOG_WARN("window was resized")
+	if (_framebuffer_callback) {
+		_framebuffer_callback((window_size){.width = width, .height = height});
+	}
 }
 
 static VkSurfaceKHR _create_vk_surface(window_t* window, VkInstance instance) {

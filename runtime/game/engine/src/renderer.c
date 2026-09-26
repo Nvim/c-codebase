@@ -377,13 +377,11 @@ static gpu_viewport _compute_viewport(renderer* renderer) {
 		// Black bars top & bottom
 		ret.width = frame_ext.width;
 		ret.height = frame_ext.width / target_aspect;
-		LOG_DEBUG("clamped viewport height: %ux%u", ret.width, ret.height);
 	} else if (target_aspect < frame_aspect) {
 		// Framebuffer wider than rendered image.
 		// Black bars left & right
 		ret.height = frame_ext.height;
 		ret.width = frame_ext.height * target_aspect;
-		LOG_DEBUG("clamped viewport width: %ux%u", ret.width, ret.height);
 	}
 
 	ret.x = (frame_ext.width - ret.width) / 2;
