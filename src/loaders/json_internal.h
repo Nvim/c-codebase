@@ -1,6 +1,8 @@
 #include <allocators/arena.h>
 #include <loaders/json_loader.h>
 
+#define MAX_OBJECT_ITEMS 128
+
 typedef enum json_token_type {
 	JSON_TOKEN_EOF = 0,
 	JSON_TOKEN_COMMA = ',',

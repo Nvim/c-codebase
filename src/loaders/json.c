@@ -536,7 +536,7 @@ bool json_parse_object(json_parser* parser, json_node* out, json_token* token) {
 		out->value_type = JSON_VALUE_OBJECT;
 		out->value.object = (json_object){
 			.size = 0,
-			.first = NULL,
+			.nodes = NULL,
 		};
 		return true;
 	}
@@ -548,7 +548,10 @@ bool json_parse_object(json_parser* parser, json_node* out, json_token* token) {
 		return false;
 	}
 
-	json_object_elem *first, *elem = NULL;
+	json_node_table map =
+		json_node_table_create(parser->arena, MAX_OBJECT_ITEMS, hash_default);
+	ASSERT(map.raw);
+
 	uint64_t size = 0;
 
 	while (true) {
@@ -575,22 +578,8 @@ bool json_parse_object(json_parser* parser, json_node* out, json_token* token) {
 		if (!node) { return false; }
 
 		// Allocate new object element:
-		json_object_elem* new_elem =
-			arena_push_z(parser->arena, json_object_elem);
-		if (!new_elem) { return false; }
-		{
-			new_elem->key = key;
-			new_elem->value = node;
-			new_elem->next = NULL;
-		}
+		json_node_table_insert(map, key, node);
 
-		if (size == 0) {
-			first = new_elem;
-		} else {
-			elem->next = new_elem;
-		}
-
-		elem = new_elem;
 		size++;
 
 		// If not comma, exit, else consume:
@@ -607,11 +596,12 @@ bool json_parse_object(json_parser* parser, json_node* out, json_token* token) {
 
 	parser->depth++;
 
+	ASSERT(json_node_table_usage(map) == size);
 	{
 		out->value_type = JSON_VALUE_OBJECT;
 		out->value.object = (json_object){
-			.first = first,
 			.size = size,
+			.nodes = map,
 		};
 	}
 

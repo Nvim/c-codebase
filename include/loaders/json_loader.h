@@ -1,6 +1,7 @@
 #ifndef JSON_LOADER_H
 #define JSON_LOADER_H
 
+#include <containers/hashtable.h>
 #include <strings/path.h>
 #include <strings/string.h>
 
@@ -27,15 +28,11 @@ typedef struct json_array {
 	json_array_elem* first;
 } json_array;
 
-typedef struct json_object_elem {
-	string key;
-	json_node* value;
-	struct json_object_elem* next;
-} json_object_elem;
+HASHTABLE_DEFINE_PTR_TYPE(json_node, json_node_table)
 
 typedef struct json_object {
 	uint64_t size;
-	json_object_elem* first;
+	json_node_table nodes; // Key-value pairs
 } json_object;
 
 typedef struct json_node {
