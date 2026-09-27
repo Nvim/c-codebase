@@ -4,13 +4,12 @@
 #include <core/log.h>
 #include <strings/string.h>
 
+#include <limits.h>
 #include <string.h>
 
-static bool _is_elem_null(void* elem, uint32_t elem_size) {
-	for (uint32_t i = 0; i < elem_size; i++) {
-		if (((char*)elem)[i] != 0x0) { return false; }
-	}
-	return true;
+static bool _is_elem_null(void const* elem, uint32_t elem_size) {
+	static unsigned char const zeros[8] = {0};
+	return memcmp(elem, zeros, elem_size) == 0;
 }
 
 hashtable_t* hashtable_create(arena_t* arena, uint32_t count,
@@ -34,7 +33,7 @@ hashtable_t* hashtable_create(arena_t* arena, uint32_t count,
 		return NULL;
 	}
 
-	ret->memory = arena_alloc(arena, allocation_size);
+	ret->memory = arena_alloc_clear(arena, allocation_size, 0);
 	if (!ret->memory) {
 		LOG_ERR("allocation failed");
 		return NULL;
@@ -106,7 +105,7 @@ uint32_t hashtable_usage(hashtable_t* ht) {
 	return ((ht_impl*)ht)->alloc_count;
 }
 
-LIB_EXPORT void hashtable_reset(hashtable_t* ht) {
+void hashtable_reset(hashtable_t* ht) {
 	if (!ht) {
 		LOG_ERR("invalid parameter");
 		return;
@@ -119,7 +118,7 @@ LIB_EXPORT void hashtable_reset(hashtable_t* ht) {
 }
 
 // Source: https://github.com/aappleby/smhasher/blob/master/src/Hashes.cpp
-uint32_t MurmurOAAT_32(string* key, uint32_t seed) {
+static uint32_t MurmurOAAT_32(string* key, uint32_t seed) {
 	for (size_t i = 0; i < key->len; ++i) {
 		seed ^= key->str[i];
 		seed *= 0x5bd1e995;
@@ -136,4 +135,50 @@ size_t hash_default(string* key, uint32_t elem_count) {
 	static uint32_t seed = 0x12345678;
 
 	return MurmurOAAT_32(key, seed) % elem_count;
+}
+
+typedef struct ht_iterator_impl {
+	void* ptr;
+	ht_impl* table;
+} ht_iterator_impl;
+
+hashtable_iterator_t* hashtable_iterate(hashtable_t* table, arena_t* arena) {
+	ht_impl* ht = (ht_impl*)table;
+	if (!arena || !table) { return NULL; }
+
+	ht_iterator_impl* ret = arena_push_z(arena, ht_iterator_impl);
+	if (!ret) {
+		LOG_ERR("couldn't allocate iterator");
+		return NULL;
+	}
+
+	ret->table = ht;
+	ret->ptr = ht->memory;
+
+	return (hashtable_iterator_t*)ret;
+}
+
+void* hashtable_iterator_next(hashtable_t* table,
+							  hashtable_iterator_t* iterator) {
+	ht_iterator_impl* it = (ht_iterator_impl*)iterator;
+	if (!it || it->table != (ht_impl*)table) { return NULL; }
+
+	ht_impl* tbl = it->table;
+
+	size_t it_addr = (size_t)it->ptr;
+	size_t table_begin = (size_t)tbl->memory;
+	size_t table_end =
+		table_begin + ht_allocation_size(tbl->max_allocs, tbl->elem_size);
+
+	if (it_addr < table_begin) { return NULL; }
+	if (it_addr > table_end) { return NULL; }
+
+	while ((size_t)it->ptr < table_end) {
+		uint8_t* ptr = it->ptr;
+		ptr += tbl->elem_size;
+		it->ptr = ptr;
+		if (!_is_elem_null(ptr, tbl->elem_size)) { return it->ptr; }
+	}
+
+	return NULL;
 }

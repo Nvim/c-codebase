@@ -57,6 +57,26 @@ LIB_EXPORT uint32_t hashtable_usage(hashtable_t* ht);
  */
 LIB_EXPORT void hashtable_reset(hashtable_t* ht);
 
+typedef struct hashtable_iterator_t hashtable_iterator_t;
+
+/**
+ * @brief Get a new iterator pointing at the beginning of the table.
+ */
+LIB_EXPORT hashtable_iterator_t* hashtable_iterate(hashtable_t* table,
+												   arena_t* arena);
+
+/**
+ * @brief Get address of next element in the table.
+ * @note Iterator has to have been created for this specific table. It will be
+ * incremented by the call.
+ *
+ * @param table Hashtable to iterate
+ * @param iterator A valid iterator into that table
+ * @return A pointer to the next element, or NULL when iterator is invalid.
+ */
+LIB_EXPORT void* hashtable_iterator_next(hashtable_t* table,
+										 hashtable_iterator_t* iterator);
+
 // Type safe wrapper. Use with copied types.
 #define HASHTABLE_DEFINE_TYPE(T, Name)                                         \
                                                                                \
