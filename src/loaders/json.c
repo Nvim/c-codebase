@@ -536,7 +536,7 @@ bool json_parse_object(json_parser* parser, json_node* out, json_token* token) {
 		out->value_type = JSON_VALUE_OBJECT;
 		out->value.object = (json_object){
 			.size = 0,
-			.nodes = NULL,
+			.nodes = (json_node_table){0},
 		};
 		return true;
 	}

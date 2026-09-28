@@ -14,9 +14,9 @@ void print_newline(uint32_t count) {
 	for (uint32_t i = 0; i < count; ++i) { printf("  "); }
 }
 
-void print_node(json_node* node, uint32_t depth) {
+void print_node(json_node* node, uint32_t depth, arena_t* scratch) {
 	json_array_elem* arr_item;
-	json_object_elem* obj_item;
+	json_node* obj_item;
 	switch (node->value_type) {
 	case JSON_VALUE_NUMBER:
 		printf("%f", node->value.number); //
@@ -39,7 +39,7 @@ void print_node(json_node* node, uint32_t depth) {
 		print_newline(depth);
 		arr_item = node->value.array.first;
 		while (arr_item) {
-			print_node(arr_item->node, depth + 1);
+			print_node(arr_item->node, depth + 1, scratch);
 			arr_item = arr_item->next;
 			if (arr_item) {
 				printf(",");
@@ -53,12 +53,21 @@ void print_node(json_node* node, uint32_t depth) {
 	case JSON_VALUE_OBJECT:
 		printf("{");
 		print_newline(depth);
-		obj_item = node->value.object.first;
-		while (obj_item) {
-			printf("\"" STR_FMT "\": ", STR_FMT_ARGS(obj_item->key));
-			print_node(obj_item->value, depth + 1);
-			obj_item = obj_item->next;
-			if (obj_item) {
+		if (node->value.object.size == 0) {
+			printf("}");
+			break;
+		}
+
+		json_node_table tbl = node->value.object.nodes;
+		hashtable_iterator_t* it = hashtable_iterate(tbl.raw, scratch);
+
+		hashtable_iterate_result it_res =
+			hashtable_iterator_next(tbl.raw, it, &obj_item);
+		while (it_res.ok) {
+			printf("\"" STR_FMT "\": ", STR_FMT_ARGS(it_res.key));
+			print_node(obj_item, depth + 1, scratch);
+			it_res = hashtable_iterator_next(tbl.raw, it, &obj_item);
+			if (it_res.ok) {
 				printf(",");
 				print_newline(depth);
 			} else {
@@ -101,7 +110,7 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
-	print_node(root, 1);
+	print_node(root, 1, scratch.arena);
 
 	arena_destroy(arena);
 

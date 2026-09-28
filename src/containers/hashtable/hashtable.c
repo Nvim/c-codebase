@@ -138,7 +138,7 @@ size_t hash_default(string* key, uint32_t elem_count) {
 }
 
 typedef struct ht_iterator_impl {
-	void* ptr;
+	uint32_t index;
 	ht_impl* table;
 } ht_iterator_impl;
 
@@ -153,32 +153,32 @@ hashtable_iterator_t* hashtable_iterate(hashtable_t* table, arena_t* arena) {
 	}
 
 	ret->table = ht;
-	ret->ptr = ht->memory;
+	ret->index = 0;
 
 	return (hashtable_iterator_t*)ret;
 }
 
-void* hashtable_iterator_next(hashtable_t* table,
-							  hashtable_iterator_t* iterator) {
+hashtable_iterate_result hashtable_iterator_next(hashtable_t* table,
+												 hashtable_iterator_t* iterator,
+												 void* out) {
+	hashtable_iterate_result ret = {0};
 	ht_iterator_impl* it = (ht_iterator_impl*)iterator;
-	if (!it || it->table != (ht_impl*)table) { return NULL; }
+	if (!it || it->table != (ht_impl*)table) { return ret; }
 
 	ht_impl* tbl = it->table;
 
-	size_t it_addr = (size_t)it->ptr;
-	size_t table_begin = (size_t)tbl->memory;
-	size_t table_end =
-		table_begin + ht_allocation_size(tbl->max_allocs, tbl->elem_size);
+	if (it->index > tbl->max_allocs) { return ret; }
 
-	if (it_addr < table_begin) { return NULL; }
-	if (it_addr > table_end) { return NULL; }
-
-	while ((size_t)it->ptr < table_end) {
-		uint8_t* ptr = it->ptr;
-		ptr += tbl->elem_size;
-		it->ptr = ptr;
-		if (!_is_elem_null(ptr, tbl->elem_size)) { return it->ptr; }
+	while (it->index < tbl->max_allocs) {
+		void* ptr = (char*)tbl->memory + (it->index * tbl->elem_size);
+		it->index++;
+		if (!_is_elem_null(ptr, tbl->elem_size)) {
+			memcpy(out, ptr, tbl->elem_size);
+			ret.ok = true;
+			ret.key = str("big problem");
+			break;
+		}
 	}
 
-	return NULL;
+	return ret;
 }
