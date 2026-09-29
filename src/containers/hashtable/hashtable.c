@@ -160,7 +160,7 @@ hashtable_iterator_t* hashtable_iterate(hashtable_t* table, arena_t* arena) {
 
 LIB_EXPORT bool hashtable_iterator_next(hashtable_t* table,
 										hashtable_iterator_t* iterator,
-										void* out){
+										void* out) {
 	ht_iterator_impl* it = (ht_iterator_impl*)iterator;
 	if (!it || it->table != (ht_impl*)table) { return false; }
 

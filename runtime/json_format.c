@@ -1,5 +1,3 @@
-#include "../src/loaders/json_internal.h" // TODO: bad
-
 #include <allocators/arena.h>
 #include <filesystem/filesystem.h>
 #include <loaders/json_loader.h>
@@ -16,7 +14,7 @@ void print_newline(uint32_t count) {
 
 void print_node(json_node* node, uint32_t depth, arena_t* scratch) {
 	json_array_elem* arr_item;
-	json_node* obj_item;
+	json_object_elem* obj_item;
 	switch (node->value_type) {
 	case JSON_VALUE_NUMBER:
 		printf("%f", node->value.number); //
@@ -61,13 +59,12 @@ void print_node(json_node* node, uint32_t depth, arena_t* scratch) {
 		json_node_table tbl = node->value.object.nodes;
 		hashtable_iterator_t* it = hashtable_iterate(tbl.raw, scratch);
 
-		hashtable_iterate_result it_res =
-			hashtable_iterator_next(tbl.raw, it, &obj_item);
-		while (it_res.ok) {
-			printf("\"" STR_FMT "\": ", STR_FMT_ARGS(it_res.key));
-			print_node(obj_item, depth + 1, scratch);
-			it_res = hashtable_iterator_next(tbl.raw, it, &obj_item);
-			if (it_res.ok) {
+		bool ok = hashtable_iterator_next(tbl.raw, it, &obj_item);
+		while (ok) {
+			printf("\"" STR_FMT "\": ", STR_FMT_ARGS(obj_item->key));
+			print_node(obj_item->node, depth + 1, scratch);
+			ok = hashtable_iterator_next(tbl.raw, it, &obj_item);
+			if (ok) {
 				printf(",");
 				print_newline(depth);
 			} else {

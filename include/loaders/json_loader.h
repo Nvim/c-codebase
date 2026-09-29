@@ -28,11 +28,17 @@ typedef struct json_array {
 	json_array_elem* first;
 } json_array;
 
-HASHTABLE_DEFINE_PTR_TYPE(json_node, json_node_table)
+// Regular node + its key
+typedef struct json_object_elem {
+	string key;
+	json_node* node;
+} json_object_elem;
+
+HASHTABLE_DEFINE_PTR_TYPE(json_object_elem, json_node_table)
 
 typedef struct json_object {
 	uint64_t size;
-	json_node_table nodes; // Key-value pairs
+	json_node_table nodes; // Hashtable of key-value pairs
 } json_object;
 
 typedef struct json_node {

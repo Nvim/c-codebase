@@ -578,7 +578,14 @@ bool json_parse_object(json_parser* parser, json_node* out, json_token* token) {
 		if (!node) { return false; }
 
 		// Allocate new object element:
-		json_node_table_insert(map, key, node);
+		json_object_elem* new_elem =
+			arena_push_z(parser->arena, json_object_elem);
+		if (!new_elem) { return false; }
+		{
+			new_elem->key = key;
+			new_elem->node = node;
+		}
+		json_node_table_insert(map, key, new_elem);
 
 		size++;
 
