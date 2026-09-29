@@ -57,13 +57,13 @@ void print_node(json_node* node, uint32_t depth, arena_t* scratch) {
 		}
 
 		json_node_table tbl = node->value.object.nodes;
-		hashtable_iterator_t* it = hashtable_iterate(tbl.raw, scratch);
+		json_node_table_iterator_t* it = json_node_table_iterate(tbl, scratch);
 
-		bool ok = hashtable_iterator_next(tbl.raw, it, &obj_item);
+		bool ok = json_node_table_iterator_next(tbl, it, &obj_item);
 		while (ok) {
 			printf("\"" STR_FMT "\": ", STR_FMT_ARGS(obj_item->key));
 			print_node(obj_item->node, depth + 1, scratch);
-			ok = hashtable_iterator_next(tbl.raw, it, &obj_item);
+			ok = json_node_table_iterator_next(tbl, it, &obj_item);
 			if (ok) {
 				printf(",");
 				print_newline(depth);

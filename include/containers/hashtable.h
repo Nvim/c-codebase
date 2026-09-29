@@ -108,6 +108,19 @@ LIB_EXPORT bool hashtable_iterator_next(hashtable_t* table,
                                                                                \
 	__attribute__((unused)) static inline void Name##_reset(Name ht) {         \
 		hashtable_reset(ht.raw);                                               \
+	}                                                                          \
+                                                                               \
+	typedef struct Name##_iterator_t Name##_iterator_t;                        \
+                                                                               \
+	__attribute__((unused)) static inline Name##_iterator_t* Name##_iterate(   \
+		Name ht, arena_t* arena) {                                             \
+		return (Name##_iterator_t*)hashtable_iterate(ht.raw, arena);           \
+	}                                                                          \
+                                                                               \
+	__attribute__((unused)) static inline bool Name##_iterator_next(           \
+		Name ht, Name##_iterator_t* iterator, T* out) {                        \
+		return hashtable_iterator_next(ht.raw,                                 \
+									   (hashtable_iterator_t*)iterator, out);  \
 	}
 
 // Pointer version, use for storing pointers to objects:
@@ -141,6 +154,22 @@ LIB_EXPORT bool hashtable_iterator_next(hashtable_t* table,
                                                                                \
 	__attribute__((unused)) static inline void Name##_reset(Name ht) {         \
 		hashtable_reset(ht.raw);                                               \
+	}                                                                          \
+                                                                               \
+	typedef struct Name##_iterator_t Name##_iterator_t;                        \
+                                                                               \
+	__attribute__((unused)) static inline Name##_iterator_t* Name##_iterate(   \
+		Name ht, arena_t* arena) {                                             \
+		return (Name##_iterator_t*)hashtable_iterate(ht.raw, arena);           \
+	}                                                                          \
+                                                                               \
+	__attribute__((unused)) static inline bool Name##_iterator_next(           \
+		Name ht, Name##_iterator_t* iterator, T** out) {                       \
+		void* ptr = NULL;                                                      \
+		bool ret = hashtable_iterator_next(                                    \
+			ht.raw, (hashtable_iterator_t*)iterator, &ptr);                    \
+		*out = (T*)ptr;                                                        \
+		return ret;                                                            \
 	}
 
 #endif // !HASHTABLE_H
