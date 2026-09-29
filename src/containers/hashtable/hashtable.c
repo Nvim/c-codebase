@@ -158,27 +158,24 @@ hashtable_iterator_t* hashtable_iterate(hashtable_t* table, arena_t* arena) {
 	return (hashtable_iterator_t*)ret;
 }
 
-hashtable_iterate_result hashtable_iterator_next(hashtable_t* table,
-												 hashtable_iterator_t* iterator,
-												 void* out) {
-	hashtable_iterate_result ret = {0};
+LIB_EXPORT bool hashtable_iterator_next(hashtable_t* table,
+										hashtable_iterator_t* iterator,
+										void* out){
 	ht_iterator_impl* it = (ht_iterator_impl*)iterator;
-	if (!it || it->table != (ht_impl*)table) { return ret; }
+	if (!it || it->table != (ht_impl*)table) { return false; }
 
 	ht_impl* tbl = it->table;
 
-	if (it->index > tbl->max_allocs) { return ret; }
+	if (it->index > tbl->max_allocs) { return false; }
 
 	while (it->index < tbl->max_allocs) {
 		void* ptr = (char*)tbl->memory + (it->index * tbl->elem_size);
 		it->index++;
 		if (!_is_elem_null(ptr, tbl->elem_size)) {
 			memcpy(out, ptr, tbl->elem_size);
-			ret.ok = true;
-			ret.key = str("big problem");
-			break;
+			return true;
 		}
 	}
 
-	return ret;
+	return false;
 }

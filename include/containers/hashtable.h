@@ -65,10 +65,6 @@ typedef struct hashtable_iterator_t hashtable_iterator_t;
 LIB_EXPORT hashtable_iterator_t* hashtable_iterate(hashtable_t* table,
 												   arena_t* arena);
 
-typedef struct hashtable_iterate_result {
-	bool ok;
-	string key;
-} hashtable_iterate_result;
 /**
  * @brief Get address of next element in the table.
  * @note Iterator has to have been created for this specific table. It will be
@@ -76,9 +72,10 @@ typedef struct hashtable_iterate_result {
  *
  * @param table Hashtable to iterate
  * @param iterator A valid iterator into that table
- * @return A pointer to the next element, or NULL when iterator is invalid.
+ * @param out A pointer to the next element, or NULL when iterator is invalid.
+ * @return true if iterator is valid, false otherwise
  */
-LIB_EXPORT hashtable_iterate_result hashtable_iterator_next(hashtable_t* table,
+LIB_EXPORT bool hashtable_iterator_next(hashtable_t* table,
 										hashtable_iterator_t* iterator,
 										void* out);
 
