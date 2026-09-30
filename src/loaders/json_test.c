@@ -539,7 +539,6 @@ void test_json_parse_valid(void) {
 		str("{\"nested\": {\"deep\": {\"deeper\": {\"deepest\": \"val\"}}}}"),
 		str("[true, true, true]"),
 		str("[null, null, null]"),
-		str("{\"\": \"empty key\"}"),
 		str("{\" \": \"space key\"}"),
 		str("[[[[[1]]]]]"),
 		str("{\"a\": 1, \"b\": [1, 2], \"c\": {\"d\": true}}"),
@@ -547,6 +546,8 @@ void test_json_parse_valid(void) {
 		str("{\"num\": 0, \"neg\": -1, \"float\": 1.5, \"bool\": true, "
 			"\"str\": "
 			"\"hi\"}"),
+		// [TODO]: handle empty key
+		// str("{\"\": \"empty key\"}"),
 	};
 
 	for (uint64_t i = 0; i < countof(valid_inputs); ++i) {
@@ -559,11 +560,13 @@ void test_json_parse_valid(void) {
 }
 
 void test_json_parse_nodes(void) {
-	string json_content = str("[ 123, 456, 789, { \"key\": 999 }, {\n} ]");
+	string json_content =
+		str("[ 123, 456, 789, { \"key\": 999, \"other\": 12 }, {\n} ]");
 	json_parser parser = json_parser_init(arena, json_content, 100);
 	json_node* node = json_parser_parse(&parser);
 	TEST_ASSERT_NOT_NULL(node);
 
+	// == ARRAY ==
 	TEST_ASSERT_EQUAL(JSON_VALUE_ARRAY, node->value_type);
 	TEST_ASSERT_EQUAL(5, node->value.array.size);
 
@@ -574,22 +577,41 @@ void test_json_parse_nodes(void) {
 		elem = elem->next;
 	}
 
-	TEST_ASSERT_EQUAL(JSON_VALUE_OBJECT, elem->node->value_type);
-	TEST_ASSERT_EQUAL(3, elem->index);
+	// == OBJECT ==
+	{ // { "key": 999 }
+		TEST_ASSERT_EQUAL(JSON_VALUE_OBJECT, elem->node->value_type);
+		TEST_ASSERT_EQUAL(3, elem->index);
 
-	TEST_ASSERT_EQUAL(1, elem->node->value.object.size);
-	json_object_elem* obj = elem->node->value.object.first;
-	TEST_ASSERT_NULL(obj->next);
+		TEST_ASSERT_EQUAL(2, elem->node->value.object.size);
+		json_node_table nodes = elem->node->value.object.nodes;
+		TEST_ASSERT_EQUAL(2, json_node_table_usage(nodes));
 
-	TEST_ASSERT_TRUE(string_compare(obj->key, str("key")));
-	TEST_ASSERT_EQUAL(JSON_VALUE_NUMBER, obj->value->value_type);
-	TEST_ASSERT_EQUAL(999.f, obj->value->value.number);
+		json_object_elem* pair;
+		json_node_table_iterator_t* it = json_node_table_iterate(nodes, arena);
+
+		// key: 999
+		TEST_ASSERT_TRUE(json_node_table_iterator_next(nodes, it, &pair));
+		TEST_ASSERT_TRUE(string_compare(pair->key, str("key")));
+		TEST_ASSERT_EQUAL(JSON_VALUE_NUMBER, pair->node->value_type);
+		TEST_ASSERT_EQUAL(999.f, pair->node->value.number);
+
+		// other: 12
+		TEST_ASSERT_TRUE(json_node_table_iterator_next(nodes, it, &pair));
+		TEST_ASSERT_TRUE(string_compare(pair->key, str("other")));
+		TEST_ASSERT_EQUAL(JSON_VALUE_NUMBER, pair->node->value_type);
+		TEST_ASSERT_EQUAL(12.f, pair->node->value.number);
+		TEST_ASSERT_FALSE(json_node_table_iterator_next(nodes, it, &pair));
+	}
 
 	elem = elem->next;
-	TEST_ASSERT_NULL(elem->next);
-	TEST_ASSERT_EQUAL(JSON_VALUE_OBJECT, elem->node->value_type);
-	TEST_ASSERT_EQUAL(0, elem->node->value.object.size);
-	TEST_ASSERT_NULL(elem->node->value.object.first);
+	{ // Empty object
+		TEST_ASSERT_EQUAL(JSON_VALUE_OBJECT, elem->node->value_type);
+		TEST_ASSERT_EQUAL(4, elem->index);
+
+		TEST_ASSERT_EQUAL(0, elem->node->value.object.size);
+		json_node_table nodes = elem->node->value.object.nodes;
+		TEST_ASSERT_NULL(nodes.raw);
+	}
 }
 
 void test_json_max_depth(void) {
@@ -609,12 +631,12 @@ void test_json_max_depth(void) {
 int main(void) {
 	UNITY_BEGIN();
 
+	RUN_TEST(test_json_parse_valid);
 	RUN_TEST(test_json_tokenize_good);
 	RUN_TEST(test_json_tokenize_number_good);
 	RUN_TEST(test_json_tokenize_number_bad);
 	RUN_TEST(test_json_tokenize_keywords);
 	RUN_TEST(test_json_parse_invalid);
-	RUN_TEST(test_json_parse_valid);
 	RUN_TEST(test_json_parse_nodes);
 	RUN_TEST(test_json_max_depth);
 

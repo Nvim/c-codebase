@@ -385,6 +385,11 @@ bool json_parse_number(UNUSED json_parser* parser, json_node* out,
 bool json_parse_string(UNUSED json_parser* parser, json_node* out,
 					   json_token* token) {
 
+	if (token->value.s.len == 0) {
+		out->value_type = JSON_VALUE_STRING;
+		out->value.string = STRING_EMPTY;
+		return true;
+	}
 	char* c = token->value.s.str;
 
 	// [TODO]: process non-ASCII and weird escape sequences (headache)
@@ -563,6 +568,15 @@ bool json_parse_object(json_parser* parser, json_node* out, json_token* token) {
 			return false;
 		}
 		string key = key_node->value.string;
+
+		/**
+		 * [TODO]: Empty key unsupported for now. Don't know how I should handle
+		 * it yet.
+		 */
+		if (key.len == 0) {
+			LOG_ERR("empty key isn't supported");
+			return false;
+		}
 
 		// Colon:
 		if (!_consume_and_expect(parser, &tok, JSON_TOKEN_COLON)) {
