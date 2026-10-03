@@ -130,19 +130,19 @@ void test_array_at_readonly(void) {
 
 	// Use rw to set values:
 	for (size_t i = 0; i < 12; ++i) {
-		int* elem;
+		size_t* elem;
 		TEST_ASSERT_TRUE(_array_at(arr, (void**)&elem, i));
 		*elem = i * 3;
 	}
 
 	// Use r only to read
 	for (size_t i = 0; i < 12; ++i) {
-		int const* elem;
+		size_t const* elem;
 		TEST_ASSERT_TRUE(_array_at_const(arr, (void const**)&elem, i));
 		TEST_ASSERT_EQUAL(i * 3, *elem);
 
 		// Compare with array_get:
-		int out;
+		size_t out;
 		TEST_ASSERT_TRUE(_array_get(arr, &out, i));
 		TEST_ASSERT_EQUAL(i * 3, out);
 	}

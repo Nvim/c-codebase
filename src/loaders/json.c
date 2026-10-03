@@ -19,23 +19,27 @@ static char const* json_token_names[] = {
 	[JSON_TOKEN_NUMBER] = "number",
 };
 
-json_lexer json_lexer_init(char const* base) {
+json_lexer json_lexer_init(string base) {
 	return (json_lexer){
 		.has_peeked = false,
 		.peeked_token = {0},
 		.base_str = base,
-		.str = base,
+		.str = base.str,
 		.cur_line = 0,
 	};
 }
 
-bool json_lex_number(char const* num_str, json_token* out) {
+bool json_lex_number(string str, json_token* out) {
+
+	if (str.len == 0) { return false; }
 
 	uint64_t pos = 0;
 	bool dot_seen = false;
 	bool negative = false;
 	bool int_digits = false;
 	bool frac_digits = false;
+
+	char* num_str = str.str;
 
 	if (num_str[pos] == '-') {
 		negative = true;
@@ -45,6 +49,8 @@ bool json_lex_number(char const* num_str, json_token* out) {
 	// TODO: exponent notation
 	while (isdigit(num_str[pos]) || (!dot_seen && num_str[pos] == '.')) {
 		char c = num_str[pos++];
+
+		if (pos > str.len) { return false; }
 
 		if (c == '.') {
 			if (!int_digits) { return false; }
@@ -83,11 +89,14 @@ bool json_lex_number(char const* num_str, json_token* out) {
 	return true;
 }
 
-bool json_lex_keyword(char const* s, json_token* out) {
+bool json_lex_keyword(string str, json_token* out) {
+	if (str.len == 0) { return false; }
 	uint64_t pos = 0;
+	uint64_t max = MIN(5, str.len);
+	char* s = str.str;
 	char c = s[pos];
 	while (isalpha(c)) {
-		if (pos > 5) { return false; }
+		if (pos > max) { return false; }
 		c = s[pos++];
 	}
 
@@ -103,13 +112,18 @@ bool json_lex_keyword(char const* s, json_token* out) {
 	return true;
 }
 
-bool json_lex_string(char const* s, json_token* out) {
+bool json_lex_string(string str, json_token* out) {
+	if (str.len < 2) { return false; }
 	uint64_t pos = 0;
+	char* s = str.str;
 	if (s[pos] != '"') { return false; }
 	char c = s[++pos];
 
 	// TODO: escaping
-	while (c != '"') { c = s[++pos]; }
+	while (c != '"') {
+		if (pos >= str.len) { return false; }
+		c = s[++pos];
+	}
 
 	string value = {0};
 	if (pos == 1) {
@@ -129,9 +143,10 @@ bool json_lex_string(char const* s, json_token* out) {
 bool json_peek_token(json_lexer* lexer) {
 	if (lexer->has_peeked) { return false; }
 	char const* ss = lexer->str;
+	char const* end = lexer->base_str.str + lexer->base_str.len;
 
 	// Skip whitespace
-	while (isspace(*ss)) {
+	while (isspace(*ss) && ss < end) {
 		if (*ss == '\n' || *ss == '\r') { lexer->cur_line++; }
 		ss++;
 	}
@@ -144,7 +159,7 @@ bool json_peek_token(json_lexer* lexer) {
 	case EOF:
 	case '\0':
 		out->type = JSON_TOKEN_EOF;
-		out->begin_pos = ss - lexer->base_str;
+		out->begin_pos = ss - lexer->base_str.str;
 		out->value.chr = '\0';
 		lexer->has_peeked = true;
 		return true;
@@ -156,24 +171,26 @@ bool json_peek_token(json_lexer* lexer) {
 	case JSON_TOKEN_CLOSE_SQ_BRACKET: {
 		out->type = chr;
 		out->value.chr = chr;
-		out->begin_pos = ss++ - lexer->base_str;
+		out->begin_pos = ss++ - lexer->base_str.str;
 		out->length = 1;
 		lexer->has_peeked = true;
 		return true;
 	}
 	}
 
+	uint64_t remaining = end - ss;
+	string ss_string = {.str = (char*)ss, .len = remaining};
 	if (isdigit(chr) || chr == '-') { // Number
-		if (!json_lex_number(ss, out)) { return false; }
+		if (!json_lex_number(ss_string, out)) { return false; }
 	} else if (isalpha(chr)) { // Keyword
-		if (!json_lex_keyword(ss, out)) { return false; }
+		if (!json_lex_keyword(ss_string, out)) { return false; }
 	} else if (chr == '"') { // String
-		if (!json_lex_string(ss, out)) { return false; }
+		if (!json_lex_string(ss_string, out)) { return false; }
 	} else { // Invalid
 		return false;
 	}
 
-	out->begin_pos = ss - lexer->base_str;
+	out->begin_pos = ss - lexer->base_str.str;
 	ss += out->length;
 	lexer->has_peeked = true;
 	return true;
@@ -193,7 +210,7 @@ bool json_consume_token(json_lexer* lexer, json_token* out) {
 	// Consume:
 	lexer->has_peeked = false;
 	memcpy(out, &lexer->peeked_token, sizeof(lexer->peeked_token));
-	lexer->str = &lexer->base_str[out->begin_pos + out->length];
+	lexer->str = &lexer->base_str.str[out->begin_pos + out->length];
 	if (out->type == JSON_TOKEN_STRING) { lexer->str += 2; }
 
 	return true;
@@ -201,7 +218,7 @@ bool json_consume_token(json_lexer* lexer, json_token* out) {
 
 // Parse
 json_parser json_parser_init(arena_t* arena, string str, int64_t max_depth) {
-	json_lexer lexer = json_lexer_init(str.str);
+	json_lexer lexer = json_lexer_init(str);
 	arena_checkpoint* check = arena_get_checkpoint(arena);
 	return (json_parser){.arena = arena,
 						 .lexer = lexer,
@@ -260,7 +277,7 @@ json_node* json_parser_parse(json_parser* parser) {
 
 	json_parser* p = parser;
 
-	ASSERT(p->lexer.base_str == p->lexer.str);
+	ASSERT(p->lexer.base_str.str == p->lexer.str);
 	if (!json_peek_token(&p->lexer)) { return NULL; }
 	json_token* token = &p->lexer.peeked_token;
 
@@ -393,7 +410,12 @@ bool json_parse_string(UNUSED json_parser* parser, json_node* out,
 	char* c = token->value.s.str;
 
 	// [TODO]: process non-ASCII and weird escape sequences (headache)
-	while (*c != '"') { c++; }
+	size_t i = 0;
+	while (*c != '"') {
+		if (i >= token->length) { return false; }
+		c++;
+		i++;
+	}
 
 	// Copy from string to parser's arena
 	out->value_type = JSON_VALUE_STRING;
