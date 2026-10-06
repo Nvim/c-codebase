@@ -6,10 +6,12 @@
 #include <engine/input.h>
 
 #include <allocators/arena.h>
+#include <filesystem/filesystem.h>
 #include <graphics/graphics.h>
+#include <loaders/json_loader.h>
 
 #include <dlfcn.h>
-#include <stdlib.h>
+#include <string.h>
 
 #define MAX_FRAMETIME_S 0.33
 
@@ -118,11 +120,6 @@ static bool _create_arenas(void) {
 	}
 	_state.game_arena = arena_create_from_config(arena_ci);
 
-	if (!arena_pool_init()) {
-		LOG_ERR("couldn't initialize arena pool");
-		return false;
-	}
-
 	return _state.game_arena && _state.engine_arena;
 }
 
@@ -208,8 +205,11 @@ bool engine_init(engine_config config) {
 		return false;
 	}
 
-	_state.window =
-		platform_create_window(config.window_size, config.window_title);
+	char buf[256];
+	strncpy(buf, config.window_title.str, config.window_title.len);
+	char* win_title = strcat(buf, platform_type_name(config.platform_type));
+
+	_state.window = platform_create_window(config.window_size, win_title);
 	if (!_state.window) {
 		LOG_ERR("couldn't create window");
 		return false;
@@ -217,7 +217,44 @@ bool engine_init(engine_config config) {
 
 	platform_register_framebuffer_size_callback(_framebuffer_callback);
 
-	_state.config = config;
+	// Scratch arena pool only
+	if (!arena_pool_init()) {
+		LOG_ERR("couldn't initialize arena pool");
+		return false;
+	}
+
+	{ // Use scratch to parse config
+		scratch_arena scratch;
+		ASSERT(arena_get_scratch(NULL, &scratch));
+
+		scratch_arena scratch_2;
+		ASSERT(arena_get_scratch(NULL, &scratch_2));
+
+		json_node* cfg_root = load_json(scratch.arena, scratch_2.arena,
+										str("./engine_config.json"));
+		if (!cfg_root) {
+			LOG_ERR("couldn't load config file");
+			return false;
+		}
+		if (!engine_config_parse(&_state.config, cfg_root)) {
+			LOG_ERR("couldn't parse config file");
+			return false;
+		}
+
+		arena_clear_scratch(scratch);
+		arena_clear_scratch(scratch_2);
+	}
+
+	LOG_INFO("loaded config from file: TODO DUMP");
+	ASSERT(_state.config.game_height == 180);
+	ASSERT(_state.config.max_engine_memory_bytes == 2 * MEMORY_GIB);
+	ASSERT(_state.config.max_game_memory_bytes == MEMORY_GIB);
+
+	// Engine arenas:
+	if (!_create_arenas()) {
+		LOG_ERR("couldn't create arenas");
+		return false;
+	}
 
 	// Timing:
 	{
@@ -230,12 +267,6 @@ bool engine_init(engine_config config) {
 	// Input:
 	if (!engine_input_init()) { LOG_ERR("couldn't initialize input"); }
 
-	// Arenas:
-	if (!_create_arenas()) {
-		LOG_ERR("couldn't create arenas");
-		return false;
-	}
-
 	// GPU:
 	if (!_init_gpu()) {
 		LOG_ERR("couldn't initialize gpu");
@@ -246,6 +277,7 @@ bool engine_init(engine_config config) {
 
 	scratch_arena scratch;
 	ASSERT(arena_get_scratch(NULL, &scratch));
+
 	_state.renderer =
 		renderer_init(_state.engine_arena, scratch.arena, _state.frame_arena,
 					  &_state.gpu, game_resolution);

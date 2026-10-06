@@ -2,6 +2,7 @@
 #define ENGINE_H
 
 #include <platform/platform.h>
+#include <strings/path.h>
 
 #include <stdbool.h>
 
@@ -9,7 +10,7 @@ typedef struct engine_config {
 	// platform & windw
 	platform_type platform_type;
 	window_size window_size;
-	char const* window_title;
+	string window_title;
 
 	/**
 	 * [TODO]: Engine needs these for now because it "owns" and initializes
@@ -36,5 +37,8 @@ bool engine_init(engine_config config);
 bool engine_shutdown(void);
 
 bool engine_run(void);
+
+typedef struct json_node json_node;
+bool engine_config_parse(engine_config* out, json_node* root);
 
 #endif // !ENGINE_H

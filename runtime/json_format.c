@@ -5,8 +5,6 @@
 #include <strings/path.h>
 #include <strings/string.h>
 
-#include <loaders/json_loader.h>
-
 void print_newline(uint32_t count) {
 	printf("\n");
 	for (uint32_t i = 0; i < count; ++i) { printf("  "); }

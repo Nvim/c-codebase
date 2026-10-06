@@ -1,0 +1,18 @@
+{
+	"platform": {
+		"window_width": 1280,
+		"window_height": 720,
+		"window_title": "wip game"
+	},
+	"memory": {
+		"max_engine_bytes": 2147483648,
+		"max_game_bytes": 1073741824,
+		"max_frame_bytes": 268435456
+	},
+	"game": {
+		"resolution_width": 320,
+		"resolution_height": 180,
+		"timestep_seconds": 0.01666666666667,
+		"target_frametime_seconds": 0.01666666666667
+	}
+}

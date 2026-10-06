@@ -11,16 +11,13 @@ static double const GAME_TIMESTEP_S = 1.f / (float)GAME_TICKRATE_S;
 int main(int argc, char** argv) {
 
 	int exit_status = 0;
-
 	platform_type pf_type = _parse_platform_arg(argc, argv);
-	char title[256] = "Game - ";
-	char* window_title = strcat(title, platform_type_name(pf_type));
 
 	engine_config config = {0};
 	{
 		config.platform_type = pf_type;
 		config.window_size = (window_size){1280, 720};
-		config.window_title = window_title;
+		config.window_title = str("Game");
 		config.game_width = 320.f;
 		config.game_height = 180.f;
 		config.max_engine_memory_bytes = 2 * MEMORY_GIB;
