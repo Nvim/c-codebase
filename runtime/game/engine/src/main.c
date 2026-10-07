@@ -1,32 +1,38 @@
 #include "engine.h"
 
+#include <allocators/arena.h>
 #include <core/log.h>
+#include <loaders/json_loader.h>
 #include <string.h>
 
 static platform_type _parse_platform_arg(int argc, char** argv);
+static bool _load_config(engine_config* out, arena_t* arena);
 
-static double const GAME_TICKRATE_S = 60;
-static double const GAME_TIMESTEP_S = 1.f / (float)GAME_TICKRATE_S;
+// static double const GAME_TICKRATE_S = 60;
+// static double const GAME_TIMESTEP_S = 1.f / (float)GAME_TICKRATE_S;
 
 int main(int argc, char** argv) {
 
 	int exit_status = 0;
 	platform_type pf_type = _parse_platform_arg(argc, argv);
 
-	engine_config config = {0};
-	{
-		config.platform_type = pf_type;
-		config.window_size = (window_size){1280, 720};
-		config.window_title = str("Game");
-		config.game_width = 320.f;
-		config.game_height = 180.f;
-		config.max_engine_memory_bytes = 2 * MEMORY_GIB;
-		config.max_game_memory_bytes = 2 * MEMORY_GIB;
-		config.max_frame_memory_bytes = 0; // TODO
-		config.game_timestep_s = GAME_TIMESTEP_S;
+	if (!arena_pool_init()) {
+		LOG_FATAL("couldn't initialize arena pool");
+		return 1;
 	}
 
-	if (!engine_init(config)) {
+	engine_config conf;
+	scratch_arena scratch;
+	ASSERT(arena_get_scratch(NULL, &scratch));
+	if (!_load_config(&conf, scratch.arena)) {
+		LOG_FATAL("couldn't parse config file");
+		return 1;
+	}
+
+	LOG_INFO("loaded config from file: TODO DUMP");
+	conf.platform_type = pf_type;
+
+	if (!engine_init(conf)) {
 		LOG_FATAL("couldn't initialize engine");
 		return 1;
 	}
@@ -41,6 +47,7 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
+	arena_clear_scratch(scratch);
 	return exit_status;
 }
 
@@ -65,4 +72,23 @@ static platform_type _parse_platform_arg(int argc, char** argv) {
 
 	LOG_DEBUG("initializing engine for platform %s", platform_type_name(type));
 	return type;
+}
+
+static bool _load_config(engine_config* out, arena_t* scratch) {
+	scratch_arena scratch_2;
+	ASSERT(arena_get_scratch(scratch, &scratch_2));
+
+	json_node* cfg_root =
+		load_json(scratch, scratch_2.arena, str("./engine_config.json"));
+	if (!cfg_root) {
+		LOG_ERR("couldn't load config file");
+		return false;
+	}
+	if (!engine_config_parse(out, cfg_root)) {
+		LOG_ERR("couldn't parse config file");
+		return false;
+	}
+	arena_clear_scratch(scratch_2);
+
+	return true;
 }

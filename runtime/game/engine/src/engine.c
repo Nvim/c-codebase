@@ -198,6 +198,7 @@ static void _framebuffer_callback(window_size new_size) {
 bool engine_init(engine_config config) {
 
 	if (_state.init || _state.running) { return false; }
+	_state.config = config;
 
 	// Platform & Window:
 	if (!platform_init(config.platform_type)) {
@@ -205,9 +206,9 @@ bool engine_init(engine_config config) {
 		return false;
 	}
 
-	char buf[256];
-	strncpy(buf, config.window_title.str, config.window_title.len);
-	char* win_title = strcat(buf, platform_type_name(config.platform_type));
+	char win_title[256];
+	snprintf(win_title, 256, STR_FMT " (%s)", STR_FMT_ARGS(config.window_title),
+			 platform_type_name(config.platform_type));
 
 	_state.window = platform_create_window(config.window_size, win_title);
 	if (!_state.window) {
@@ -217,40 +218,9 @@ bool engine_init(engine_config config) {
 
 	platform_register_framebuffer_size_callback(_framebuffer_callback);
 
-	// Scratch arena pool only
-	if (!arena_pool_init()) {
-		LOG_ERR("couldn't initialize arena pool");
-		return false;
-	}
-
-	{ // Use scratch to parse config
-		scratch_arena scratch;
-		ASSERT(arena_get_scratch(NULL, &scratch));
-
-		scratch_arena scratch_2;
-		ASSERT(arena_get_scratch(NULL, &scratch_2));
-
-		json_node* cfg_root = load_json(scratch.arena, scratch_2.arena,
-										str("./engine_config.json"));
-		if (!cfg_root) {
-			LOG_ERR("couldn't load config file");
-			return false;
-		}
-		if (!engine_config_parse(&_state.config, cfg_root)) {
-			LOG_ERR("couldn't parse config file");
-			return false;
-		}
-
-		arena_clear_scratch(scratch);
-		arena_clear_scratch(scratch_2);
-	}
-
-	LOG_INFO("loaded config from file: TODO DUMP");
-	ASSERT(_state.config.game_height == 180);
-	ASSERT(_state.config.max_engine_memory_bytes == 2 * MEMORY_GIB);
-	ASSERT(_state.config.max_game_memory_bytes == MEMORY_GIB);
-
 	// Engine arenas:
+	ASSERT(config.max_engine_memory_bytes == 2 * MEMORY_GIB);
+	ASSERT(config.max_game_memory_bytes == MEMORY_GIB);
 	if (!_create_arenas()) {
 		LOG_ERR("couldn't create arenas");
 		return false;

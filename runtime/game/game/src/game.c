@@ -16,7 +16,7 @@ typedef struct game_state {
 // [TODO]: allocate on game arena
 static game_state _state = {0};
 
-static engine_api const* engine_ptr = NULL;
+static UNUSED engine_api const* engine_ptr = NULL;
 
 static bool game_init(engine_api const* engine_api) {
 	LOG_DEBUG("initializing game..");
