@@ -15,11 +15,21 @@ file(
 )
 target_sources(game PRIVATE ${GAME_SRC})
 
-add_custom_command(
-    TARGET game
-    POST_BUILD
-    COMMAND
-        ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/engine_config.json"
-        "${GAME_RUNTIME_DIR}/engine_config.json"
+# = Game Assets = #
+add_custom_target(copy_game_assets ALL
+    COMMENT "Copying game assets to ${GAME_RUNTIME_DIR}/game_assets"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets
+        ${GAME_RUNTIME_DIR}/game_assets
 )
+
+# engine config goes to root output dir
+add_custom_target(copy_engine_config ALL
+    COMMENT "Copying game assets to ${GAME_RUNTIME_DIR}/game_assets"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine_config.json
+        ${GAME_RUNTIME_DIR}/engine_config.json
+)
+
+add_dependencies(game copy_game_assets)
+add_dependencies(game copy_engine_config)

@@ -6,7 +6,7 @@
 
 #include <string.h>
 
-#define SHADER_ROOT "./"
+#define SHADER_ROOT "./shaders/"
 
 /* ***************************[ BUFFERED BUFFER ]**************************** */
 
