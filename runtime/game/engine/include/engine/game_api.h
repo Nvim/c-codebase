@@ -20,6 +20,6 @@ typedef struct game_api {
 	bool (*game_shutdown)(void);
 } game_api;
 
-void game_get_functions(game_api* out);
+LIB_EXPORT void game_get_functions(game_api* out);
 
 #endif // !GAME_FUNCTIONS_H
