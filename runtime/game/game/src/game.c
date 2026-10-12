@@ -44,7 +44,8 @@ static void game_process_input(engine_input_state const* input) {
 static bool game_update(double delta) {
 	UNUSED static double elapsed = 0.f;
 	elapsed += delta;
-	// LOG_DEBUG("tick %llu: %f s elapsed. (+%f s)", _state->ticks++, elapsed,
+	_state->ticks++;
+	// LOG_DEBUG("tick %llu: %f s elapsed. (+%f s)", _state->ticks, elapsed,
 	// delta);
 	return true;
 }
@@ -61,11 +62,22 @@ static void game_draw(renderer_packet* out) {
 	}
 	ASSERT(player_draw);
 
-	player_draw->color = (gpu_color){.r = .8f, .g = 0.f, .b = .9f, .a = 1.f};
+	static gpu_color const player_color = {.floats = {.8f, 0.f, .9f, 1.f}};
+	player_draw->color = player_color;
 	player_draw->position = _state->player_pos;
 	player_draw->scale = 1.f;
 	out->draw_count++;
 	// }
+	_state->frames++;
+}
+
+game_state_ptr game_before_reload(void) { return _state; }
+
+bool game_reload(game_state_ptr state) {
+	_state = state;
+	LOG_INFO("reloaded game from state %p at tick %ld (frame %ld)", state,
+			 _state->frames, _state->ticks);
+	return true;
 }
 
 static bool game_shutdown(void) {
@@ -81,5 +93,7 @@ void game_get_functions(game_api* out) {
 	out->game_should_quit = game_should_quit;
 	out->game_update = game_update;
 	out->game_draw = game_draw;
+	out->game_before_reload = game_before_reload;
+	out->game_reload = game_reload;
 	out->game_shutdown = game_shutdown;
 }

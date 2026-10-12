@@ -9,6 +9,8 @@
 
 typedef struct engine_api engine_api;
 
+typedef void* game_state_ptr;
+
 typedef struct game_api {
 	string (*game_get_version)(void);
 	bool (*game_init)(engine_api const* engine_api, arena_t* game_arena);
@@ -16,7 +18,8 @@ typedef struct game_api {
 	bool (*game_update)(double delta);
 	bool (*game_should_quit)(void);
 	void (*game_draw)(renderer_packet* out);
-	// TODO: game_reload
+	game_state_ptr (*game_before_reload)(void);
+	bool (*game_reload)(game_state_ptr state);
 	bool (*game_shutdown)(void);
 } game_api;
 

@@ -306,6 +306,25 @@ bool engine_run(void) {
 			if (platform_window_should_close(_state.window)) { break; }
 
 			engine_input_state const* input_state = engine_input_update();
+
+			if (input_state->released_keys[INPUT_KEY_R]) {
+				LOG_WARN("reloading game...");
+				game_state_ptr state = game_funcs.game_before_reload();
+				if (!_unload_game_dll(_state.game_dll_handle)) {
+					LOG_ERR("couldn't unload game dll");
+					break;
+				}
+				if (!_load_game()) {
+					LOG_ERR("couldn't reload game dll");
+					break;
+				}
+				if (!game_funcs.game_reload(state)) {
+					LOG_ERR("couldn't reload game");
+					break;
+				}
+				LOG_WARN("game reloaded");
+			}
+
 			game_funcs.game_process_input(input_state);
 		}
 
