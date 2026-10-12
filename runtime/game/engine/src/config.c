@@ -141,10 +141,9 @@ bool _parse_game(engine_config* out, json_node* node) {
 		return false;
 	}
 
-	v = validate_number(o.nodes, &value, str("timestep_seconds"), 1.f / 360.f,
-						1.f / 10.f);
+	v = validate_number(o.nodes, &value, str("timestep_seconds"), 1, 360);
 	if (v == VALIDATE_VALID) {
-		out->game_timestep_s = value;
+		out->game_timestep_s = 1.f / value;
 	} else if (v > VALIDATE_VALID) {
 		LOG_ERR("invalid timestep");
 		return false;

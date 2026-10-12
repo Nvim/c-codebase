@@ -12,7 +12,7 @@
 	"game": {
 		"resolution_width": 320,
 		"resolution_height": 180,
-		"timestep_seconds": 0.01666666666667,
-		"target_frametime_seconds": 0.01666666666667
+		"timestep_seconds": 60,
+		"target_fps": 60
 	}
 }

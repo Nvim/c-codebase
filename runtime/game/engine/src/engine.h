@@ -41,4 +41,6 @@ bool engine_run(void);
 typedef struct json_node json_node;
 bool engine_config_parse(engine_config* out, json_node* root);
 
+bool engine_config_reload(path config_file);
+
 #endif // !ENGINE_H

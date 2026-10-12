@@ -19,7 +19,7 @@ typedef void (*PFN_game_get_functions)(game_api* out);
 
 typedef struct engine_timer {
 	// double render_target_frametime_s; // from config
-	double game_timestep_s; // [TODO]: from game init
+	double game_timestep_s;
 
 	// runtime state
 	uint64_t current_frame;
@@ -29,6 +29,14 @@ typedef struct engine_timer {
 	double frame_time_s;
 	double frame_accumulator_s;
 } engine_timer;
+
+void engine_timer_update(engine_timer* t) {
+	double new_time_s = platform_get_time_s();
+	t->frame_time_s = new_time_s - t->current_time_s;
+	t->previous_time_s = t->current_time_s;
+	t->current_time_s = new_time_s;
+	t->frame_accumulator_s += MIN(t->frame_time_s, MAX_FRAMETIME_S);
+}
 
 typedef struct engine_state {
 	bool init;
@@ -280,7 +288,9 @@ bool engine_run(void) {
 	engine_api const engine_funcs = _state.engine_funcs;
 
 	// Init game
-	if (!game_funcs.game_init(&engine_funcs)) { return false; }
+	if (!game_funcs.game_init(&engine_funcs, _state.game_arena)) {
+		return false;
+	}
 
 	_state.running = true;
 
@@ -289,13 +299,7 @@ bool engine_run(void) {
 
 	while (!_quit && !game_funcs.game_should_quit()) {
 
-		{ // Timer update
-			double new_time_s = platform_get_time_s();
-			t->frame_time_s = new_time_s - t->current_time_s;
-			t->previous_time_s = t->current_time_s;
-			t->current_time_s = new_time_s;
-			t->frame_accumulator_s += MIN(t->frame_time_s, MAX_FRAMETIME_S);
-		}
+		engine_timer_update(t);
 
 		{ // Poll input
 			platform_poll();

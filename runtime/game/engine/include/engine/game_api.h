@@ -11,7 +11,7 @@ typedef struct engine_api engine_api;
 
 typedef struct game_api {
 	string (*game_get_version)(void);
-	bool (*game_init)(engine_api const* engine_api);
+	bool (*game_init)(engine_api const* engine_api, arena_t* game_arena);
 	void (*game_process_input)(engine_input_state const* input);
 	bool (*game_update)(double delta);
 	bool (*game_should_quit)(void);
