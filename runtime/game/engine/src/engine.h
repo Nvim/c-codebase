@@ -32,6 +32,9 @@ typedef struct engine_config {
 	double target_frametime_s;
 } engine_config;
 
+typedef struct engine_state engine_state;
+extern engine_state* _state;
+
 bool engine_init(engine_config config);
 
 bool engine_shutdown(void);
