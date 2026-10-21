@@ -63,6 +63,8 @@ bool platform_init(platform_type type) {
 
 	if (type == PLATFORM_TYPE_LINUX_WAYLAND) {
 		glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_WAYLAND);
+		glfwInitHint(GLFW_WAYLAND_LIBDECOR,
+             GLFW_WAYLAND_DISABLE_LIBDECOR);
 	} else {
 		glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
 	}
