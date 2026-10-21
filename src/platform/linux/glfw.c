@@ -73,8 +73,7 @@ bool platform_init(platform_type type) {
 	return _init;
 }
 
-// [NOTE] glfwTerminate crashes on Wayland
-void platform_destroy(void) { /* glfwTerminate(); */ }
+void platform_destroy(void) { glfwTerminate(); }
 
 window_t* platform_create_window(window_size size, char const* name) {
 	// [TODO]: Someday another API might be supported who knows
@@ -93,9 +92,13 @@ window_t* platform_create_window(window_size size, char const* name) {
 	glfwSetScrollCallback(window, scroll_callback);
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
-	window_impl* ret = (window_impl*)window;
+	/**
+	 * [NOTE]: window is malloced because i don't want to require arena for
+	 * window creation
+	 */
+	window_impl* ret = platform_memory_alloc(sizeof(window_impl));
+	if (!ret) { return NULL; }
 	ret->internal = window;
-	ASSERT(ret->internal == window);
 	return (window_t*)ret;
 }
 
@@ -122,9 +125,14 @@ bool platform_window_should_close(window_t* window) {
 	return glfwWindowShouldClose(w->internal);
 }
 
-void platform_destroy_window(UNUSED window_t* window) {
+void platform_destroy_window(window_t* window) {
+	if (!window) {
+		ASSERT(false);
+		return;
+	}
 	window_impl* w = (window_impl*)window;
 	glfwDestroyWindow(w->internal);
+	platform_memory_free(w);
 }
 
 void platform_poll(void) { glfwPollEvents(); }

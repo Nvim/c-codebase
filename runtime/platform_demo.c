@@ -76,6 +76,6 @@ int main(void) {
 	platform_destroy_window(win);
 
 	// [TODO]: glfw crash
-	// platform_destroy();
+	platform_destroy();
 	return 0;
 }
