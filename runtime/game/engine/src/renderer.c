@@ -141,21 +141,6 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 	}
 	gpu->destroy_shader(gpu, shader);
 
-	gpu_buffer staging_buffer = {0};
-	{ // Staging buffer
-		gpu_buffer_ci ci = {0};
-		{
-			ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
-			ci.size = 16 * MEMORY_MIB; // TODO: from renderer CI
-			ci.usage = GPU_BUFFER_USAGE_STAGING_UP;
-		}
-
-		staging_buffer = gpu->create_buffer(gpu, &ci);
-		if (!check_handle(staging_buffer.handle)) {
-			LOG_ERR("couldn't create staging buffer");
-			return NULL;
-		}
-	}
 	gpu_buffer quad_index_buffer = {0};
 	{ // Index buffer
 		gpu_buffer_ci ci = {0};
