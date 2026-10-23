@@ -911,6 +911,8 @@ gpu_frame_result vulkan_begin_frame(gpu_api* self) {
 		ret.status = FRAME_SKIP;
 	}
 
+	// Implicit reset before begin
+
 	ret.frame = vk_to_gpu_frame(&frame);
 	return ret;
 }
@@ -1275,6 +1277,21 @@ bool vulkan_wait_fence(gpu_api* self, gpu_fence gpu_fence,
 	}
 	VkFence fence = h->handle;
 
+bool vulkan_is_fence_signalled(gpu_api* self, gpu_fence gpu_fence) {
+	vk_api_state* state = self->state;
+	vk_opaque_handle* h =
+		vk_handle_pool_get(state->handle_pool, to_vk_handle(gpu_fence));
+
+	if (h->type != VK_OBJECT_TYPE_FENCE || !h->handle) {
+		LOG_ERR("invalid fence handle");
+		return false;
+	}
+	VkFence fence = h->handle;
+
+	VkResult r = vkGetFenceStatus(state->device, fence);
+	return r == VK_SUCCESS;
+}
+
 	if (!check_result(
 			vkWaitForFences(state->device, 1, &fence, VK_TRUE, timeout_ns))) {
 		LOG_ERR("couldn't wait for fence");
@@ -1339,9 +1356,6 @@ bool vulkan_end_frame(gpu_api* self, gpu_frame* f) {
 	// reset this even if we're not presenting
 	state->swapchain.img_index = 0;
 
-	// Reset frame's command buffer
-	// [TODO]: Should I reset it? Validation errors if I do
-	// vkResetCommandBuffer(cmd_data->command_buffer, 0);
 	cmd_data->state = CMDBUF_NOT_BEGAN;
 
 	// Advance frame count
@@ -2572,13 +2586,13 @@ bool vulkan_copy_to_staging_buffer(gpu_api* self, gpu_buffer dst,
 		return false;
 	}
 
-	if (size > (dst_data->size - data.offset)) {
+	if (size > (dst_data->size - data.dst_offset)) {
 		LOG_ERR("invalid transfer size");
 		return false;
 	}
 
 	ASSERT(src);
-	void* addr = (uint8_t*)dst_data->alloc_info.pMappedData + data.offset;
+	void* addr = (uint8_t*)dst_data->alloc_info.pMappedData + data.dst_offset;
 	memcpy(addr, src, size);
 
 	return true;
@@ -2894,6 +2908,7 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->get_image_format = vulkan_get_image_format;
 
 		/* == Debug Utils =================================================== */
+		out->is_fence_signalled = vulkan_is_fence_signalled;
 		out->cmd_push_debug_label = vulkan_cmd_push_debug_label;
 		out->cmd_begin_debug_marker = vulkan_cmd_begin_debug_marker;
 		out->cmd_end_debug_marker = vulkan_cmd_end_debug_marker;

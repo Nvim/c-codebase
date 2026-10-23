@@ -228,7 +228,7 @@ int main(int argc, char** argv) {
 		vbuf_payload.data_format = GPU_DATA_SPAN;
 		vbuf_payload.data.span.data = vertex_data;
 		vbuf_payload.data.span.size = sizeof(vertex_data);
-		vbuf_payload.offset = offset;
+		vbuf_payload.dst_offset = offset;
 	}
 	gpu.copy_to_staging_buffer(&gpu, staging_buffer, vbuf_payload);
 	offset += sizeof(vertex_data);
@@ -238,7 +238,7 @@ int main(int argc, char** argv) {
 		ibuf_payload.data_format = GPU_DATA_SPAN;
 		ibuf_payload.data.span.data = index_data;
 		ibuf_payload.data.span.size = sizeof(index_data);
-		ibuf_payload.offset = offset;
+		ibuf_payload.dst_offset = offset;
 	}
 	gpu.copy_to_staging_buffer(&gpu, staging_buffer, ibuf_payload);
 	offset += sizeof(index_data);
@@ -248,7 +248,7 @@ int main(int argc, char** argv) {
 		indirect_payload.data_format = GPU_DATA_SPAN;
 		indirect_payload.data.span.data = &indirect_data;
 		indirect_payload.data.span.size = sizeof(indirect_data);
-		indirect_payload.offset = offset;
+		indirect_payload.dst_offset = offset;
 	}
 	gpu.copy_to_staging_buffer(&gpu, staging_buffer, indirect_payload);
 
