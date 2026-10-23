@@ -287,7 +287,8 @@ typedef struct vk_api_state {
 	VkDevice device;
 	VkQueue queue;
 	VmaAllocator allocator;
-	VkCommandPool command_pool; // [TODO]: one pool per frame?
+	VkCommandPool frame_command_pool; // Frames in flight command buffers only
+	VkCommandPool user_command_pool;  // User-created standalone command buffers
 
 	VkDescriptorPool descriptor_pool;
 	VkDescriptorSetLayout descriptor_layout;

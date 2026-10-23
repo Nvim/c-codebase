@@ -1,6 +1,8 @@
 #ifndef RENDERER_H
 #define RENDERER_H
 
+#include "transfer_queue.h"
+
 #include <core/math.h>
 #include <graphics/graphics.h>
 
@@ -33,7 +35,7 @@ typedef struct renderer {
 
 	gpu_api* gpu;
 	gpu_pipeline pipeline;
-	gpu_buffer staging_buffer; // [TODO]: should i use a single one ?
+	transfer_queue* transfer_queue;
 	gpu_buffer quad_index_buffer;
 	buffered_buffer draw_buffer;		   // gpu_indirect_draw_command
 	buffered_buffer quad_instances_buffer; // renderer_draw_item

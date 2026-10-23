@@ -141,6 +141,13 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 	}
 	gpu->destroy_shader(gpu, shader);
 
+	transfer_queue* transfer_queue =
+		transfer_queue_init(arena, gpu, 128 * MEMORY_MIB, 6);
+	if (!transfer_queue) {
+		LOG_ERR("couldn't init transfer queue");
+		return false;
+	}
+
 	gpu_buffer quad_index_buffer = {0};
 	{ // Index buffer
 		gpu_buffer_ci ci = {0};
@@ -235,37 +242,24 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 	// Upload quad index buffer:
 	{
 		static uint32_t index_data[] = {0, 1, 2, 0, 2, 3};
-
-		gpu_command_buffer cmd = gpu->create_command_buffer(gpu);
-		ensure_handle(cmd.handle);
-		gpu->cmd_begin_debug_marker(gpu, cmd, "RENDERER INIT UPLOAD");
-
 		gpu_data_payload ibuf_payload = {0};
 		{
 			ibuf_payload.data_format = GPU_DATA_SPAN;
 			ibuf_payload.data.span.data = index_data;
 			ibuf_payload.data.span.size = sizeof(index_data);
-			ibuf_payload.offset = 0;
+			ibuf_payload.dst_offset = 0;
 		}
-		gpu->copy_to_staging_buffer(gpu, staging_buffer, ibuf_payload);
 
-		gpu_buffer_copy_info buf_copy = {0};
-		{
-			buf_copy.size = sizeof(index_data);
-			buf_copy.src = staging_buffer;
-			buf_copy.src_offset = 0;
-			buf_copy.dst = quad_index_buffer;
+		if (!transfer_queue_upload_buffer(transfer_queue, ibuf_payload,
+										  quad_index_buffer,
+										  GPU_BUFFER_ACCESS_INDEX_READ)) {
+			LOG_ERR("couldn't enqueue indices upload");
+			return NULL;
 		}
-		ASSERT(gpu->cmd_copy_to_buffer(gpu, cmd, &buf_copy));
-
-		gpu->cmd_end_debug_marker(gpu, cmd);
-
-		gpu_fence fence = gpu->create_fence(gpu, false);
-		ASSERT(gpu->submit_command_buffer_fence(gpu, cmd, fence));
-		ASSERT(gpu->wait_fence(gpu, fence, sec_to_ns(1)));
-
-		gpu->destroy_command_buffer(gpu, cmd);
-		gpu->destroy_fence(gpu, fence);
+		if (!transfer_queue_batch_process(transfer_queue)) {
+			LOG_ERR("couldn't start processing indices upload");
+			return NULL;
+		}
 	}
 
 	{
@@ -273,7 +267,7 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		ret->frame_arena = frame_arena;
 		ret->gpu = gpu;
 		ret->pipeline = pipeline;
-		ret->staging_buffer = staging_buffer;
+		ret->transfer_queue = transfer_queue;
 		ret->quad_index_buffer = quad_index_buffer;
 		ret->quad_instances_buffer = instances_buffer;
 		ret->uniform_buffer = uniform_buffer;
@@ -293,9 +287,9 @@ bool renderer_shutdown(renderer* renderer) {
 		gpu_api* gpu = renderer->gpu;
 		if (_frame_state == FRAME_RENDERING) { renderer_end_pass(renderer); }
 		if (_frame_state == FRAME_BEGUN) { renderer_end_frame(renderer); }
+		transfer_queue_destroy(renderer->transfer_queue);
 		gpu->wait_idle(gpu);
 		gpu->destroy_pipeline(gpu, renderer->pipeline);
-		gpu->destroy_buffer(gpu, renderer->staging_buffer);
 		gpu->destroy_buffer(gpu, renderer->quad_index_buffer);
 		gpu->destroy_buffer(gpu, renderer->uniform_buffer);
 		buffered_buffer_destroy(&renderer->draw_buffer, gpu);
@@ -310,6 +304,11 @@ bool renderer_begin_frame(renderer* renderer) {
 	if (_frame_state != FRAME_ENDED) {
 		LOG_ERR("a frame is already in flight");
 		return false;
+	}
+
+	// Tick transfer queue
+	if (!transfer_queue_tick(renderer->transfer_queue)) {
+		LOG_ERR("couldn't update transfer queue");
 	}
 
 	gpu_api* gpu = renderer->gpu;

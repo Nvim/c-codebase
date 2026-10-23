@@ -1,8 +1,61 @@
 #include "transfer_queue.h"
 
-bool transfer_queue_init(transfer_queue* out, arena_t* arena, gpu_api* gpu,
-						 uint64_t buffer_size, uint64_t max_uploads_in_flight) {
-	if (!out || !buffer_size || !max_uploads_in_flight) { return false; }
+// [NOTE]: Each task allocates its own command buffer from
+// `gpu_create_command_buffer`. I might want to keep a few ones in store and
+// re-use them when done instead if performance is too bad.
+typedef struct {
+	// uint64_t id; ?
+	gpu_command_buffer cmd;
+	gpu_fence fence;
+	uint64_t data_size;
+	// all barriers
+} transfer_task;
+
+ARRAY_DEFINE_TYPE(transfer_task, transfer_task_array)
+
+struct transfer_queue {
+	gpu_api* gpu;
+
+	transfer_task_array transfer_tasks;
+	uint32_t current_task;	  // monotonic, wraps around
+	uint32_t tasks_in_flight; // how many tasks are being processed
+
+	gpu_buffer staging_buf;
+	uint64_t total_usage_bytes;
+	uint64_t max_single_task_size;
+};
+
+static void _log_queue(transfer_queue* q) {
+	LOG_DEBUG("\ttasks in flight: %u", q->tasks_in_flight);
+	LOG_DEBUG("\tcurrent task: %u", q->current_task);
+	LOG_DEBUG("\ttotal usage bytes: %lu", q->total_usage_bytes);
+	LOG_DEBUG("\tmax single task size: %lu", q->max_single_task_size);
+}
+
+static bool _task_init(transfer_queue* q, transfer_task* t) {
+	gpu_api* gpu = q->gpu;
+
+	gpu_command_buffer cmd = gpu->create_command_buffer(gpu);
+	gpu_fence fence = gpu->create_fence(gpu, false);
+
+	if (!check_handle(cmd.handle) || !check_handle(fence.handle)) {
+		return false;
+	}
+
+	t->cmd = cmd;
+	t->fence = fence;
+	t->data_size = 0;
+
+	return true;
+}
+
+transfer_queue* transfer_queue_init(arena_t* arena, gpu_api* gpu,
+									uint64_t buffer_size,
+									uint32_t max_uploads_in_flight) {
+	transfer_queue* ret = NULL;
+	if (!buffer_size || !max_uploads_in_flight) { return ret; }
+
+	if (!gpu || !gpu->is_init) { return ret; }
 
 	gpu_buffer_ci ci = {0};
 	{
@@ -14,21 +67,294 @@ bool transfer_queue_init(transfer_queue* out, arena_t* arena, gpu_api* gpu,
 	gpu_buffer staging_buf = gpu->create_buffer(gpu, &ci);
 	if (!check_handle(staging_buf.handle)) {
 		LOG_ERR("couldn't create staging buffer");
-		return false;
+		return ret;
 	}
 
-	transfer_upload_task_array arr =
-		transfer_upload_task_array_create(arena, max_uploads_in_flight);
-	if (!arr.raw) {
-		LOG_ERR("couldn't allocate upload tasks array");
-		return false;
+	ret = arena_push_z(arena, transfer_queue);
+	if (!ret) {
+		LOG_ERR("couldn't allocate transfer queue");
+		return ret;
 	}
 
+	transfer_task_array transfer_tasks =
+		transfer_task_array_create(arena, max_uploads_in_flight);
+	if (!transfer_tasks.raw) {
+		LOG_ERR("couldn't allocate transfer_tasks queue");
+		return ret;
+	}
+	transfer_task* first = transfer_task_array_begin(transfer_tasks);
+	if (!first) {
+		LOG_ERR("couldn't get first task");
+		return ret;
+	}
+
+	uint64_t max_single_task_size = buffer_size / max_uploads_in_flight;
 	{
-		out->current_offset = 0;
-		out->staging_buf = staging_buf;
-		out->uploads = arr;
+		ret->gpu = gpu;
+
+		ret->transfer_tasks = transfer_tasks;
+		ret->current_task = 0;
+		ret->tasks_in_flight = 0;
+
+		ret->staging_buf = staging_buf;
+		ret->total_usage_bytes = 0;
+		ret->max_single_task_size = max_single_task_size;
 	}
+	_log_queue(ret);
+
+	// Init 1st task:
+	if (!_task_init(ret, first)) { LOG_ERR("couldn't init 1st task"); }
+
+	return ret;
+}
+
+void transfer_queue_destroy(transfer_queue* q) {
+	// Hacky way to make sure we haven't got anyting pending
+	gpu_api* gpu = q->gpu;
+	transfer_queue_batch_process_wait(q);
+	transfer_queue_tick(q);
+
+	// After processing, next task is automatically pre-initialized.
+	// Command buffer can be destroyed if nothing was submitted to it, but fence
+	// must be waited on first.
+	transfer_task* task;
+	if (!transfer_task_array_at(q->transfer_tasks, &task, q->current_task)) {
+		LOG_ERR("couldn't get current task");
+	}
+	gpu->destroy_command_buffer(gpu, task->cmd);
+	gpu->wait_fence(gpu, task->fence, sec_to_ns(10));
+	gpu->destroy_fence(gpu, task->fence);
+	gpu->destroy_buffer(gpu, q->staging_buf);
+}
+
+static bool _is_task_live(transfer_task* task) {
+	return task && check_handle(task->cmd.handle) &&
+		   check_handle(task->fence.handle);
+}
+
+static void _poll_task(transfer_queue* queue, transfer_task* task, bool wait) {
+	gpu_api* gpu = queue->gpu;
+	if (wait) {
+		uint64_t const timeout = sec_to_ns(10);
+		gpu->wait_fence(gpu, task->fence, timeout);
+	} else if (!gpu->is_fence_signalled(gpu, task->fence)) {
+		return;
+	}
+	// task finished: reclaim things
+	queue->total_usage_bytes -= task->data_size;
+	queue->tasks_in_flight--;
+	gpu->destroy_command_buffer(gpu, task->cmd);
+	gpu->destroy_fence(gpu, task->fence);
+	task->data_size = 0;
+}
+
+bool transfer_queue_tick(transfer_queue* queue) {
+	if (!queue) { return false; }
+
+	if (queue->tasks_in_flight == 0) { return true; }
+
+	transfer_task* task = transfer_task_array_begin(queue->transfer_tasks);
+	uint64_t count = transfer_task_array_size(queue->transfer_tasks);
+
+	uint32_t seen = 0;
+	uint32_t should_see = queue->tasks_in_flight;
+	for (uint32_t i = 0; i < count; i++) {
+		if (seen >= should_see) { break; }
+
+		if (_is_task_live(task)) {
+			_poll_task(queue, task, false); // tick doesn't wait
+			seen++;
+		}
+
+		task++;
+	}
+
+	LOG_DEBUG("%u tasks polled, %u completed, %u still pending", should_see,
+			  should_see - queue->tasks_in_flight, queue->tasks_in_flight);
+
+	return true;
+}
+
+static uint64_t _find_next_free_task(transfer_queue* q) {
+	size_t arr_len = transfer_task_array_size(q->transfer_tasks);
+
+	uint64_t idx = (q->current_task + 1) % arr_len;
+	transfer_task* task;
+
+	for (uint64_t i = 0; i < arr_len; i++) {
+		if (!transfer_task_array_at(q->transfer_tasks, &task, idx)) {
+			LOG_ERR("couldn't get next task");
+			return UINT64_MAX;
+		}
+		if (!_is_task_live(task)) { return idx; }
+		idx = (idx + 1) % arr_len;
+	}
+
+	return UINT64_MAX;
+}
+
+static bool _submit_task(transfer_queue* q, transfer_task* task) {
+	gpu_api* gpu = q->gpu;
+	gpu->submit_command_buffer_fence(gpu, task->cmd, task->fence);
+
+	// Submit even if task is noop so command buffer can be destroyed
+	if (task->data_size == 0) { return true; }
+
+	q->tasks_in_flight++;
+	LOG_DEBUG("task submitted (%u bytes). %u tasks in flight", task->data_size,
+			  q->tasks_in_flight);
+
+	uint64_t next_idx = _find_next_free_task(q);
+	if (!next_idx) {
+		LOG_ERR("couldn't get next task slot, queue is full");
+		return false;
+	}
+
+	q->current_task = next_idx;
+	transfer_task* next = NULL;
+	if (!transfer_task_array_at(q->transfer_tasks, &next, q->current_task)) {
+		LOG_ERR("couldn't get next task");
+		return false;
+	}
+
+	if (!_task_init(q, next)) {
+		LOG_ERR("couldn't prepare next task");
+		return false;
+	}
+
+	return true;
+}
+
+bool transfer_queue_upload_buffer(transfer_queue* q, gpu_data_payload payload,
+								  gpu_buffer dest,
+								  gpu_buffer_access buf_access) {
+	if (!q) { return false; }
+	if (q->tasks_in_flight == transfer_task_array_size(q->transfer_tasks)) {
+		LOG_ERR("queue full, must stall");
+		return false;
+	}
+
+	size_t payload_size;
+	uint8_t* payload_bytes = NULL;
+
+	if (payload.data_format == GPU_DATA_SPAN) {
+		payload_size = payload.data.span.size;
+		payload_bytes = payload.data.span.data;
+	} else {
+		payload_size = u8_array_size(payload.data.array);
+		payload_bytes = u8_array_begin(payload.data.array);
+	}
+
+	if (!payload_size || !payload_bytes) {
+		LOG_ERR("invalid payload");
+		return false;
+	}
+
+	if (payload_size > q->max_single_task_size) {
+		LOG_ERR("TODO: implement chunking");
+		return false;
+	}
+
+	transfer_task* task;
+	transfer_task_array_at(q->transfer_tasks, &task, q->current_task);
+	if (!task) {
+		LOG_ERR("couldn't get current task");
+		return false;
+	}
+
+	// Task is always initialized here
+	if (task->data_size + payload_size >= q->max_single_task_size) {
+		// Submit current and begin new task
+		if (!_submit_task(q, task)) { return false; }
+		// current_task was updated after submission, get it again
+		transfer_task_array_at(q->transfer_tasks, &task, q->current_task);
+		if (!task) {
+			LOG_ERR("couldn't get current task after submission");
+			return false;
+		}
+	}
+
+	// Push to current task
+	gpu_api* gpu = q->gpu;
+	size_t offset_in_staging = task->data_size;
+	size_t offset_in_dest = payload.dst_offset;
+
+	payload.dst_offset = offset_in_staging;
+	gpu->copy_to_staging_buffer(gpu, q->staging_buf, payload);
+	gpu_buffer_copy_info copy_ci = {0};
+	{
+		copy_ci.size = payload_size;
+		copy_ci.src = q->staging_buf;
+		copy_ci.dst = dest;
+		copy_ci.src_offset = task->data_size;
+		copy_ci.dst_offset = offset_in_dest;
+	}
+	ASSERT(gpu->cmd_buffer_barrier(gpu, task->cmd, dest, buf_access, GPU_BUFFER_ACCESS_TRANSFER_WRITE)); // NOLINT
+	ASSERT(gpu->cmd_copy_to_buffer(gpu, task->cmd, &copy_ci));
+	ASSERT(gpu->cmd_buffer_barrier(gpu, task->cmd, dest, GPU_BUFFER_ACCESS_TRANSFER_WRITE, buf_access)); // NOLINT
+
+	task->data_size += payload_size;
+	q->total_usage_bytes += payload_size;
+
+	return true;
+}
+
+bool transfer_queue_batch_process(transfer_queue* q) {
+	if (!q) { return false; }
+
+	transfer_task* task;
+	if (!transfer_task_array_at(q->transfer_tasks, &task, q->current_task)) {
+		LOG_ERR("couldn't get current task");
+		return false;
+	}
+
+	if (!_submit_task(q, task)) {
+		LOG_ERR("couldn't submit current task");
+		return false;
+	}
+
+	return true;
+}
+
+bool transfer_queue_batch_process_wait(transfer_queue* q) {
+	if (!q) { return false; }
+
+	// First, end current task
+	transfer_task* task;
+	if (!transfer_task_array_at(q->transfer_tasks, &task, q->current_task)) {
+		LOG_ERR("couldn't get current task");
+		return false;
+	}
+
+	if (!_submit_task(q, task)) {
+		LOG_ERR("couldn't submit current task");
+		return false;
+	}
+
+	// Iterate all tasks, and wait each fence
+	task = transfer_task_array_begin(q->transfer_tasks);
+	uint64_t count = transfer_task_array_size(q->transfer_tasks);
+
+	uint32_t seen = 0;
+	uint32_t should_see = q->tasks_in_flight;
+	for (uint32_t i = 0; i < count; i++) {
+		if (i == q->current_task) {
+			// new current tasks has no uploads pending, it was just initialized
+			continue;
+		}
+		if (seen >= should_see) { break; }
+
+		if (_is_task_live(task)) {
+			_poll_task(q, task, true);
+			seen++;
+		}
+
+		task++;
+	}
+
+	LOG_DEBUG("waited on %u tasks to complete. transfer queue empty", seen);
+	ASSERT(q->tasks_in_flight == 0);
+	ASSERT(q->total_usage_bytes == 0);
 
 	return true;
 }
