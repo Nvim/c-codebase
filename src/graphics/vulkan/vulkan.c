@@ -692,13 +692,28 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 			pool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 		}
 		check_result(vkCreateCommandPool(state->device, &pool_ci, NULL,
-										 &state->command_pool));
+										 &state->frame_command_pool));
 		if (!vk_sync_buffer_create(
 				state->device, &state->sync_buffer, state->cmd_pool,
-				self->config.frames_in_flight, state->command_pool)) {
+				self->config.frames_in_flight, state->frame_command_pool)) {
 			LOG_FATAL("couldn't create rendersync");
 			return;
 		}
+	}
+
+	{   // Standalone command buffers pool
+		/* [NOTE]: API doesn't expose resetting command buffers, so we don't
+		 * create pool with reset flag. Command buffers from this pool are
+		 * supposed to be transient.
+		 */
+		VkCommandPoolCreateInfo pool_ci = {0};
+		{
+			pool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+			pool_ci.queueFamilyIndex = state->queue_family_idx;
+			pool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+		}
+		check_result(vkCreateCommandPool(state->device, &pool_ci, NULL,
+										 &state->user_command_pool));
 	}
 
 	{ // Descriptor pool
@@ -841,7 +856,10 @@ void vulkan_destroy(gpu_api* self) {
 										 state->descriptor_layout, NULL);
 			vkDestroyDescriptorPool(state->device, state->descriptor_pool,
 									NULL);
-			vkDestroyCommandPool(state->device, state->command_pool, NULL);
+			vkDestroyCommandPool(state->device, state->frame_command_pool,
+								 NULL);
+			vkDestroyCommandPool(state->device, state->user_command_pool,
+								 NULL);
 			vkDestroyDevice(state->device, NULL);
 		}
 		vkDestroyInstance(state->instance, NULL);
@@ -898,6 +916,8 @@ gpu_frame_result vulkan_begin_frame(gpu_api* self) {
 	vk_cmdbuf_data* cmd_data =
 		vk_cmdbuf_pool_get(state->cmd_pool, frame.frame_sync->command_buffer);
 	ASSERT(cmd_data->state == CMDBUF_NOT_BEGAN);
+
+	// Implicit reset before begin
 	if (!check_result(
 			vkBeginCommandBuffer(cmd_data->command_buffer, &begin_info))) {
 		return ret;
@@ -910,8 +930,6 @@ gpu_frame_result vulkan_begin_frame(gpu_api* self) {
 		LOG_INFO("frame must be skipped by client");
 		ret.status = FRAME_SKIP;
 	}
-
-	// Implicit reset before begin
 
 	ret.frame = vk_to_gpu_frame(&frame);
 	return ret;
@@ -1074,7 +1092,7 @@ gpu_command_buffer vulkan_create_command_buffer(gpu_api* self) {
 	{
 		alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 		alloc_info.commandBufferCount = 1;
-		alloc_info.commandPool = state->command_pool;
+		alloc_info.commandPool = state->user_command_pool;
 		alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	}
 
@@ -1265,18 +1283,6 @@ gpu_fence vulkan_create_fence(gpu_api* self, bool create_signalled) {
 	return ret;
 }
 
-bool vulkan_wait_fence(gpu_api* self, gpu_fence gpu_fence,
-					   uint64_t timeout_ns) {
-	vk_api_state* state = self->state;
-	vk_opaque_handle* h =
-		vk_handle_pool_get(state->handle_pool, to_vk_handle(gpu_fence));
-
-	if (h->type != VK_OBJECT_TYPE_FENCE || !h->handle) {
-		LOG_ERR("invalid fence handle");
-		return false;
-	}
-	VkFence fence = h->handle;
-
 bool vulkan_is_fence_signalled(gpu_api* self, gpu_fence gpu_fence) {
 	vk_api_state* state = self->state;
 	vk_opaque_handle* h =
@@ -1291,6 +1297,18 @@ bool vulkan_is_fence_signalled(gpu_api* self, gpu_fence gpu_fence) {
 	VkResult r = vkGetFenceStatus(state->device, fence);
 	return r == VK_SUCCESS;
 }
+
+bool vulkan_wait_fence(gpu_api* self, gpu_fence gpu_fence,
+					   uint64_t timeout_ns) {
+	vk_api_state* state = self->state;
+	vk_opaque_handle* h =
+		vk_handle_pool_get(state->handle_pool, to_vk_handle(gpu_fence));
+
+	if (h->type != VK_OBJECT_TYPE_FENCE || !h->handle) {
+		LOG_ERR("invalid fence handle");
+		return false;
+	}
+	VkFence fence = h->handle;
 
 	if (!check_result(
 			vkWaitForFences(state->device, 1, &fence, VK_TRUE, timeout_ns))) {
@@ -2896,6 +2914,7 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->destroy_command_buffer = vulkan_destroy_command_buffer;
 
 		out->create_fence = vulkan_create_fence;
+		out->is_fence_signalled = vulkan_is_fence_signalled;
 		out->wait_fence = vulkan_wait_fence;
 		out->destroy_fence = vulkan_destroy_fence;
 
@@ -2908,7 +2927,6 @@ bool gpu_create_api(gpu_api_config config, gpu_api* out) {
 		out->get_image_format = vulkan_get_image_format;
 
 		/* == Debug Utils =================================================== */
-		out->is_fence_signalled = vulkan_is_fence_signalled;
 		out->cmd_push_debug_label = vulkan_cmd_push_debug_label;
 		out->cmd_begin_debug_marker = vulkan_cmd_begin_debug_marker;
 		out->cmd_end_debug_marker = vulkan_cmd_end_debug_marker;
