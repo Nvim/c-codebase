@@ -277,7 +277,7 @@ typedef struct gpu_data_payload {
 		u8_array array;
 		span span;
 	} data;
-	size_t offset;
+	size_t dst_offset;
 } gpu_data_payload;
 
 typedef struct gpu_image_data_payload {
@@ -722,6 +722,12 @@ typedef struct gpu_api {
 	void (*destroy_command_buffer)(struct gpu_api*, gpu_command_buffer);
 
 	gpu_fence (*create_fence)(struct gpu_api*, bool create_signalled);
+	/**
+	 * @brief Polls fence status without stalling
+	 *
+	 * @return true if fence is signalled, false if not ready
+	 */
+	bool (*is_fence_signalled)(struct gpu_api*, gpu_fence);
 	bool (*wait_fence)(struct gpu_api*, gpu_fence, uint64_t timeout_ns);
 	void (*destroy_fence)(struct gpu_api*, gpu_fence);
 
