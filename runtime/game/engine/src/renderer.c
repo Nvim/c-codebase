@@ -250,9 +250,13 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 			ibuf_payload.dst_offset = 0;
 		}
 
-		if (!transfer_queue_upload_buffer(transfer_queue, ibuf_payload,
-										  quad_index_buffer,
-										  GPU_BUFFER_ACCESS_INDEX_READ)) {
+		transfer_queue_upload up = {
+			.type = TRQ_UPLOAD_BUFFER,
+			.upload.buffer = {.dest = quad_index_buffer,
+							  .acess = GPU_BUFFER_ACCESS_INDEX_READ},
+			.payload = ibuf_payload,
+		};
+		if (!transfer_queue_push_upload(transfer_queue, up)) {
 			LOG_ERR("couldn't enqueue indices upload");
 			return NULL;
 		}

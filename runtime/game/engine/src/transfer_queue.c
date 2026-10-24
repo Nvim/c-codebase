@@ -225,15 +225,15 @@ static bool _submit_task(transfer_queue* q, transfer_task* task) {
 	return true;
 }
 
-bool transfer_queue_upload_buffer(transfer_queue* q, gpu_data_payload payload,
-								  gpu_buffer dest,
-								  gpu_buffer_access buf_access) {
+bool transfer_queue_push_upload(transfer_queue* q,
+								transfer_queue_upload upload) {
 	if (!q) { return false; }
 	if (q->tasks_in_flight == transfer_task_array_size(q->transfer_tasks)) {
 		LOG_ERR("queue full, must stall");
 		return false;
 	}
 
+	gpu_data_payload payload = upload.payload;
 	size_t payload_size;
 	uint8_t* payload_bytes = NULL;
 
@@ -281,17 +281,35 @@ bool transfer_queue_upload_buffer(transfer_queue* q, gpu_data_payload payload,
 
 	payload.dst_offset = offset_in_staging;
 	gpu->copy_to_staging_buffer(gpu, q->staging_buf, payload);
-	gpu_buffer_copy_info copy_ci = {0};
-	{
-		copy_ci.size = payload_size;
-		copy_ci.src = q->staging_buf;
-		copy_ci.dst = dest;
-		copy_ci.src_offset = task->data_size;
-		copy_ci.dst_offset = offset_in_dest;
+
+	if (upload.type == TRQ_UPLOAD_BUFFER) {
+		struct buf_upload* up = &upload.upload.buffer;
+		gpu_buffer_copy_info copy_ci = {0};
+		{
+			copy_ci.size = payload_size;
+			copy_ci.src = q->staging_buf;
+			copy_ci.dst = up->dest;
+			copy_ci.src_offset = task->data_size;
+			copy_ci.dst_offset = offset_in_dest;
+		}
+		ASSERT(gpu->cmd_buffer_barrier(gpu, task->cmd, up->dest, up->acess, GPU_BUFFER_ACCESS_TRANSFER_WRITE)); // NOLINT
+		ASSERT(gpu->cmd_copy_to_buffer(gpu, task->cmd, &copy_ci));
+		ASSERT(gpu->cmd_buffer_barrier(gpu, task->cmd, up->dest, GPU_BUFFER_ACCESS_TRANSFER_WRITE, up->acess)); // NOLINT
+	} else {
+		struct img_upload* up = &upload.upload.image;
+		gpu_image_copy_info copy_ci = {0};
+		{
+			copy_ci.src = q->staging_buf;
+			copy_ci.src_offset = task->data_size;
+			copy_ci.dst = up->dest;
+			copy_ci.regions = up->regions;
+		}
+
+		ASSERT(gpu->cmd_transition_image(gpu, task->cmd, up->dest,
+										 GPU_IMAGE_STATE_TRANSFER_DST));
+		ASSERT(gpu->cmd_copy_to_image(gpu, task->cmd, &copy_ci));
+		ASSERT(gpu->cmd_transition_image(gpu, task->cmd, up->dest, up->usage));
 	}
-	ASSERT(gpu->cmd_buffer_barrier(gpu, task->cmd, dest, buf_access, GPU_BUFFER_ACCESS_TRANSFER_WRITE)); // NOLINT
-	ASSERT(gpu->cmd_copy_to_buffer(gpu, task->cmd, &copy_ci));
-	ASSERT(gpu->cmd_buffer_barrier(gpu, task->cmd, dest, GPU_BUFFER_ACCESS_TRANSFER_WRITE, buf_access)); // NOLINT
 
 	task->data_size += payload_size;
 	q->total_usage_bytes += payload_size;

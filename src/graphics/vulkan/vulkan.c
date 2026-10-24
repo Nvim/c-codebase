@@ -701,7 +701,7 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 		}
 	}
 
-	{   // Standalone command buffers pool
+	{ // Standalone command buffers pool
 		/* [NOTE]: API doesn't expose resetting command buffers, so we don't
 		 * create pool with reset flag. Command buffers from this pool are
 		 * supposed to be transient.
@@ -858,8 +858,7 @@ void vulkan_destroy(gpu_api* self) {
 									NULL);
 			vkDestroyCommandPool(state->device, state->frame_command_pool,
 								 NULL);
-			vkDestroyCommandPool(state->device, state->user_command_pool,
-								 NULL);
+			vkDestroyCommandPool(state->device, state->user_command_pool, NULL);
 			vkDestroyDevice(state->device, NULL);
 		}
 		vkDestroyInstance(state->instance, NULL);
@@ -2219,6 +2218,8 @@ bool vulkan_cmd_copy_to_image(struct gpu_api* self, gpu_command_buffer cmd,
 	} else {
 		aspect = VK_IMAGE_ASPECT_COLOR_BIT;
 	}
+	uint32_t bytes_per_pixel =
+		gpu_get_format_bytes_per_pixel(vk_to_gpu_image_format(data->format));
 
 	VkBufferImageCopy2 copies[MAX_REGIONS] = {0};
 	size_t offset = info->src_offset;
@@ -2252,8 +2253,6 @@ bool vulkan_cmd_copy_to_image(struct gpu_api* self, gpu_command_buffer cmd,
 			copies[i].bufferOffset = offset;
 		}
 
-		uint32_t bytes_per_pixel = gpu_get_format_bytes_per_pixel(
-			vk_to_gpu_image_format(data->format));
 		offset += (mip_w * mip_h * bytes_per_pixel);
 	}
 
