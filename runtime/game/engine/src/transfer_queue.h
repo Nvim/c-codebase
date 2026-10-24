@@ -6,6 +6,27 @@
 
 typedef struct transfer_queue transfer_queue;
 
+typedef enum transfer_queue_upload_type {
+	TRQ_UPLOAD_BUFFER,
+	TRQ_UPLOAD_IMAGE,
+} transfer_queue_upload_type;
+
+typedef struct transfer_queue_upload {
+	transfer_queue_upload_type type;
+	gpu_data_payload payload;
+	union {
+		struct buf_upload {
+			gpu_buffer dest;
+			gpu_buffer_access acess;
+		} buffer;
+		struct img_upload {
+			gpu_image dest;
+			gpu_image_usage usage;
+			gpu_image_region_array regions;
+		} image;
+	} upload;
+} transfer_queue_upload;
+
 /**
  * @brief Initialize transfer queue. Will create staging buffer and tasks array.
  *
@@ -23,19 +44,11 @@ void transfer_queue_destroy(transfer_queue* transfer_queue);
 
 /**
  * @brief Enqueue an upload to buffer.
- *
- * @param q the queue
- * @param payload data to upload. `dst_offset` is interpreted as the offset to
- * copy in dest
- * @param dest destination buffer
- * @return true on success, false otherwise
+ * [NOTE]: `upload.payload.dst_offset` is interpreted as the offset to copy in
+ * dest. source offset is always 0.
  */
-bool transfer_queue_upload_buffer(transfer_queue* q, gpu_data_payload payload,
-								  gpu_buffer dest,
-								  gpu_buffer_access buf_access);
-
-bool transfer_queue_upload_image(transfer_queue* queue,
-								 gpu_image_data_payload payload);
+bool transfer_queue_push_upload(transfer_queue* q,
+								transfer_queue_upload upload);
 
 /**
  * @brief Poll state of all pending transfers, reset finished command buffers,
