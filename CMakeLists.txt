@@ -96,9 +96,9 @@ set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 # endif()
 
 add_subdirectory(thirdparty/glfw)
+add_subdirectory(thirdparty/Unity)
 
 # == Actual source == #
-add_subdirectory(tests)
 add_subdirectory(src/platform)
 add_subdirectory(src/core)
 add_subdirectory(src/allocators)
