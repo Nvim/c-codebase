@@ -56,7 +56,7 @@ Vertex_Out vertMain(uint vertexID : SV_VertexID, uint instanceId: SV_InstanceID,
 	Vertex_Out ret;
 
 	DrawItem item = constants.uniform.draw_items[instanceId];
-	float4 baseCoord = float4(Quad[vertexID], 1.f);
+	float4 baseCoord = float4(Quad[vertexID], float2(1.f));
 	float4x4 model = mul(scaleMatrix(constants.uniform.scale), translatePosition(item.position));
 	float4x4 mvp = mul(constants.uniform.mat_clip_from_world, model);
 	ret.pos = mul(mvp, baseCoord);

@@ -25,7 +25,7 @@ struct transfer_queue {
 	uint64_t max_single_task_size;
 };
 
-static void _log_queue(transfer_queue* q) {
+static void _log_queue(UNUSED transfer_queue* q) {
 	LOG_DEBUG("\ttasks in flight: %u", q->tasks_in_flight);
 	LOG_DEBUG("\tcurrent task: %u", q->current_task);
 	LOG_DEBUG("\ttotal usage bytes: %lu", q->total_usage_bytes);

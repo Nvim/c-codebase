@@ -239,11 +239,12 @@ void test_arena_checkpoint_reset_zero(void) {
 	arena_impl* impl = (arena_impl*)arena;
 	TEST_ASSERT_EQUAL_PTR(impl->begin, arr);
 
-	void* check;
+	void* check = NULL;
 	for (int i = 0; i < 4; i++) {
 		arr[i] = i;
 		if (i == 2) { check = arena_get_checkpoint(arena); }
 	}
+	TEST_ASSERT_NOT_NULL(check);
 
 	// Data should still be there:
 	arena_restore_checkpoint(arena, check, false);

@@ -774,7 +774,7 @@ void test_string_trimspace(void) {
 	TEST_ASSERT_EQUAL(len, trail.len);
 	TEST_ASSERT_EQUAL(len, both.len);
 
-	char cstr[20];
+	char cstr[21]; // 21 because gcc yaps about strncpy to equal size dest
 	strncpy(cstr, none.str, len);
 	TEST_ASSERT_EQUAL(0, strncmp(cstr, "leading and trailing", len));
 	strncpy(cstr, lead.str, len);
