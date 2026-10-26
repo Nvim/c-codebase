@@ -56,6 +56,7 @@ typedef struct renderer {
 
 	renderer_camera camera; // [TODO]: move out of here
 	gpu_image_extent logical_resolution;
+	float scale;
 } renderer;
 
 typedef struct renderer_texture {
@@ -106,7 +107,8 @@ bool renderer_end_pass(renderer* renderer);
 bool renderer_end_frame(renderer* renderer);
 
 /* == Draw Commands == */
-void renderer_draw_quad(renderer* renderer, vec2 position, vec3 color);
+void renderer_draw_quad(renderer* renderer, vec2 position, vec3 color,
+						float scale);
 
 /* == Resource creation == */
 bool renderer_load_texture(renderer* renderer, renderer_texture* out,

@@ -40,10 +40,10 @@ struct ShaderInput {
 	UniformData* uniform;
 }
 
-static const float2 bot_left = float2(-1.f, -1.f);
-static const float2 bot_right = float2(1.f, -1.f);
-static const float2 top_right = float2(1.f, 1.f);
-static const float2 top_left = float2(-1.f, 1.f);
+static const float2 bot_left = float2(-.5f, -.5f);
+static const float2 bot_right = float2(.5f, -.5f);
+static const float2 top_right = float2(.5f, .5f);
+static const float2 top_left = float2(-.5f, .5f);
 
 static const float2 Quad[4] = float2[4](
 		bot_left, bot_right, top_right, top_left
@@ -58,6 +58,7 @@ Vertex_Out vertMain(uint vertexID : SV_VertexID, uint instanceId: SV_InstanceID,
 	DrawItem item = constants.uniform.draw_items[instanceId];
 	float4 baseCoord = float4(Quad[vertexID], float2(1.f));
 	float4x4 model = mul(scaleMatrix(constants.uniform.scale), translatePosition(item.position));
+	model = mul(model, scaleMatrix(item.scale));
 	float4x4 mvp = mul(constants.uniform.mat_clip_from_world, model);
 	ret.pos = mul(mvp, baseCoord);
 	ret.color = item.color;

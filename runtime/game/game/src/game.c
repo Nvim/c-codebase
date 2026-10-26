@@ -7,6 +7,11 @@
 
 string game_get_version(void) { return str("0.0.1"); }
 
+static gpu_color const player_color = {.floats = {.8f, 0.f, .9f, 1.f}};
+static gpu_color const BLUE = {.floats = {0.f, 0.f, 1.f, 1.f}};
+static gpu_color const RED = {.floats = {1.f, 0.f, 0.f, 1.f}};
+static UNUSED gpu_color const GREEN = {.floats = {0.f, 1.f, 0.f, 1.f}};
+
 typedef struct game_state {
 	arena_t* game_arena;
 
@@ -14,6 +19,7 @@ typedef struct game_state {
 	uint64_t ticks;
 	uint64_t frames;
 	vec2 player_pos;
+	float player_scale;
 } game_state;
 
 static game_state* _state = NULL;
@@ -31,6 +37,7 @@ static bool game_init(engine_api const* engine_api, arena_t* game_arena) {
 	}
 	_state->game_arena = game_arena;
 	_state->engine_ptr = engine_api;
+	_state->player_scale = 1.f;
 	return true;
 }
 
@@ -39,6 +46,11 @@ static void game_process_input(engine_input_state const* input) {
 	if (input->pressed_keys[INPUT_KEY_A]) { _state->player_pos.x -= 2.f; }
 	if (input->pressed_keys[INPUT_KEY_S]) { _state->player_pos.y -= 2.f; }
 	if (input->pressed_keys[INPUT_KEY_D]) { _state->player_pos.x += 2.f; }
+	if (input->released_keys[INPUT_KEY_SPACE]) {
+		if (_state->player_scale == 10.f) _state->player_scale = 1.f;
+		else
+			_state->player_scale = 10.f;
+	}
 }
 
 static bool game_update(double delta) {
@@ -50,7 +62,7 @@ static bool game_update(double delta) {
 	return true;
 }
 
-static bool game_should_quit(void) { return _state->ticks > 100; }
+static bool game_should_quit(void) { return _state->ticks > 100000; }
 
 static void game_draw(renderer_packet* out) {
 	uint64_t i = 0;
@@ -62,12 +74,48 @@ static void game_draw(renderer_packet* out) {
 	}
 	ASSERT(player_draw);
 
-	static gpu_color const player_color = {.floats = {.8f, 0.f, .9f, 1.f}};
 	player_draw->color = player_color;
 	player_draw->position = _state->player_pos;
-	player_draw->scale = 1.f;
+	player_draw->scale = _state->player_scale;
 	out->draw_count++;
 	// }
+
+	// corners
+	static vec2 const corners[] = {
+		(vec2){.x = -160.f, .y = -90.f},
+		(vec2){.x = -160.f, .y = 90.f},
+		(vec2){.x = 160.f, .y = -90.f},
+		(vec2){.x = 160.f, .y = 90.f},
+	};
+	for (i = 1; i < 5; i++) {
+		renderer_draw_item* draw = NULL;
+		ASSERT(renderer_draw_item_array_at(out->draw_items, &draw, i));
+		draw->color = player_color;
+		draw->position = corners[i - 1];
+		draw->scale = 4.f;
+		out->draw_count++;
+	}
+
+	// x axis
+	for (int32_t x = -158; x <= 158; x += 2) {
+		renderer_draw_item* draw = NULL;
+		ASSERT(renderer_draw_item_array_at(out->draw_items, &draw, i++));
+		draw->color = BLUE;
+		draw->position = (vec2){.x = x, .y = 0.f};
+		draw->scale = 1.f;
+		out->draw_count++;
+	}
+
+	// y axis
+	for (int32_t y = -88; y <= 88; y += 2) {
+		renderer_draw_item* draw = NULL;
+		ASSERT(renderer_draw_item_array_at(out->draw_items, &draw, i++));
+		draw->color = RED;
+		draw->position = (vec2){.x = 0, .y = y};
+		draw->scale = 1.f;
+		out->draw_count++;
+	}
+
 	_state->frames++;
 }
 

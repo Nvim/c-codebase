@@ -377,7 +377,8 @@ bool engine_run(void) {
 										   .r = draw->color.r,
 										   .g = draw->color.g,
 										   .b = draw->color.b,
-									   });
+									   },
+									   draw->scale);
 				}
 			}
 

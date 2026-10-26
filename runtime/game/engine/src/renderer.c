@@ -374,6 +374,7 @@ static gpu_viewport _compute_viewport(renderer* renderer) {
 
 	ret.x = (frame_ext.width - ret.width) / 2;
 	ret.y = (frame_ext.height - ret.height) / 2;
+	renderer->scale = ret.width / (float)renderer->logical_resolution.width;
 	return ret;
 }
 
@@ -416,7 +417,7 @@ bool renderer_begin_pass(renderer* renderer) {
 	renderer_uniform_data* u = renderer->uniform_ptr;
 	u->mat_clip_from_world = renderer_camera_get_viewproj(&renderer->camera);
 	u->draw_items = buffered_buffer_get_addr(&renderer->quad_instances_buffer);
-	u->scale = viewport.width / (float)renderer->logical_resolution.width;
+	u->scale = renderer->scale;
 
 	_frame_state = FRAME_RENDERING;
 	return true;
@@ -484,7 +485,8 @@ bool renderer_end_frame(renderer* renderer) {
 	return ret;
 }
 
-void renderer_draw_quad(renderer* renderer, vec2 position, UNUSED vec3 color) {
+void renderer_draw_quad(renderer* renderer, vec2 position, vec3 color,
+						float scale) {
 	if (!renderer || _frame_state != FRAME_RENDERING) {
 		LOG_ERR("invalid frame state %d", _frame_state);
 		return;
@@ -503,7 +505,7 @@ void renderer_draw_quad(renderer* renderer, vec2 position, UNUSED vec3 color) {
 	items[renderer->draw_count++] = (renderer_draw_item){
 		.color = {.r = color.r, .g = color.g, .b = color.b, .a = 1.f},
 		.position = {{position.x, position.y}},
-		.scale = 1.f,
+		.scale = scale,
 	};
 }
 
