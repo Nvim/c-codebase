@@ -1,7 +1,7 @@
 struct DrawItem {
 	float4 color;
 	float2 position;
-	float scale;
+	float2 scale;
 };
 
 struct UniformData {
@@ -20,10 +20,10 @@ float4x4 translatePosition(float2 pos) {
 	);
 }
 
-float4x4 scaleMatrix(float scale) {
+float4x4 scaleMatrix(float2 scale) {
 	return float4x4(
-		float4(scale, 0.f, 0.f, 0.f),
-		float4(0.f, scale, 0.f, 0.f),
+		float4(scale.x, 0.f, 0.f, 0.f),
+		float4(0.f, scale.y, 0.f, 0.f),
 		float4(0.f, 0.f, 1.f, 0.f),
 		float4(0.f, 0.f, 0.f, 1.f)
 	);

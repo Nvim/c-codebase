@@ -108,7 +108,7 @@ bool renderer_end_frame(renderer* renderer);
 
 /* == Draw Commands == */
 void renderer_draw_quad(renderer* renderer, vec2 position, vec3 color,
-						float scale);
+						vec2 scale);
 
 /* == Resource creation == */
 bool renderer_load_texture(renderer* renderer, renderer_texture* out,

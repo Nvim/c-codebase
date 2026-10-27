@@ -13,7 +13,7 @@ typedef struct renderer_camera renderer_camera;
 typedef struct renderer_draw_item {
 	gpu_color color;
 	vec2 position;
-	float scale;
+	vec2 scale;
 } renderer_draw_item;
 
 ARRAY_DEFINE_TYPE(renderer_draw_item, renderer_draw_item_array)

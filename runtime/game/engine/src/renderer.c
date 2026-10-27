@@ -486,7 +486,7 @@ bool renderer_end_frame(renderer* renderer) {
 }
 
 void renderer_draw_quad(renderer* renderer, vec2 position, vec3 color,
-						float scale) {
+						vec2 scale) {
 	if (!renderer || _frame_state != FRAME_RENDERING) {
 		LOG_ERR("invalid frame state %d", _frame_state);
 		return;

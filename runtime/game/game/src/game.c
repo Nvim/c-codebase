@@ -12,6 +12,11 @@ static gpu_color const BLUE = {.floats = {0.f, 0.f, 1.f, 1.f}};
 static gpu_color const RED = {.floats = {1.f, 0.f, 0.f, 1.f}};
 static UNUSED gpu_color const GREEN = {.floats = {0.f, 1.f, 0.f, 1.f}};
 
+static vec2 const size_small = {{1.f, 1.f}};
+static vec2 const size_wide = {{12.f, 4.f}};
+static vec2 const size_big = {{160.f, 90.f}};
+static vec2 const player_sizes[] = {size_small, size_wide, size_big};
+
 typedef struct game_state {
 	arena_t* game_arena;
 
@@ -19,7 +24,7 @@ typedef struct game_state {
 	uint64_t ticks;
 	uint64_t frames;
 	vec2 player_pos;
-	float player_scale;
+	uint32_t player_size_idx;
 } game_state;
 
 static game_state* _state = NULL;
@@ -37,7 +42,7 @@ static bool game_init(engine_api const* engine_api, arena_t* game_arena) {
 	}
 	_state->game_arena = game_arena;
 	_state->engine_ptr = engine_api;
-	_state->player_scale = 1.f;
+	_state->player_size_idx = 0;
 	return true;
 }
 
@@ -47,9 +52,8 @@ static void game_process_input(engine_input_state const* input) {
 	if (input->pressed_keys[INPUT_KEY_S]) { _state->player_pos.y -= 2.f; }
 	if (input->pressed_keys[INPUT_KEY_D]) { _state->player_pos.x += 2.f; }
 	if (input->released_keys[INPUT_KEY_SPACE]) {
-		if (_state->player_scale == 10.f) _state->player_scale = 1.f;
-		else
-			_state->player_scale = 10.f;
+		_state->player_size_idx =
+			(_state->player_size_idx + 1) % countof(player_sizes);
 	}
 }
 
@@ -76,7 +80,7 @@ static void game_draw(renderer_packet* out) {
 
 	player_draw->color = player_color;
 	player_draw->position = _state->player_pos;
-	player_draw->scale = _state->player_scale;
+	player_draw->scale = player_sizes[_state->player_size_idx];
 	out->draw_count++;
 	// }
 
@@ -92,7 +96,7 @@ static void game_draw(renderer_packet* out) {
 		ASSERT(renderer_draw_item_array_at(out->draw_items, &draw, i));
 		draw->color = player_color;
 		draw->position = corners[i - 1];
-		draw->scale = 4.f;
+		draw->scale = (vec2){{4.f, 4.f}};
 		out->draw_count++;
 	}
 
@@ -102,7 +106,7 @@ static void game_draw(renderer_packet* out) {
 		ASSERT(renderer_draw_item_array_at(out->draw_items, &draw, i++));
 		draw->color = BLUE;
 		draw->position = (vec2){.x = x, .y = 0.f};
-		draw->scale = 1.f;
+		draw->scale = (vec2){{1.f, 1.f}};
 		out->draw_count++;
 	}
 
@@ -112,7 +116,7 @@ static void game_draw(renderer_packet* out) {
 		ASSERT(renderer_draw_item_array_at(out->draw_items, &draw, i++));
 		draw->color = RED;
 		draw->position = (vec2){.x = 0, .y = y};
-		draw->scale = 1.f;
+		draw->scale = (vec2){{1.f, 1.f}};
 		out->draw_count++;
 	}
 
