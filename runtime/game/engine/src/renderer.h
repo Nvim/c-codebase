@@ -126,6 +126,7 @@ bool renderer_create_buffer(renderer* renderer, gpu_buffer* out,
 /* ********************************[ CAMERA ]******************************** */
 
 mat4 renderer_camera_get_view(renderer_camera* camera);
+mat4 renderer_camera_get_proj(renderer_camera* camera);
 mat4 renderer_camera_get_viewproj(renderer_camera* camera);
 
 void renderer_camera_translate_by(renderer_camera* camera, vec2 offset);

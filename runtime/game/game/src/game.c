@@ -85,11 +85,11 @@ static void game_draw(renderer_packet* out) {
 	// }
 
 	// corners
-	static vec2 const corners[] = {
-		(vec2){.x = -160.f, .y = -90.f},
-		(vec2){.x = -160.f, .y = 90.f},
-		(vec2){.x = 160.f, .y = -90.f},
-		(vec2){.x = 160.f, .y = 90.f},
+	static vec2 const corners[4] = {
+		{.x = -160.f, .y = -90.f},
+		{.x = -160.f, .y = 90.f},
+		{.x = 160.f, .y = -90.f},
+		{.x = 160.f, .y = 90.f},
 	};
 	for (i = 1; i < 5; i++) {
 		renderer_draw_item* draw = NULL;

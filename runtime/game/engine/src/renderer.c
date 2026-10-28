@@ -410,8 +410,8 @@ bool renderer_begin_pass(renderer* renderer) {
 	gpu->cmd_reset_scissor(gpu, cmd);
 	gpu->cmd_begin_rendering(gpu, cmd, &render_state);
 
-	renderer->camera.clip_from_view =
-		mat_projection_ortho_centered(viewport.width, viewport.height);
+	// renderer->camera.clip_from_view =
+	// 	mat_projection_ortho_centered(viewport.width, viewport.height);
 
 	// Uniforms:
 	renderer_uniform_data* u = renderer->uniform_ptr;
@@ -528,6 +528,10 @@ mat4 renderer_camera_get_view(renderer_camera* camera) {
 	return camera->view_from_world;
 }
 
+mat4 renderer_camera_get_proj(renderer_camera* camera) {
+	return camera->clip_from_view;
+}
+
 mat4 renderer_camera_get_viewproj(renderer_camera* camera) {
 	return mat4_mul(camera->clip_from_view, camera->view_from_world);
 }
@@ -538,6 +542,6 @@ void renderer_camera_translate_by(renderer_camera* camera, vec2 offset) {
 	camera->world_position.y += offset.y;
 
 	camera->view_from_world = mat_translate_3d((vec3){
-		{camera->world_position.x, camera->world_position.y, 0.f},
+		{-camera->world_position.x, -camera->world_position.y, 0.f},
 	});
 }
