@@ -108,28 +108,23 @@ transfer_queue* transfer_queue_init(arena_t* arena, gpu_api* gpu,
 	return ret;
 }
 
+static bool _is_task_live(transfer_task* task) {
+	return task && check_handle(task->cmd.handle) &&
+		   check_handle(task->fence.handle);
+}
+
 void transfer_queue_destroy(transfer_queue* q) {
-	// Hacky way to make sure we haven't got anyting pending
+	// Make sure we haven't got anyting pending
 	gpu_api* gpu = q->gpu;
 	transfer_queue_batch_process_wait(q);
 	transfer_queue_tick(q);
 
-	// After processing, next task is automatically pre-initialized.
-	// Command buffer can be destroyed if nothing was submitted to it, but fence
-	// must be waited on first.
 	transfer_task* task;
 	if (!transfer_task_array_at(q->transfer_tasks, &task, q->current_task)) {
 		LOG_ERR("couldn't get current task");
 	}
-	gpu->destroy_command_buffer(gpu, task->cmd);
-	gpu->wait_fence(gpu, task->fence, sec_to_ns(10));
-	gpu->destroy_fence(gpu, task->fence);
+	ASSERT(!_is_task_live(task));
 	gpu->destroy_buffer(gpu, q->staging_buf);
-}
-
-static bool _is_task_live(transfer_task* task) {
-	return task && check_handle(task->cmd.handle) &&
-		   check_handle(task->fence.handle);
 }
 
 static void _poll_task(transfer_queue* queue, transfer_task* task, bool wait) {
@@ -146,6 +141,8 @@ static void _poll_task(transfer_queue* queue, transfer_task* task, bool wait) {
 	gpu->destroy_command_buffer(gpu, task->cmd);
 	gpu->destroy_fence(gpu, task->fence);
 	task->data_size = 0;
+	task->cmd = (gpu_command_buffer){POOL_INVALID_HANDLE};
+	task->fence = (gpu_fence){POOL_INVALID_HANDLE};
 }
 
 bool transfer_queue_tick(transfer_queue* queue) {
@@ -194,18 +191,16 @@ static uint64_t _find_next_free_task(transfer_queue* q) {
 }
 
 static bool _submit_task(transfer_queue* q, transfer_task* task) {
+	ASSERT(_is_task_live(task));
 	gpu_api* gpu = q->gpu;
 	gpu->submit_command_buffer_fence(gpu, task->cmd, task->fence);
-
-	// Submit even if task is noop so command buffer can be destroyed
-	if (task->data_size == 0) { return true; }
 
 	q->tasks_in_flight++;
 	LOG_DEBUG("task submitted (%u bytes). %u tasks in flight", task->data_size,
 			  q->tasks_in_flight);
 
 	uint64_t next_idx = _find_next_free_task(q);
-	if (!next_idx) {
+	if (next_idx == UINT64_MAX) {
 		LOG_ERR("couldn't get next task slot, queue is full");
 		return false;
 	}
@@ -214,11 +209,6 @@ static bool _submit_task(transfer_queue* q, transfer_task* task) {
 	transfer_task* next = NULL;
 	if (!transfer_task_array_at(q->transfer_tasks, &next, q->current_task)) {
 		LOG_ERR("couldn't get next task");
-		return false;
-	}
-
-	if (!_task_init(q, next)) {
-		LOG_ERR("couldn't prepare next task");
 		return false;
 	}
 
@@ -262,7 +252,14 @@ bool transfer_queue_push_upload(transfer_queue* q,
 		return false;
 	}
 
-	// Task is always initialized here
+	// 1st upload in this task, init command buffer & fence 1st
+	if (!_is_task_live(task)) {
+		if (!_task_init(q, task)) {
+			LOG_ERR("couldn't initialize new task");
+			return false;
+		}
+	}
+
 	if (task->data_size + payload_size >= q->max_single_task_size) {
 		// Submit current and begin new task
 		if (!_submit_task(q, task)) { return false; }
@@ -270,6 +267,10 @@ bool transfer_queue_push_upload(transfer_queue* q,
 		transfer_task_array_at(q->transfer_tasks, &task, q->current_task);
 		if (!task) {
 			LOG_ERR("couldn't get current task after submission");
+			return false;
+		}
+		if (!_task_init(q, task)) {
+			LOG_ERR("couldn't initialize new task");
 			return false;
 		}
 	}
@@ -326,6 +327,12 @@ bool transfer_queue_batch_process(transfer_queue* q) {
 		return false;
 	}
 
+	if (!_is_task_live(task)) {
+		// no-op, no uploads yet
+		return true;
+	}
+
+	LOG_DEBUG("processing task slot %u", q->current_task);
 	if (!_submit_task(q, task)) {
 		LOG_ERR("couldn't submit current task");
 		return false;
@@ -344,9 +351,11 @@ bool transfer_queue_batch_process_wait(transfer_queue* q) {
 		return false;
 	}
 
-	if (!_submit_task(q, task)) {
-		LOG_ERR("couldn't submit current task");
-		return false;
+	if (_is_task_live(task)) {
+		if (!_submit_task(q, task)) {
+			LOG_ERR("couldn't submit current task");
+			return false;
+		}
 	}
 
 	// Iterate all tasks, and wait each fence
@@ -356,10 +365,6 @@ bool transfer_queue_batch_process_wait(transfer_queue* q) {
 	uint32_t seen = 0;
 	uint32_t should_see = q->tasks_in_flight;
 	for (uint32_t i = 0; i < count; i++) {
-		if (i == q->current_task) {
-			// new current tasks has no uploads pending, it was just initialized
-			continue;
-		}
 		if (seen >= should_see) { break; }
 
 		if (_is_task_live(task)) {

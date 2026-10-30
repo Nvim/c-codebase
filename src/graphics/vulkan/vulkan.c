@@ -1329,6 +1329,8 @@ void vulkan_destroy_fence(gpu_api* self, gpu_fence gpu_fence) {
 	}
 	VkFence fence = h->handle;
 	vkDestroyFence(state->device, fence, NULL);
+
+	vk_handle_pool_release(state->handle_pool, to_vk_handle(gpu_fence));
 }
 
 bool vulkan_end_frame(gpu_api* self, gpu_frame* f) {
