@@ -2,6 +2,7 @@
 #define RENDERER_H
 
 #include "transfer_queue.h"
+#include <engine/render_interface.h>
 
 #include <core/math.h>
 #include <graphics/graphics.h>
@@ -14,19 +15,24 @@ typedef struct buffered_buffer {
 	uint8_t current;
 } buffered_buffer;
 
-typedef struct renderer_camera {
-	// mat4 world_from_model; // model
+typedef struct camera_2d_matrices {
 	mat4 view_from_world; // view
 	mat4 clip_from_view;  // projection
+} camera_2d_matrices;
 
-	vec2 world_position;
-} renderer_camera;
+typedef struct camera_2d {
+	camera_2d_matrices matrices; // shader accesses this
+	camera_2d_props props;		 // user touches this
+} camera_2d;
+
+#define RENDERER_MAX_CAMERAS 16
+POOL_DEFINE_TYPE(camera_2d, camera_2d_pool)
 
 typedef struct renderer_uniform_data {
-	mat4 mat_clip_from_world;
 	gpu_device_address draw_items;
+	gpu_device_address camera_matrices;
+	uint32_t camera_index;
 	float time;
-	float scale;
 } renderer_uniform_data;
 
 typedef struct renderer {
@@ -39,6 +45,9 @@ typedef struct renderer {
 	gpu_buffer quad_index_buffer;
 	buffered_buffer draw_buffer;		   // gpu_indirect_draw_command
 	buffered_buffer quad_instances_buffer; // renderer_draw_item
+
+	gpu_buffer cameras_buffer; // camera_2d
+	gpu_device_address cameras_buffer_addr;
 
 	gpu_buffer uniform_buffer;
 	renderer_uniform_data* uniform_ptr; // CPU-mapped memory
@@ -54,7 +63,7 @@ typedef struct renderer {
 	gpu_frame* cur_frame;
 	uint64_t draw_count; // Draws for current frame. Reset every frame
 
-	renderer_camera camera; // [TODO]: move out of here
+	camera_2d_pool cameras;
 	gpu_image_extent logical_resolution;
 	float scale;
 } renderer;
@@ -98,7 +107,7 @@ bool renderer_begin_frame(renderer* renderer);
 bool renderer_should_draw(renderer* renderer);
 
 // begin renderpass (cmd_begin_rendering);
-bool renderer_begin_pass(renderer* renderer);
+bool renderer_begin_pass(renderer* renderer, camera_2d_handle camera);
 
 // end renderpass (cmd_end_rendering);
 bool renderer_end_pass(renderer* renderer);
@@ -125,10 +134,14 @@ bool renderer_create_buffer(renderer* renderer, gpu_buffer* out,
 
 /* ********************************[ CAMERA ]******************************** */
 
-mat4 renderer_camera_get_view(renderer_camera* camera);
-mat4 renderer_camera_get_proj(renderer_camera* camera);
-mat4 renderer_camera_get_viewproj(renderer_camera* camera);
+camera_2d_handle camera_2d_create(renderer* renderer, camera_2d_props props);
 
-void renderer_camera_translate_by(renderer_camera* camera, vec2 offset);
+void camera_2d_update(renderer* renderer, camera_2d_handle handle,
+					  camera_2d_props props);
+
+camera_2d_props camera_2d_get_props(renderer* renderer,
+									camera_2d_handle handle);
+
+mat4 camera_2d_get_viewproj(camera_2d* camera);
 
 #endif // !RENDERER_H

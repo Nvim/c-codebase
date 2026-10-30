@@ -230,14 +230,78 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		}
 	}
 
-	renderer_camera camera = {0};
+	camera_2d_pool cameras;
+	camera_2d default_cam = {0};
+	gpu_buffer cameras_buffer;
+	gpu_device_address cameras_buffer_addr = 0;
 	{
-		camera.world_position = (vec2){{0.f, 0.f}};
-		camera.clip_from_view = mat_projection_ortho_centered(320, 180);
+		cameras = camera_2d_pool_create(arena, RENDERER_MAX_CAMERAS);
+		if (!cameras.raw) {
+			LOG_ERR("couldn't create cameras pool");
+			return NULL;
+		}
 
-		// updates view matrix:
-		renderer_camera_translate_by(&camera, (vec2){0});
+		{
+			// [TODO][camera] game res usage
+			camera_2d_props* props = &default_cam.props;
+			props->dimensions = (gpu_image_extent){320, 180};
+			props->position = (vec2){{0, 0}};
+			props->zoom = 1.f;
+
+			default_cam.matrices.view_from_world = mat_translate_3d((vec3){0});
+			default_cam.matrices.clip_from_view = mat_projection_ortho_centered(
+				props->dimensions.width, props->dimensions.height);
+		}
+
+		camera_2d_pool_handle h = camera_2d_pool_new(cameras, &default_cam);
+		if (!ensure_handle(h.raw_handle)) {
+			LOG_ERR("couldn't allocate default camera in pool");
+			return NULL;
+		}
+
+		gpu_buffer_ci ci = {0};
+		{
+			ci.memory_preference =
+				uma ? GPU_BUFFER_MEMORY_MAPPED : GPU_BUFFER_MEMORY_GPU;
+			ci.size = RENDERER_MAX_CAMERAS * sizeof(camera_2d_matrices);
+			ci.usage = GPU_BUFFER_USAGE_STORAGE;
+		}
+		cameras_buffer = gpu->create_buffer(gpu, &ci);
+		if (!ensure_handle(cameras_buffer.handle)) {
+			LOG_ERR("couldn't create cameras storage buffer");
+			return NULL;
+		}
+		gpu_buffer_device_address_result ret =
+			gpu->buffer_get_device_address(gpu, cameras_buffer);
+		if (!ret.ok) {
+			LOG_ERR("couldn't get cameras buffer address");
+			return NULL;
+		}
+		cameras_buffer_addr = ret.address;
+
+		gpu_data_payload cam_payload = {0};
+		{
+			cam_payload.data_format = GPU_DATA_SPAN;
+			cam_payload.data.span.data = &default_cam.matrices;
+			cam_payload.data.span.size = sizeof(default_cam.matrices);
+			cam_payload.dst_offset = 0;
+		}
+		transfer_queue_upload up = {
+			.type = TRQ_UPLOAD_BUFFER,
+			.upload.buffer =
+				{
+					.acess = GPU_BUFFER_ACCESS_VERTEX_SHADER_READ,
+					.dest = cameras_buffer,
+				},
+			.payload = cam_payload,
+		};
+		if (!transfer_queue_push_upload(transfer_queue, up)) {
+			LOG_ERR("couldn't enqueue default camera upload");
+			return NULL;
+		}
 	}
+
+	uniform_ptr->camera_matrices = cameras_buffer_addr;
 
 	// Upload quad index buffer:
 	{
@@ -280,9 +344,12 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		ret->draw_buffer = draw_buffer;
 		ret->use_uma = uma;
 		ret->draw_count = 0;
-		ret->camera = camera;
+		ret->cameras = cameras;
+		ret->cameras_buffer = cameras_buffer;
+		ret->cameras_buffer_addr = cameras_buffer_addr;
 		ret->logical_resolution = logical_resolution;
 	}
+
 	return ret;
 }
 
@@ -296,6 +363,7 @@ bool renderer_shutdown(renderer* renderer) {
 		gpu->destroy_pipeline(gpu, renderer->pipeline);
 		gpu->destroy_buffer(gpu, renderer->quad_index_buffer);
 		gpu->destroy_buffer(gpu, renderer->uniform_buffer);
+		gpu->destroy_buffer(gpu, renderer->cameras_buffer);
 		buffered_buffer_destroy(&renderer->draw_buffer, gpu);
 		buffered_buffer_destroy(&renderer->quad_instances_buffer, gpu);
 	}
@@ -378,7 +446,7 @@ static gpu_viewport _compute_viewport(renderer* renderer) {
 	return ret;
 }
 
-bool renderer_begin_pass(renderer* renderer) {
+bool renderer_begin_pass(renderer* renderer, camera_2d_handle camera) {
 	if (!renderer || _frame_state != FRAME_BEGUN) {
 		LOG_ERR("can't render: invalid frame state %d", _frame_state);
 		return false;
@@ -415,9 +483,8 @@ bool renderer_begin_pass(renderer* renderer) {
 
 	// Uniforms:
 	renderer_uniform_data* u = renderer->uniform_ptr;
-	u->mat_clip_from_world = renderer_camera_get_viewproj(&renderer->camera);
+	u->camera_index = pool_handle_index(camera.handle);
 	u->draw_items = buffered_buffer_get_addr(&renderer->quad_instances_buffer);
-	u->scale = renderer->scale;
 
 	_frame_state = FRAME_RENDERING;
 	return true;
@@ -523,25 +590,92 @@ bool renderer_create_buffer(UNUSED renderer* renderer, UNUSED gpu_buffer* out,
 }
 
 /* ********************************[ CAMERA ]******************************** */
-
-mat4 renderer_camera_get_view(renderer_camera* camera) {
-	return camera->view_from_world;
+static void _camera_2d_update_matrices(camera_2d* cam) {
+	vec2* pos = &cam->props.position;
+	cam->matrices.view_from_world =
+		mat_translate_3d((vec3){{-pos->x, -pos->y, 0.f}});
+	cam->matrices.clip_from_view = mat_projection_ortho_centered(
+		cam->props.dimensions.width, cam->props.dimensions.height);
 }
 
-mat4 renderer_camera_get_proj(renderer_camera* camera) {
-	return camera->clip_from_view;
+static bool _camera_2d_update_buffer(renderer* renderer, uint32_t index,
+									 camera_2d_matrices* mats) {
+
+	gpu_data_payload payload = {0};
+	{
+		payload.data_format = GPU_DATA_SPAN;
+		payload.data.span.data = mats;
+		payload.data.span.size = sizeof(camera_2d_matrices);
+		payload.dst_offset = index * (sizeof(camera_2d_matrices));
+	}
+	transfer_queue_upload up = {
+		.type = TRQ_UPLOAD_BUFFER,
+		.upload.buffer =
+			{
+				.acess = GPU_BUFFER_ACCESS_VERTEX_SHADER_READ,
+				.dest = renderer->cameras_buffer,
+			},
+		.payload = payload,
+	};
+
+	if (!transfer_queue_push_upload(renderer->transfer_queue, up)) {
+		LOG_ERR("couldn't enqueue indices upload");
+		return false;
+	}
+
+	return true;
 }
 
-mat4 renderer_camera_get_viewproj(renderer_camera* camera) {
-	return mat4_mul(camera->clip_from_view, camera->view_from_world);
+camera_2d_handle camera_2d_create(renderer* renderer, camera_2d_props props) {
+
+	camera_2d cam = {.props = props};
+	camera_2d_pool_handle h = camera_2d_pool_new(renderer->cameras, &cam);
+	uint32_t index = pool_handle_index(h.raw_handle);
+
+	if (!ensure_handle(h.raw_handle)) {
+		LOG_ERR("couldn't allocate camera in pool");
+		return (camera_2d_handle){POOL_INVALID_HANDLE};
+	}
+
+	// compute matrices
+	_camera_2d_update_matrices(&cam);
+
+	// enqueue shader copy
+	_camera_2d_update_buffer(renderer, index, &cam.matrices);
+
+	return (camera_2d_handle){.handle = camera_2d_pool_unwrap(h)};
 }
 
-void renderer_camera_translate_by(renderer_camera* camera, vec2 offset) {
+camera_2d_props camera_2d_get_props(renderer* renderer,
+									camera_2d_handle handle) {
+	if (!ensure_handle(handle.handle)) { return (camera_2d_props){0}; }
 
-	camera->world_position.x += offset.x;
-	camera->world_position.y += offset.y;
+	camera_2d_pool_handle h = camera_2d_pool_wrap(handle.handle);
+	camera_2d* c = camera_2d_pool_get(renderer->cameras, h);
 
-	camera->view_from_world = mat_translate_3d((vec3){
-		{-camera->world_position.x, -camera->world_position.y, 0.f},
-	});
+	return c->props;
+}
+
+void camera_2d_update(renderer* renderer, camera_2d_handle handle,
+					  camera_2d_props props) {
+	if (!ensure_handle(handle.handle)) { return; }
+
+	camera_2d_pool_handle h = camera_2d_pool_wrap(handle.handle);
+	uint32_t index = pool_handle_index(handle.handle);
+	camera_2d* cam = camera_2d_pool_get(renderer->cameras, h);
+
+	cam->props = props;
+
+	// compute matrices
+	_camera_2d_update_matrices(cam);
+
+	// enqueue shader copy
+	_camera_2d_update_buffer(renderer, index, &cam->matrices);
+
+	return;
+}
+
+mat4 camera_2d_get_viewproj(camera_2d* camera) {
+	return mat4_mul(camera->matrices.clip_from_view,
+					camera->matrices.view_from_world);
 }

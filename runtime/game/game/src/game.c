@@ -25,6 +25,10 @@ typedef struct game_state {
 	uint64_t frames;
 	vec2 player_pos;
 	uint32_t player_size_idx;
+
+	camera_2d_handle camera_center;
+	camera_2d_handle camera_player;
+	bool focus_center;
 } game_state;
 
 static game_state* _state = NULL;
@@ -40,6 +44,18 @@ static bool game_init(engine_api const* engine_api, arena_t* game_arena) {
 		LOG_ERR("couldn't allocate game state");
 		return false;
 	}
+
+	camera_2d_props cam_props = {0};
+	{
+		cam_props.dimensions = (gpu_image_extent){320, 180};
+		cam_props.zoom = 1.f;
+	}
+	_state->camera_center = engine_api->create_camera(cam_props);
+
+	cam_props.position = (vec2){.x = 157.f, .y = 87.f};
+	_state->camera_player = engine_api->create_camera(cam_props);
+
+	_state->focus_center = false;
 	_state->game_arena = game_arena;
 	_state->engine_ptr = engine_api;
 	_state->player_size_idx = 0;
@@ -55,6 +71,9 @@ static void game_process_input(engine_input_state const* input) {
 		_state->player_size_idx =
 			(_state->player_size_idx + 1) % countof(player_sizes);
 	}
+	if (input->released_keys[INPUT_KEY_C]) {
+		_state->focus_center = !_state->focus_center;
+	}
 }
 
 static bool game_update(double delta) {
@@ -69,6 +88,13 @@ static bool game_update(double delta) {
 static bool game_should_quit(void) { return _state->ticks > 100000; }
 
 static void game_draw(renderer_packet* out) {
+
+	out->camera =
+		_state->focus_center ? _state->camera_center : _state->camera_player;
+	camera_2d_props props = _state->engine_ptr->get_camera(_state->camera_player);
+	props.position = _state->player_pos;
+	_state->engine_ptr->update_camera(_state->camera_player, props);
+
 	uint64_t i = 0;
 	// for (i = 0; i < MAX_DRAW_ITEMS; i++) {
 	renderer_draw_item* player_draw = NULL;

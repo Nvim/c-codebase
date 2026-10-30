@@ -4,9 +4,15 @@ struct DrawItem {
 	float2 scale;
 };
 
+struct Camera {
+	float4x4 view;
+	float4x4 proj;
+};
+
 struct UniformData {
-	float4x4 mat_clip_from_world; // view*proj
 	DrawItem* draw_items;
+	Camera* cameras;
+	uint32_t camera_index;
 	float time;
 };
 
@@ -55,10 +61,13 @@ Vertex_Out vertMain(uint vertexID : SV_VertexID, uint instanceId: SV_InstanceID,
 	Vertex_Out ret;
 
 	DrawItem item = constants.uniform.draw_items[instanceId];
+	Camera camera = constants.uniform.cameras[constants.uniform.camera_index];
 	float4 baseCoord = float4(Quad[vertexID], float2(1.f));
-	float4x4 model = mul(translatePosition(item.position), scaleMatrix(item.scale));
 
-	float4x4 mvp = mul(constants.uniform.mat_clip_from_world, model);
+	float4x4 model = mul(translatePosition(item.position), scaleMatrix(item.scale));
+	float4x4 viewproj = mul(camera.proj, camera.view);
+	float4x4 mvp = mul(viewproj, model);
+
 	ret.pos = mul(mvp, baseCoord);
 	ret.color = item.color;
 	return ret;

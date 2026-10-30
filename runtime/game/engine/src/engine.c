@@ -139,10 +139,25 @@ static bool _create_state_and_arenas(engine_config* config) {
 	return true;
 }
 
+camera_2d_handle engine_camera_create(camera_2d_props props) {
+	return camera_2d_create(_state->renderer, props);
+}
+
+camera_2d_props engine_camera_get_props(camera_2d_handle handle) {
+	return camera_2d_get_props(_state->renderer, handle);
+}
+
+void engine_camera_update(camera_2d_handle handle, camera_2d_props props) {
+	camera_2d_update(_state->renderer, handle, props);
+}
+
 static bool _load_game(void) {
 	_state->engine_funcs = (engine_api){
 		.get_version = _engine_get_version,
 		.get_input_state = engine_input_get_state,
+		.create_camera = engine_camera_create,
+		.get_camera = engine_camera_get_props,
+		.update_camera = engine_camera_update,
 	};
 
 	if (!_load_game_dll(&_state->game_dll_handle, &_state->game_funcs)) {
@@ -365,7 +380,12 @@ bool engine_run(void) {
 			packet.draw_items = draw_items;
 
 			game_funcs.game_draw(&packet);
-			renderer_begin_pass(_state->renderer);
+			if (!transfer_queue_batch_process(
+					_state->renderer->transfer_queue)) {
+				LOG_ERR("couldn't process pending gpu transfers");
+				return NULL;
+			}
+			renderer_begin_pass(_state->renderer, packet.camera);
 			// LOG_INFO("%u draws from game", packet.draw_count);
 
 			for (uint64_t i = 0; i < packet.draw_count; ++i) {
