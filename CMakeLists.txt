@@ -68,20 +68,15 @@ target_include_directories(compile_flags
 		${CMAKE_SOURCE_DIR}/include
 )
 
-if(NOT MSVC)
-    target_link_options(compile_flags
-        INTERFACE
-            -Wl,--no-undefined
-    )
-endif()
-
 option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
 if(ENABLE_ASAN)
     target_compile_options(compile_flags INTERFACE -fsanitize=address)
     target_link_options(compile_flags INTERFACE -fsanitize=address)
-	if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
-        target_link_options(compile_flags INTERFACE -shared-libasan)
-    endif()
+else()
+	target_link_options(compile_flags
+		INTERFACE
+		-Wl,--no-undefined
+	)
 endif()
 
 # == Thirdparty == #
