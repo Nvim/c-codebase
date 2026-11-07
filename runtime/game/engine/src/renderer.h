@@ -20,18 +20,14 @@ typedef struct camera_2d_matrices {
 	mat4 clip_from_view;  // projection
 } camera_2d_matrices;
 
-typedef struct camera_2d {
-	camera_2d_matrices matrices; // shader accesses this
-	camera_2d_props props;		 // user touches this
-} camera_2d;
-
-#define RENDERER_MAX_CAMERAS 16
-POOL_DEFINE_TYPE(camera_2d, camera_2d_pool)
+#define RENDERER_MAX_CAMERAS 8
+POOL_DEFINE_TYPE(camera_2d_props, camera_2d_pool)
 
 typedef struct renderer_uniform_data {
+	// gpu_device_address camera_matrices;
+	mat4 view_from_world;
+	mat4 clip_from_view;
 	gpu_device_address draw_items;
-	gpu_device_address camera_matrices;
-	uint32_t camera_index;
 	float time;
 } renderer_uniform_data;
 
@@ -46,12 +42,11 @@ typedef struct renderer {
 	buffered_buffer draw_buffer;		   // gpu_indirect_draw_command
 	buffered_buffer quad_instances_buffer; // renderer_draw_item
 
-	gpu_buffer cameras_buffer; // camera_2d
-	gpu_device_address cameras_buffer_addr;
-
+	// TODO: safe array with bounds checking
+	camera_2d_matrices camera_matrices[RENDERER_MAX_CAMERAS];
 	gpu_buffer uniform_buffer;
 	renderer_uniform_data* uniform_ptr; // CPU-mapped memory
-	gpu_device_address uniform_addr;	// GPU memory
+	gpu_device_address uniform_addr;	// GPU address
 
 	/**
 	 * If false, device doesn't have (enough) unified memory and we must upload
@@ -64,6 +59,7 @@ typedef struct renderer {
 	uint64_t draw_count; // Draws for current frame. Reset every frame
 
 	camera_2d_pool cameras;
+	camera_2d_handle default_camera_handle;
 	gpu_image_extent logical_resolution;
 	float scale;
 } renderer;
@@ -131,17 +127,5 @@ bool renderer_load_texture(renderer* renderer, renderer_texture* out,
  */
 bool renderer_create_buffer(renderer* renderer, gpu_buffer* out,
 							renderer_buffer_ci ci);
-
-/* ********************************[ CAMERA ]******************************** */
-
-camera_2d_handle camera_2d_create(renderer* renderer, camera_2d_props props);
-
-void camera_2d_update(renderer* renderer, camera_2d_handle handle,
-					  camera_2d_props props);
-
-camera_2d_props camera_2d_get_props(renderer* renderer,
-									camera_2d_handle handle);
-
-mat4 camera_2d_get_viewproj(camera_2d* camera);
 
 #endif // !RENDERER_H

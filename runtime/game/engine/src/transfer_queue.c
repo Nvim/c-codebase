@@ -166,8 +166,8 @@ bool transfer_queue_tick(transfer_queue* queue) {
 		task++;
 	}
 
-	LOG_DEBUG("%u tasks polled, %u completed, %u still pending", should_see,
-			  should_see - queue->tasks_in_flight, queue->tasks_in_flight);
+	// LOG_DEBUG("%u tasks polled, %u completed, %u still pending", should_see,
+	// 		  should_see - queue->tasks_in_flight, queue->tasks_in_flight);
 
 	return true;
 }
@@ -196,8 +196,8 @@ static bool _submit_task(transfer_queue* q, transfer_task* task) {
 	gpu->submit_command_buffer_fence(gpu, task->cmd, task->fence);
 
 	q->tasks_in_flight++;
-	LOG_DEBUG("task submitted (%u bytes). %u tasks in flight", task->data_size,
-			  q->tasks_in_flight);
+	// LOG_DEBUG("task submitted (%u bytes). %u tasks in flight",
+	// task->data_size, 		  q->tasks_in_flight);
 
 	uint64_t next_idx = _find_next_free_task(q);
 	if (next_idx == UINT64_MAX) {
@@ -332,7 +332,7 @@ bool transfer_queue_batch_process(transfer_queue* q) {
 		return true;
 	}
 
-	LOG_DEBUG("processing task slot %u", q->current_task);
+	// LOG_DEBUG("processing task slot %u", q->current_task);
 	if (!_submit_task(q, task)) {
 		LOG_ERR("couldn't submit current task");
 		return false;

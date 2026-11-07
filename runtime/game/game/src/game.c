@@ -50,10 +50,10 @@ static bool game_init(engine_api const* engine_api, arena_t* game_arena) {
 		cam_props.dimensions = (gpu_image_extent){320, 180};
 		cam_props.zoom = 1.f;
 	}
-	_state->camera_center = engine_api->create_camera(cam_props);
+	_state->camera_center = engine_api->camera_get_default();
 
 	cam_props.position = (vec2){.x = 157.f, .y = 87.f};
-	_state->camera_player = engine_api->create_camera(cam_props);
+	_state->camera_player = engine_api->camera_create(cam_props);
 
 	_state->focus_center = false;
 	_state->game_arena = game_arena;
@@ -89,11 +89,15 @@ static bool game_should_quit(void) { return _state->ticks > 100000; }
 
 static void game_draw(renderer_packet* out) {
 
-	out->camera =
-		_state->focus_center ? _state->camera_center : _state->camera_player;
-	camera_2d_props props = _state->engine_ptr->get_camera(_state->camera_player);
-	props.position = _state->player_pos;
-	_state->engine_ptr->update_camera(_state->camera_player, props);
+	if (_state->focus_center) {
+		out->camera = _state->camera_center;
+	} else {
+		out->camera = _state->camera_player;
+		camera_2d_props props =
+			_state->engine_ptr->camera_get(_state->camera_player);
+		props.position = _state->player_pos;
+		_state->engine_ptr->camera_update(_state->camera_player, props);
+	}
 
 	uint64_t i = 0;
 	// for (i = 0; i < MAX_DRAW_ITEMS; i++) {

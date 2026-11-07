@@ -1,4 +1,6 @@
 #include "engine.h"
+
+#include "camera_2d.h"
 #include "renderer.h"
 
 #include <engine/engine_api.h>
@@ -151,13 +153,18 @@ void engine_camera_update(camera_2d_handle handle, camera_2d_props props) {
 	camera_2d_update(_state->renderer, handle, props);
 }
 
+camera_2d_handle engine_camera_get_default(void) {
+	return _state->renderer->default_camera_handle;
+}
+
 static bool _load_game(void) {
 	_state->engine_funcs = (engine_api){
 		.get_version = _engine_get_version,
 		.get_input_state = engine_input_get_state,
-		.create_camera = engine_camera_create,
-		.get_camera = engine_camera_get_props,
-		.update_camera = engine_camera_update,
+		.camera_create = engine_camera_create,
+		.camera_get_default = engine_camera_get_default,
+		.camera_get = engine_camera_get_props,
+		.camera_update = engine_camera_update,
 	};
 
 	if (!_load_game_dll(&_state->game_dll_handle, &_state->game_funcs)) {
