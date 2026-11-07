@@ -41,12 +41,14 @@ typedef struct renderer {
 	gpu_buffer quad_index_buffer;
 	buffered_buffer draw_buffer;		   // gpu_indirect_draw_command
 	buffered_buffer quad_instances_buffer; // renderer_draw_item
+	buffered_buffer uniform_buffer;		   // renderer_uniform_data
 
 	// TODO: safe array with bounds checking
 	camera_2d_matrices camera_matrices[RENDERER_MAX_CAMERAS];
-	gpu_buffer uniform_buffer;
-	renderer_uniform_data* uniform_ptr; // CPU-mapped memory
-	gpu_device_address uniform_addr;	// GPU address
+	camera_2d_pool cameras;
+	camera_2d_handle default_camera_handle;
+	gpu_image_extent logical_resolution;
+	float scale;
 
 	/**
 	 * If false, device doesn't have (enough) unified memory and we must upload
@@ -57,11 +59,6 @@ typedef struct renderer {
 
 	gpu_frame* cur_frame;
 	uint64_t draw_count; // Draws for current frame. Reset every frame
-
-	camera_2d_pool cameras;
-	camera_2d_handle default_camera_handle;
-	gpu_image_extent logical_resolution;
-	float scale;
 } renderer;
 
 typedef struct renderer_texture {
