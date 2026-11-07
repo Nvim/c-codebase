@@ -964,7 +964,7 @@ VkBufferUsageFlagBits2 gpu_to_vk_buffer_usage(gpu_buffer_usage u) {
 		ret |= VK_BUFFER_USAGE_2_INDEX_BUFFER_BIT;
 		break;
 	case GPU_BUFFER_USAGE_STORAGE:
-		ret |= VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT;
+		// [NOTE]: USAGE_STORAGE/UNIFORM is only needed when using descriptors
 		ret |= VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT;
 		break;
 	case GPU_BUFFER_USAGE_INDIRECT:
