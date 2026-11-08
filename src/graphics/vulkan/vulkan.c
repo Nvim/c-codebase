@@ -541,16 +541,11 @@ void vulkan_initialize(gpu_api* self, window_t* window, arena_t* arena,
 	state->frames_in_flight = self->config.frames_in_flight;
 
 	{ // VMA:
-		VmaVulkanFunctions vk_funcs = {
-			.vkGetInstanceProcAddr = vkGetInstanceProcAddr,
-			.vkGetDeviceProcAddr = vkGetDeviceProcAddr,
-			.vkCreateImage = vkCreateImage,
-		};
 		VmaAllocatorCreateInfo alloc_ci = {
 			.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+			.vulkanApiVersion = VK_API_VERSION_1_4,
 			.physicalDevice = state->physical_device,
 			.device = state->device,
-			.pVulkanFunctions = &vk_funcs,
 			.instance = state->instance,
 		};
 
@@ -2473,6 +2468,10 @@ gpu_buffer vulkan_create_buffer(gpu_api* self, gpu_buffer_ci* ci) {
 	if (data.usage_flags & VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT) {
 		data.device_address =
 			vkGetBufferDeviceAddress(state->device, &deviceAdressInfo);
+		if (!data.device_address) {
+			LOG_ERR("couldn't get buffer device address");
+			return ret;
+		}
 	}
 
 	vk_buffer_pool_handle vk_ret =
