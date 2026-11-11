@@ -16,8 +16,6 @@ bool buffered_buffer_init(buffered_buffer* out, gpu_api* gpu, gpu_buffer_ci* ci,
 	if (!count || count > GPU_MAX_BUFFERING) { return false; }
 	memset(out, 0, sizeof(*out));
 
-	bool map = (ci->memory_preference & GPU_BUFFER_MEMORY_MAPPED);
-
 	bool good = true;
 	uint8_t i = 0;
 	for (; i < count; i++) {
@@ -37,7 +35,7 @@ bool buffered_buffer_init(buffered_buffer* out, gpu_api* gpu, gpu_buffer_ci* ci,
 			out->addresses[i] = ret.address;
 		}
 
-		if (map) {
+		if (ci->map) {
 			gpu_buffer_map_result mret = gpu->buffer_get_mapped(gpu, b);
 			if (!mret.ok) {
 				good = false;
@@ -101,7 +99,7 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		return NULL;
 	}
 
-	renderer* ret = arena_push(arena, renderer);
+	renderer* ret = arena_push_z(arena, renderer);
 	if (!ret) {
 		LOG_ERR("couldn't allocate renderer");
 		return NULL;
@@ -143,7 +141,7 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 	gpu->destroy_shader(gpu, shader);
 
 	transfer_queue* transfer_queue =
-		transfer_queue_init(arena, gpu, 128 * MEMORY_MIB, 6);
+		transfer_queue_init(arena, gpu, 128 * MEMORY_MIB, 9);
 	if (!transfer_queue) {
 		LOG_ERR("couldn't init transfer queue");
 		return false;
@@ -153,8 +151,7 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 	{ // Index buffer
 		gpu_buffer_ci ci = {0};
 		{
-			ci.memory_preference = GPU_BUFFER_MEMORY_GPU;
-			ci.size = 6 * sizeof(uint32_t); // TODO: from renderer CI
+			ci.size = 6 * sizeof(uint32_t);
 			ci.usage = GPU_BUFFER_USAGE_INDEX;
 		}
 
@@ -169,14 +166,16 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 	{ // Uniform buffer
 		gpu_buffer_ci ci = {0};
 		{
-			ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
+			ci.memory_preference =
+				GPU_BUFFER_MEMORY_PREFER_GPU; // fine if it ends up in CPU
+			ci.map = true;					  // uniform is always mapped
 			ci.size = sizeof(renderer_uniform_data); // TODO: from renderer CI
 			ci.usage = GPU_BUFFER_USAGE_STORAGE;
 		}
 
 		if (!buffered_buffer_init(&uniform_buffer, gpu, &ci,
 								  gpu->config.frames_in_flight, true)) {
-			LOG_ERR("couldn't init draw buffers");
+			LOG_ERR("couldn't init uniform buffers");
 			return NULL;
 		}
 	}
@@ -186,7 +185,8 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		gpu_buffer_ci ci = {0};
 		{
 			ci.memory_preference =
-				uma ? GPU_BUFFER_MEMORY_MAPPED : GPU_BUFFER_MEMORY_GPU;
+				GPU_BUFFER_MEMORY_MUST_GPU; // this one should be fast
+			ci.map = uma; // upload with staging when no unified memory
 			ci.size = 8 * MEMORY_MIB; // TODO: from renderer CI
 			ci.usage = GPU_BUFFER_USAGE_INDIRECT;
 		}
@@ -201,8 +201,8 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 	{ // Draw items buffer
 		gpu_buffer_ci ci = {0};
 		{
-			ci.memory_preference =
-				uma ? GPU_BUFFER_MEMORY_MAPPED : GPU_BUFFER_MEMORY_GPU;
+			ci.memory_preference = GPU_BUFFER_MEMORY_MUST_GPU;
+			ci.map = uma; // upload with staging when no unified memory
 			ci.size = 8 * MEMORY_MIB; // TODO: from renderer CI
 			ci.usage = GPU_BUFFER_USAGE_STORAGE;
 		}
@@ -406,6 +406,7 @@ bool renderer_begin_pass(renderer* renderer, camera_2d_handle camera) {
 							  GPU_IMAGE_STATE_RENDER_TARGET);
 
 	gpu_viewport viewport = _compute_viewport(renderer);
+	gpu->cmd_full_pipeline_barrier(gpu, cmd);
 	gpu->cmd_set_viewport(gpu, cmd, viewport);
 	gpu->cmd_reset_scissor(gpu, cmd);
 	gpu->cmd_begin_rendering(gpu, cmd, &render_state);
@@ -437,32 +438,72 @@ bool renderer_end_pass(renderer* renderer) {
 	gpu_frame* frame = renderer->cur_frame;
 	gpu_command_buffer cmd = frame->frame_cmd;
 
-	// Add indirect draw calls to buffer:
-	gpu_cmd_indirect_indexed_draw_command draw = {0};
-	{
-		draw.first_instance = 0;
-		draw.first_index = 0;
-		draw.index_count = 6;
-		draw.instance_count = renderer->draw_count;
-		draw.vertex_offset = 0;
+	{ // Add indirect draw calls to buffer:
+		gpu_cmd_indirect_indexed_draw_command draw = {0};
+		{
+			draw.first_instance = 0;
+			draw.first_index = 0;
+			draw.index_count = 6;
+			draw.instance_count = renderer->draw_count;
+			draw.vertex_offset = 0;
+		}
+
+		gpu_cmd_indirect_indexed_draw_command* draws_ptr =
+			buffered_buffer_get_mapped(&renderer->draw_buffer);
+		if (draws_ptr) {
+			draws_ptr[0] = draw;
+		} else {
+			transfer_queue_upload up = {0};
+			{
+				up.type = TRQ_UPLOAD_BUFFER;
+				up.upload.buffer.acess = GPU_BUFFER_ACCESS_INDIRECT_DRAW_READ;
+				up.upload.buffer.dest =
+					buffered_buffer_get(&renderer->draw_buffer);
+				up.payload.data_format = GPU_DATA_SPAN;
+				up.payload.data.span.data = &draw;
+				up.payload.data.span.size = sizeof(draw);
+				up.payload.dst_offset =
+					0; // [TODO]: use and inc frame draw count
+			}
+			transfer_queue_push_upload(renderer->transfer_queue, up);
+		}
 	}
 
-	// TODO: support staging
-	gpu_cmd_indirect_indexed_draw_command* draws_ptr =
-		buffered_buffer_get_mapped(&renderer->draw_buffer);
-	if (!draws_ptr) {
-		LOG_ERR("couldn't get indirect buffer pointer");
-		return false;
+	{ // Update instances buffer
+		renderer_draw_item* items =
+			buffered_buffer_get_mapped(&renderer->quad_instances_buffer);
+
+		// Use UMA if available
+		if (items) {
+			memcpy(items, renderer->cpu_draw_items,
+				   renderer->draw_count * sizeof(renderer_draw_item));
+		} else {
+			transfer_queue_upload up = {0};
+			{
+				up.type = TRQ_UPLOAD_BUFFER;
+				up.upload.buffer.acess = GPU_BUFFER_ACCESS_VERTEX_SHADER_READ;
+				up.upload.buffer.dest =
+					buffered_buffer_get(&renderer->quad_instances_buffer);
+				up.payload.data_format = GPU_DATA_SPAN;
+				up.payload.data.span.data = &renderer->cpu_draw_items;
+				up.payload.data.span.size =
+					renderer->draw_count * sizeof(renderer_draw_item);
+				up.payload.dst_offset = 0;
+			}
+			transfer_queue_push_upload(renderer->transfer_queue, up);
+		}
 	}
-	draws_ptr[0] = draw;
+
+	// submit this pass's transfer tasks
+	transfer_queue_batch_process(renderer->transfer_queue);
 
 	gpu_device_address uniform_addr =
 		buffered_buffer_get_addr(&renderer->uniform_buffer);
+
 	gpu->cmd_bind_pipeline(gpu, cmd, renderer->pipeline,
 						   &(gpu_per_frame_data){
 							   .frame_buffer_address = uniform_addr,
 						   });
-
 	gpu->cmd_bind_index_buffer(gpu, cmd, renderer->quad_index_buffer);
 	gpu->cmd_draw_indirect_indexed(
 		gpu, cmd, buffered_buffer_get(&renderer->draw_buffer), 0,
@@ -502,21 +543,13 @@ void renderer_draw_quad(renderer* renderer, vec2 position, vec3 color,
 		return;
 	}
 
-	gpu_frame* frame = renderer->cur_frame;
-
-	// TODO: support staging upload
-	renderer_draw_item* items =
-		buffered_buffer_get_mapped(&renderer->quad_instances_buffer);
-	if (!items) {
-		LOG_ERR("couldn't get draw items for frame %u", frame->frame_index);
-		return;
-	}
-
-	items[renderer->draw_count++] = (renderer_draw_item){
+	renderer_draw_item draw_item = {
 		.color = {.r = color.r, .g = color.g, .b = color.b, .a = 1.f},
 		.position = {{position.x, position.y}},
 		.scale = scale,
 	};
+
+	renderer->cpu_draw_items[renderer->draw_count++] = draw_item;
 }
 
 bool renderer_load_texture(UNUSED renderer* renderer,

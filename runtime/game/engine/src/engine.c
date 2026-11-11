@@ -182,7 +182,7 @@ static bool _init_gpu(void) {
 	gpu_api_config gpu_ci = {0};
 	{
 		gpu_ci.app_name = "todo";
-		gpu_ci.frames_in_flight = 3;
+		gpu_ci.frames_in_flight = 1;
 		gpu_ci.target_image_format = IMAGE_FORMAT_RGBA_SRGB;
 		gpu_ci.type = GRAPHICS_API_VULKAN;
 		gpu_ci.present_mode = GPU_PRESENT_MODE_VSYNC;
@@ -387,11 +387,7 @@ bool engine_run(void) {
 			packet.draw_items = draw_items;
 
 			game_funcs.game_draw(&packet);
-			if (!transfer_queue_batch_process(
-					_state->renderer->transfer_queue)) {
-				LOG_ERR("couldn't process pending gpu transfers");
-				return NULL;
-			}
+
 			renderer_begin_pass(_state->renderer, packet.camera);
 			// LOG_INFO("%u draws from game", packet.draw_count);
 

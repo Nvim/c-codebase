@@ -42,6 +42,7 @@ typedef struct renderer {
 	buffered_buffer draw_buffer;		   // gpu_indirect_draw_command
 	buffered_buffer quad_instances_buffer; // renderer_draw_item
 	buffered_buffer uniform_buffer;		   // renderer_uniform_data
+	renderer_draw_item cpu_draw_items[MAX_DRAW_ITEMS];
 
 	// TODO: safe array with bounds checking
 	camera_2d_matrices camera_matrices[RENDERER_MAX_CAMERAS];

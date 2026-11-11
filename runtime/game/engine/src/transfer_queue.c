@@ -59,7 +59,6 @@ transfer_queue* transfer_queue_init(arena_t* arena, gpu_api* gpu,
 
 	gpu_buffer_ci ci = {0};
 	{
-		ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
 		ci.size = buffer_size;
 		ci.usage = GPU_BUFFER_USAGE_STAGING_UP;
 	}
@@ -116,8 +115,9 @@ static bool _is_task_live(transfer_task* task) {
 void transfer_queue_destroy(transfer_queue* q) {
 	// Make sure we haven't got anyting pending
 	gpu_api* gpu = q->gpu;
+	if (!transfer_queue_tick(q)) { LOG_ERR("couldn't tick transfer queue"); }
 	transfer_queue_batch_process_wait(q);
-	transfer_queue_tick(q);
+	if (!transfer_queue_tick(q)) { LOG_ERR("couldn't tick transfer queue"); }
 
 	transfer_task* task;
 	if (!transfer_task_array_at(q->transfer_tasks, &task, q->current_task)) {
@@ -201,7 +201,8 @@ static bool _submit_task(transfer_queue* q, transfer_task* task) {
 
 	uint64_t next_idx = _find_next_free_task(q);
 	if (next_idx == UINT64_MAX) {
-		LOG_ERR("couldn't get next task slot, queue is full");
+		LOG_ERR("couldn't get next task slot, queue is full: %u",
+				q->tasks_in_flight);
 		return false;
 	}
 
@@ -277,7 +278,8 @@ bool transfer_queue_push_upload(transfer_queue* q,
 
 	// Push to current task
 	gpu_api* gpu = q->gpu;
-	size_t offset_in_staging = task->data_size;
+	size_t offset_in_staging =
+		(q->max_single_task_size * q->current_task) + task->data_size;
 	size_t offset_in_dest = payload.dst_offset;
 
 	payload.dst_offset = offset_in_staging;
@@ -290,7 +292,8 @@ bool transfer_queue_push_upload(transfer_queue* q,
 			copy_ci.size = payload_size;
 			copy_ci.src = q->staging_buf;
 			copy_ci.dst = up->dest;
-			copy_ci.src_offset = task->data_size;
+			copy_ci.src_offset =
+				(q->max_single_task_size * q->current_task) + task->data_size;
 			copy_ci.dst_offset = offset_in_dest;
 		}
 		ASSERT(gpu->cmd_buffer_barrier(gpu, task->cmd, up->dest, up->acess, GPU_BUFFER_ACCESS_TRANSFER_WRITE)); // NOLINT
@@ -301,13 +304,13 @@ bool transfer_queue_push_upload(transfer_queue* q,
 		gpu_image_copy_info copy_ci = {0};
 		{
 			copy_ci.src = q->staging_buf;
-			copy_ci.src_offset = task->data_size;
+			copy_ci.src_offset =
+				(q->max_single_task_size * q->current_task) + task->data_size;
 			copy_ci.dst = up->dest;
 			copy_ci.regions = up->regions;
 		}
 
-		ASSERT(gpu->cmd_transition_image(gpu, task->cmd, up->dest,
-										 GPU_IMAGE_STATE_TRANSFER_DST));
+		ASSERT(gpu->cmd_transition_image(gpu, task->cmd, up->dest, GPU_IMAGE_STATE_TRANSFER_DST)); // NOLINT
 		ASSERT(gpu->cmd_copy_to_image(gpu, task->cmd, &copy_ci));
 		ASSERT(gpu->cmd_transition_image(gpu, task->cmd, up->dest, up->usage));
 	}
@@ -351,6 +354,7 @@ bool transfer_queue_batch_process_wait(transfer_queue* q) {
 		return false;
 	}
 
+	// LOG_DEBUG("ending task %u", q->current_task);
 	if (_is_task_live(task)) {
 		if (!_submit_task(q, task)) {
 			LOG_ERR("couldn't submit current task");
@@ -375,7 +379,7 @@ bool transfer_queue_batch_process_wait(transfer_queue* q) {
 		task++;
 	}
 
-	LOG_DEBUG("waited on %u tasks to complete. transfer queue empty", seen);
+	// LOG_DEBUG("waited on %u tasks to complete. transfer queue empty", seen);
 	ASSERT(q->tasks_in_flight == 0);
 	ASSERT(q->total_usage_bytes == 0);
 
