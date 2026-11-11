@@ -141,15 +141,15 @@ bool gpu_validate_buffer_ci(gpu_buffer_ci* ci) {
 	}
 
 	if (ci->usage == GPU_BUFFER_USAGE_INDEX &&
-		ci->memory_preference == GPU_BUFFER_MEMORY_MAPPED) {
+		ci->memory_preference == GPU_BUFFER_MEMORY_CPU) {
 		LOG_WARN("ignoring memory preference for index buffer");
-		ci->memory_preference = GPU_BUFFER_MEMORY_GPU;
+		ci->memory_preference = GPU_BUFFER_MEMORY_MUST_GPU;
 	}
 
 	if (is_buffer_staging(ci->usage) &&
-		ci->memory_preference == GPU_BUFFER_MEMORY_GPU) {
+		ci->memory_preference != GPU_BUFFER_MEMORY_CPU) {
 		LOG_WARN("ignoring memory preference for staging buffer");
-		ci->memory_preference = GPU_BUFFER_MEMORY_MAPPED;
+		ci->memory_preference = GPU_BUFFER_MEMORY_CPU;
 	}
 	return true;
 }

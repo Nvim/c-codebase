@@ -1000,16 +1000,25 @@ VmaAllocationCreateInfo gpu_to_vk_buffer_memory(gpu_buffer_ci* ci) {
 	if (ci->usage == GPU_BUFFER_USAGE_STORAGE ||
 		ci->usage == GPU_BUFFER_USAGE_INDIRECT) {
 
+		// Memory placement
 		switch (ci->memory_preference) {
-
-		case GPU_BUFFER_MEMORY_GPU:
+		case GPU_BUFFER_MEMORY_MUST_GPU:
+			ret.usage = VMA_MEMORY_USAGE_AUTO;
+			ret.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+			ret.preferredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+			break;
+		case GPU_BUFFER_MEMORY_PREFER_GPU:
 			ret.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 			break;
-		case GPU_BUFFER_MEMORY_MAPPED:
+		case GPU_BUFFER_MEMORY_CPU:
 			ret.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+			break;
+		}
+
+		// Mapping
+		if (ci->map) {
 			ret.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
 						VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-			break;
 		}
 	}
 

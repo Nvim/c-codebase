@@ -396,13 +396,15 @@ typedef enum {
 } gpu_buffer_usage;
 
 typedef enum {
-	GPU_BUFFER_MEMORY_GPU,	  // Device only, uploads will go through staging.
-	GPU_BUFFER_MEMORY_MAPPED, // CPU-mapped, uploads are memcpy calls.
+	GPU_BUFFER_MEMORY_MUST_GPU,	  // GPU memory, error if not possible.
+	GPU_BUFFER_MEMORY_PREFER_GPU, // GPU memory if possible, fallback to CPU.
+	GPU_BUFFER_MEMORY_CPU,
 } gpu_buffer_memory;
 
 typedef struct gpu_buffer_ci {
 	gpu_buffer_usage usage;
 	gpu_buffer_memory memory_preference;
+	bool map;
 	size_t size;
 } gpu_buffer_ci;
 
