@@ -17,8 +17,6 @@ bool buffered_buffer_init(buffered_buffer* out, gpu_api* gpu, gpu_buffer_ci* ci,
 	if (!count || count > GPU_MAX_BUFFERING) { return false; }
 	memset(out, 0, sizeof(*out));
 
-	bool map = (ci->memory_preference & GPU_BUFFER_MEMORY_MAPPED);
-
 	bool good = true;
 	uint8_t i = 0;
 	for (; i < count; i++) {
@@ -38,7 +36,7 @@ bool buffered_buffer_init(buffered_buffer* out, gpu_api* gpu, gpu_buffer_ci* ci,
 			out->addresses[i] = ret.address;
 		}
 
-		if (map) {
+		if (ci->map) {
 			gpu_buffer_map_result mret = gpu->buffer_get_mapped(gpu, b);
 			if (!mret.ok) {
 				good = false;
@@ -188,19 +186,22 @@ text_renderer_t* text_renderer_init(gpu_api* gpu, arena_t* arena) {
 	{
 		indirect_ci.usage = GPU_BUFFER_USAGE_INDIRECT;
 		indirect_ci.size = MAX_CHARS * sizeof(gpu_indirect_draw_command) * 2;
-		indirect_ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
+		indirect_ci.memory_preference = GPU_BUFFER_MEMORY_MUST_GPU;
+		indirect_ci.map = true;
 	}
 	gpu_buffer_ci vertex_ci = {0};
 	{
 		vertex_ci.usage = GPU_BUFFER_USAGE_STORAGE;
 		vertex_ci.size = MAX_CHARS * sizeof(vertex) * 6; // 6 vertices per char
-		vertex_ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
+		vertex_ci.memory_preference = GPU_BUFFER_MEMORY_MUST_GPU;
+		vertex_ci.map = true;
 	}
 	gpu_buffer_ci uniform_ci = {0};
 	{
 		uniform_ci.usage = GPU_BUFFER_USAGE_STORAGE;
 		uniform_ci.size = sizeof(uniform);
-		uniform_ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
+		uniform_ci.memory_preference = GPU_BUFFER_MEMORY_PREFER_GPU;
+		uniform_ci.map = true;
 	}
 
 	if (!buffered_buffer_init(&ret->vertex_buffers, gpu, &vertex_ci,

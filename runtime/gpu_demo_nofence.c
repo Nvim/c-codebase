@@ -165,7 +165,8 @@ int main(int argc, char** argv) {
 	gpu_buffer_ci vbuf_ci = {0};
 	{
 		vbuf_ci.size = sizeof(vertex_data);
-		vbuf_ci.memory_preference = GPU_BUFFER_MEMORY_GPU;
+		vbuf_ci.memory_preference = GPU_BUFFER_MEMORY_MUST_GPU;
+		vbuf_ci.map = true;
 		vbuf_ci.usage = GPU_BUFFER_USAGE_STORAGE;
 	}
 	gpu_buffer vertex_buffer = gpu.create_buffer(&gpu, &vbuf_ci);
@@ -185,7 +186,8 @@ int main(int argc, char** argv) {
 	{
 		indirect_buf_ci.size = sizeof(indirect_data);
 		indirect_buf_ci.usage = GPU_BUFFER_USAGE_INDIRECT;
-		indirect_buf_ci.memory_preference = GPU_BUFFER_MEMORY_GPU;
+		indirect_buf_ci.memory_preference = GPU_BUFFER_MEMORY_MUST_GPU;
+		indirect_buf_ci.map = true;
 	}
 	gpu_buffer indirect_buffer = gpu.create_buffer(&gpu, &indirect_buf_ci);
 
@@ -200,7 +202,8 @@ int main(int argc, char** argv) {
 	{
 		uniform_buffer_ci.size = sizeof(uniform_data);
 		uniform_buffer_ci.usage = GPU_BUFFER_USAGE_STORAGE;
-		uniform_buffer_ci.memory_preference = GPU_BUFFER_MEMORY_MAPPED;
+		uniform_buffer_ci.memory_preference = GPU_BUFFER_MEMORY_CPU;
+		uniform_buffer_ci.map = true;
 	}
 	gpu_buffer uniform_buffer = gpu.create_buffer(&gpu, &uniform_buffer_ci);
 	ret = gpu.buffer_get_device_address(&gpu, uniform_buffer);
