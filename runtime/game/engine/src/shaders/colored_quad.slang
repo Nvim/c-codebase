@@ -57,7 +57,7 @@ static const float2 Quad[4] = float2[4](
 
 
 [[shader("vertex")]]
-Vertex_Out vertMain(uint vertexID : SV_VertexID, uint instanceId: SV_InstanceID, uniform ShaderInput constants) {
+Vertex_Out vertMain(uint vertexID : SV_VulkanVertexID, uint instanceId: SV_VulkanInstanceID, uniform ShaderInput constants) {
 	Vertex_Out ret;
 
 	DrawItem item = constants.uniform.draw_items[instanceId];

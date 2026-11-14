@@ -163,6 +163,7 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 	}
 
 	buffered_buffer uniform_buffer = {0};
+	buffered_buffer second_uniform_buffer = {0};
 	{ // Uniform buffer
 		gpu_buffer_ci ci = {0};
 		{
@@ -174,6 +175,11 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		}
 
 		if (!buffered_buffer_init(&uniform_buffer, gpu, &ci,
+								  gpu->config.frames_in_flight, true)) {
+			LOG_ERR("couldn't init uniform buffers");
+			return NULL;
+		}
+		if (!buffered_buffer_init(&second_uniform_buffer, gpu, &ci,
 								  gpu->config.frames_in_flight, true)) {
 			LOG_ERR("couldn't init uniform buffers");
 			return NULL;
@@ -264,6 +270,7 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		ret->quad_index_buffer = quad_index_buffer;
 		ret->quad_instances_buffer = instances_buffer;
 		ret->uniform_buffer = uniform_buffer;
+		ret->second_uniform_buffer = second_uniform_buffer;
 		ret->draw_buffer = draw_buffer;
 		ret->use_uma = uma;
 		ret->draw_count = 0;
@@ -294,6 +301,7 @@ bool renderer_shutdown(renderer* renderer) {
 		gpu->destroy_pipeline(gpu, renderer->pipeline);
 		gpu->destroy_buffer(gpu, renderer->quad_index_buffer);
 		buffered_buffer_destroy(&renderer->uniform_buffer, gpu);
+		buffered_buffer_destroy(&renderer->second_uniform_buffer, gpu);
 		buffered_buffer_destroy(&renderer->draw_buffer, gpu);
 		buffered_buffer_destroy(&renderer->quad_instances_buffer, gpu);
 	}
@@ -336,6 +344,8 @@ bool renderer_begin_frame(renderer* renderer) {
 
 	memcpy(frame, &res.frame, sizeof(res.frame));
 	renderer->cur_frame = frame;
+
+	memset(&renderer->cur_pass, 0, sizeof(renderer->cur_pass));
 
 	return true;
 }
@@ -393,7 +403,8 @@ bool renderer_begin_pass(renderer* renderer, camera_2d_handle camera) {
 	// Begin rendering
 	gpu_color_target color_target = {
 		.clear_color = (gpu_color){.floats = {.1f, .1f, .1f, 1.f}},
-		.load_op = GPU_LOAD_OP_CLEAR,
+		.load_op = renderer->cur_pass.index == 0 ? GPU_LOAD_OP_CLEAR
+												 : GPU_LOAD_OP_LOAD,
 		.store_op = GPU_STORE_OP_STORE,
 		.target = frame->framebuffer_view,
 	};
@@ -402,18 +413,24 @@ bool renderer_begin_pass(renderer* renderer, camera_2d_handle camera) {
 		.color_targets = {color_target},
 	};
 
+	char pass_label[32];
+	sprintf(pass_label, "PASS #%u", renderer->cur_pass.index);
+	gpu->cmd_push_debug_label(gpu, cmd, pass_label);
 	gpu->cmd_transition_image(gpu, cmd, frame->framebuffer,
 							  GPU_IMAGE_STATE_RENDER_TARGET);
 
 	gpu_viewport viewport = _compute_viewport(renderer);
-	gpu->cmd_full_pipeline_barrier(gpu, cmd);
 	gpu->cmd_set_viewport(gpu, cmd, viewport);
 	gpu->cmd_reset_scissor(gpu, cmd);
 	gpu->cmd_begin_rendering(gpu, cmd, &render_state);
 
 	// Update uniforms
-	renderer_uniform_data* u =
-		buffered_buffer_get_mapped(&renderer->uniform_buffer);
+	renderer_uniform_data* u = NULL;
+	if (renderer->cur_pass.index == 0) {
+		u = buffered_buffer_get_mapped(&renderer->uniform_buffer);
+	} else {
+		u = buffered_buffer_get_mapped(&renderer->second_uniform_buffer);
+	}
 	if (!u) {
 		LOG_ERR("couldn't get uniform for frame %u", renderer->cur_frame->frame_index); // NOLINT
 		return false;
@@ -425,6 +442,10 @@ bool renderer_begin_pass(renderer* renderer, camera_2d_handle camera) {
 	u->draw_items = buffered_buffer_get_addr(&renderer->quad_instances_buffer);
 
 	_frame_state = FRAME_RENDERING;
+
+	// [NOTE]: pass index is incremented after ending, so 1st pass is #0
+	// renderer->cur_pass.index++;
+
 	return true;
 }
 
@@ -437,21 +458,23 @@ bool renderer_end_pass(renderer* renderer) {
 	gpu_api* gpu = renderer->gpu;
 	gpu_frame* frame = renderer->cur_frame;
 	gpu_command_buffer cmd = frame->frame_cmd;
+	uint32_t pass_idx = renderer->cur_pass.index;
+	uint32_t first_inst = renderer->cur_pass.first_instance;
 
 	{ // Add indirect draw calls to buffer:
 		gpu_cmd_indirect_indexed_draw_command draw = {0};
 		{
-			draw.first_instance = 0;
+			draw.first_instance = first_inst;
 			draw.first_index = 0;
 			draw.index_count = 6;
-			draw.instance_count = renderer->draw_count;
+			draw.instance_count = renderer->cur_pass.draw_count;
 			draw.vertex_offset = 0;
 		}
 
 		gpu_cmd_indirect_indexed_draw_command* draws_ptr =
 			buffered_buffer_get_mapped(&renderer->draw_buffer);
 		if (draws_ptr) {
-			draws_ptr[0] = draw;
+			draws_ptr[pass_idx] = draw;
 		} else {
 			transfer_queue_upload up = {0};
 			{
@@ -463,7 +486,14 @@ bool renderer_end_pass(renderer* renderer) {
 				up.payload.data.span.data = &draw;
 				up.payload.data.span.size = sizeof(draw);
 				up.payload.dst_offset =
-					0; // [TODO]: use and inc frame draw count
+					pass_idx * (sizeof(draw)); // assumes 1 draw per pass
+				/* [NOTE]: dst_offset could be 0 here. Since we flush transfer
+				 * queue on each pass, barrier happens so it's safe to
+				 * re-write in the same place.
+				 * We use a different offset to match the UMA path, where we
+				 * don't want to explicitly sync pass #1 needing to finish
+				 * before pass #2.
+				 */
 			}
 			transfer_queue_push_upload(renderer->transfer_queue, up);
 		}
@@ -472,11 +502,13 @@ bool renderer_end_pass(renderer* renderer) {
 	{ // Update instances buffer
 		renderer_draw_item* items =
 			buffered_buffer_get_mapped(&renderer->quad_instances_buffer);
+		size_t items_size =
+			renderer->cur_pass.draw_count * sizeof(renderer_draw_item);
 
 		// Use UMA if available
 		if (items) {
-			memcpy(items, renderer->cpu_draw_items,
-				   renderer->draw_count * sizeof(renderer_draw_item));
+			memcpy(&items[first_inst], &renderer->cpu_draw_items[first_inst],
+				   items_size);
 		} else {
 			transfer_queue_upload up = {0};
 			{
@@ -485,10 +517,10 @@ bool renderer_end_pass(renderer* renderer) {
 				up.upload.buffer.dest =
 					buffered_buffer_get(&renderer->quad_instances_buffer);
 				up.payload.data_format = GPU_DATA_SPAN;
-				up.payload.data.span.data = &renderer->cpu_draw_items;
-				up.payload.data.span.size =
-					renderer->draw_count * sizeof(renderer_draw_item);
-				up.payload.dst_offset = 0;
+				up.payload.data.span.data =
+					&renderer->cpu_draw_items[first_inst];
+				up.payload.data.span.size = items_size;
+				up.payload.dst_offset = first_inst * sizeof(renderer_draw_item);
 			}
 			transfer_queue_push_upload(renderer->transfer_queue, up);
 		}
@@ -498,18 +530,29 @@ bool renderer_end_pass(renderer* renderer) {
 	transfer_queue_batch_process(renderer->transfer_queue);
 
 	gpu_device_address uniform_addr =
-		buffered_buffer_get_addr(&renderer->uniform_buffer);
+		pass_idx == 0
+			? buffered_buffer_get_addr(&renderer->uniform_buffer)
+			: buffered_buffer_get_addr(&renderer->second_uniform_buffer);
 
 	gpu->cmd_bind_pipeline(gpu, cmd, renderer->pipeline,
 						   &(gpu_per_frame_data){
 							   .frame_buffer_address = uniform_addr,
 						   });
 	gpu->cmd_bind_index_buffer(gpu, cmd, renderer->quad_index_buffer);
-	gpu->cmd_draw_indirect_indexed(
-		gpu, cmd, buffered_buffer_get(&renderer->draw_buffer), 0,
-		renderer->draw_count, sizeof(gpu_cmd_indirect_indexed_draw_command));
+
+	uint64_t stride = sizeof(gpu_cmd_indirect_indexed_draw_command);
+	gpu->cmd_draw_indirect_indexed(gpu, cmd,
+								   buffered_buffer_get(&renderer->draw_buffer),
+								   pass_idx * stride, // assumes 1 draw per pass
+								   1, stride);
 
 	gpu->cmd_end_rendering(gpu, cmd);
+
+	{ // update pass info for next pass
+		renderer->cur_pass.index++;
+		renderer->cur_pass.first_instance += renderer->cur_pass.draw_count;
+		renderer->cur_pass.draw_count = 0;
+	}
 
 	_frame_state = FRAME_BEGUN;
 	return true;
@@ -528,11 +571,14 @@ bool renderer_end_frame(renderer* renderer) {
 	bool ret = gpu->end_frame(gpu, frame);
 
 	buffered_buffer_advance(&renderer->uniform_buffer);
+	buffered_buffer_advance(&renderer->second_uniform_buffer);
 	buffered_buffer_advance(&renderer->quad_instances_buffer);
 	buffered_buffer_advance(&renderer->draw_buffer);
 
 	renderer->draw_count = 0;
 	_frame_state = FRAME_ENDED;
+	memset(&renderer->cur_pass, 0, sizeof(renderer->cur_pass));
+
 	return ret;
 }
 
@@ -543,6 +589,13 @@ void renderer_draw_quad(renderer* renderer, vec2 position, vec3 color,
 		return;
 	}
 
+	if (renderer->draw_count == 5) {
+		// axis
+		// return;
+		renderer_end_pass(renderer);
+		renderer_begin_pass(renderer, renderer->default_camera_handle);
+	}
+
 	renderer_draw_item draw_item = {
 		.color = {.r = color.r, .g = color.g, .b = color.b, .a = 1.f},
 		.position = {{position.x, position.y}},
@@ -550,6 +603,7 @@ void renderer_draw_quad(renderer* renderer, vec2 position, vec3 color,
 	};
 
 	renderer->cpu_draw_items[renderer->draw_count++] = draw_item;
+	renderer->cur_pass.draw_count++;
 }
 
 bool renderer_load_texture(UNUSED renderer* renderer,

@@ -42,6 +42,7 @@ typedef struct renderer {
 	buffered_buffer draw_buffer;		   // gpu_indirect_draw_command
 	buffered_buffer quad_instances_buffer; // renderer_draw_item
 	buffered_buffer uniform_buffer;		   // renderer_uniform_data
+	buffered_buffer second_uniform_buffer; // renderer_uniform_data
 	renderer_draw_item cpu_draw_items[MAX_DRAW_ITEMS];
 
 	// TODO: safe array with bounds checking
@@ -59,7 +60,13 @@ typedef struct renderer {
 	bool use_uma;
 
 	gpu_frame* cur_frame;
-	uint64_t draw_count; // Draws for current frame. Reset every frame
+	uint32_t draw_count; // Draws for current frame. Reset every frame
+	struct render_pass {
+		uint32_t index;
+		uint32_t draw_count;
+		uint32_t first_instance; // 1st draw in draw buffer for this pass
+		// pipeline, render target, viewport & scissor things?
+	} cur_pass;
 } renderer;
 
 typedef struct renderer_texture {
