@@ -7,6 +7,8 @@
 #include <core/math.h>
 #include <graphics/graphics.h>
 
+POOL_DEFINE_TYPE(camera_2d_props, camera_2d_pool)
+
 typedef struct buffered_buffer {
 	gpu_buffer buffers[GPU_MAX_BUFFERING];
 	gpu_device_address addresses[GPU_MAX_BUFFERING];
@@ -20,9 +22,6 @@ typedef struct camera_2d_matrices {
 	mat4 clip_from_view;  // projection
 } camera_2d_matrices;
 
-#define RENDERER_MAX_CAMERAS 8
-POOL_DEFINE_TYPE(camera_2d_props, camera_2d_pool)
-
 typedef struct renderer_uniform_data {
 	// gpu_device_address camera_matrices;
 	mat4 view_from_world;
@@ -30,6 +29,15 @@ typedef struct renderer_uniform_data {
 	gpu_device_address draw_items;
 	float time;
 } renderer_uniform_data;
+
+typedef struct render_pass {
+	uint32_t index;
+	string name;
+	renderer_uniform_data uniform;
+	uint32_t first_instance;
+	uint32_t draw_count;
+	// pipeline, render target, viewport & scissor things?
+} render_pass;
 
 typedef struct renderer {
 	arena_t* arena;		  // permanent allocs
@@ -39,11 +47,10 @@ typedef struct renderer {
 	gpu_pipeline pipeline;
 	transfer_queue* transfer_queue;
 	gpu_buffer quad_index_buffer;
-	buffered_buffer draw_buffer;		   // gpu_indirect_draw_command
-	buffered_buffer quad_instances_buffer; // renderer_draw_item
-	buffered_buffer uniform_buffer;		   // renderer_uniform_data
-	buffered_buffer second_uniform_buffer; // renderer_uniform_data
-	renderer_draw_item cpu_draw_items[MAX_DRAW_ITEMS];
+	buffered_buffer draw_buffer;	// gpu_indirect_draw_command
+	buffered_buffer gpu_draw_items; // renderer_draw_item
+	buffered_buffer uniform_buffer; // renderer_uniform_data
+	renderer_draw_item_array cpu_draw_items;
 
 	// TODO: safe array with bounds checking
 	camera_2d_matrices camera_matrices[RENDERER_MAX_CAMERAS];
@@ -61,12 +68,7 @@ typedef struct renderer {
 
 	gpu_frame* cur_frame;
 	uint32_t draw_count; // Draws for current frame. Reset every frame
-	struct render_pass {
-		uint32_t index;
-		uint32_t draw_count;
-		uint32_t first_instance; // 1st draw in draw buffer for this pass
-		// pipeline, render target, viewport & scissor things?
-	} cur_pass;
+	render_pass cur_pass;
 } renderer;
 
 typedef struct renderer_texture {
@@ -119,6 +121,10 @@ bool renderer_end_frame(renderer* renderer);
 /* == Draw Commands == */
 void renderer_draw_quad(renderer* renderer, vec2 position, vec3 color,
 						vec2 scale);
+
+// [NOTE]: Getter for this as i might want to return mapped buffer directly when
+// uma
+renderer_draw_item_array renderer_get_draw_buffer(renderer* renderer);
 
 /* == Resource creation == */
 bool renderer_load_texture(renderer* renderer, renderer_texture* out,

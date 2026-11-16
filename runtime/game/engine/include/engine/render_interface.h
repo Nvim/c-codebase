@@ -5,7 +5,9 @@
 #include <core/math.h>
 #include <graphics/graphics.h>
 
-#define MAX_DRAW_ITEMS 1024
+#define RENDERER_MAX_DRAWS 1024
+#define RENDERER_MAX_CAMERAS 8
+#define RENDERER_MAX_PASSES 8
 
 typedef struct camera_2d_props {
 	vec2 position;				 // position in world space

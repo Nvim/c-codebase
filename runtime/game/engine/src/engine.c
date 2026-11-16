@@ -377,8 +377,8 @@ bool engine_run(void) {
 		// Game draws only once per frame
 		if (renderer_should_draw(_state->renderer)) {
 			renderer_draw_item_array draw_items =
-				renderer_draw_item_array_create(_state->frame_arena,
-												MAX_DRAW_ITEMS);
+				renderer_get_draw_buffer(_state->renderer);
+
 			if (!draw_items.raw) {
 				LOG_ERR("couldn't allocate frame draw items array");
 				break;

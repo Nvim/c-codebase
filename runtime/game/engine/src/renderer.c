@@ -163,23 +163,17 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 	}
 
 	buffered_buffer uniform_buffer = {0};
-	buffered_buffer second_uniform_buffer = {0};
 	{ // Uniform buffer
 		gpu_buffer_ci ci = {0};
 		{
 			ci.memory_preference =
 				GPU_BUFFER_MEMORY_PREFER_GPU; // fine if it ends up in CPU
 			ci.map = true;					  // uniform is always mapped
-			ci.size = sizeof(renderer_uniform_data); // TODO: from renderer CI
+			ci.size = sizeof(renderer_uniform_data) * RENDERER_MAX_PASSES;
 			ci.usage = GPU_BUFFER_USAGE_STORAGE;
 		}
 
 		if (!buffered_buffer_init(&uniform_buffer, gpu, &ci,
-								  gpu->config.frames_in_flight, true)) {
-			LOG_ERR("couldn't init uniform buffers");
-			return NULL;
-		}
-		if (!buffered_buffer_init(&second_uniform_buffer, gpu, &ci,
 								  gpu->config.frames_in_flight, true)) {
 			LOG_ERR("couldn't init uniform buffers");
 			return NULL;
@@ -261,6 +255,16 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		}
 	}
 
+	renderer_draw_item_array cpu_draw_items;
+	{ // CPU draws array
+		cpu_draw_items =
+			renderer_draw_item_array_create(arena, RENDERER_MAX_DRAWS);
+		if (!cpu_draw_items.raw) {
+			LOG_ERR("couldn't allocate draw items array");
+			return NULL;
+		}
+	}
+
 	{
 		ret->arena = arena;
 		ret->frame_arena = frame_arena;
@@ -268,9 +272,9 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		ret->pipeline = pipeline;
 		ret->transfer_queue = transfer_queue;
 		ret->quad_index_buffer = quad_index_buffer;
-		ret->quad_instances_buffer = instances_buffer;
+		ret->gpu_draw_items = instances_buffer;
 		ret->uniform_buffer = uniform_buffer;
-		ret->second_uniform_buffer = second_uniform_buffer;
+		ret->cpu_draw_items = cpu_draw_items;
 		ret->draw_buffer = draw_buffer;
 		ret->use_uma = uma;
 		ret->draw_count = 0;
@@ -301,9 +305,8 @@ bool renderer_shutdown(renderer* renderer) {
 		gpu->destroy_pipeline(gpu, renderer->pipeline);
 		gpu->destroy_buffer(gpu, renderer->quad_index_buffer);
 		buffered_buffer_destroy(&renderer->uniform_buffer, gpu);
-		buffered_buffer_destroy(&renderer->second_uniform_buffer, gpu);
 		buffered_buffer_destroy(&renderer->draw_buffer, gpu);
-		buffered_buffer_destroy(&renderer->quad_instances_buffer, gpu);
+		buffered_buffer_destroy(&renderer->gpu_draw_items, gpu);
 	}
 
 	return true;
@@ -386,6 +389,25 @@ static gpu_viewport _compute_viewport(renderer* renderer) {
 	return ret;
 }
 
+static renderer_uniform_data* _get_current_cpu_uniform(renderer* renderer) {
+	renderer_uniform_data* u =
+		buffered_buffer_get_mapped(&renderer->uniform_buffer);
+	if (!u) {
+		LOG_ERR("couldn't get uniform for frame %u", renderer->cur_frame->frame_index); // NOLINT
+		return false;
+	}
+	u += renderer->cur_pass.index % RENDERER_MAX_PASSES;
+	return u;
+}
+
+static gpu_device_address _get_current_gpu_uniform(renderer* renderer) {
+	gpu_device_address addr =
+		buffered_buffer_get_addr(&renderer->uniform_buffer);
+	addr += sizeof(renderer_uniform_data) *
+			(renderer->cur_pass.index % RENDERER_MAX_PASSES);
+	return addr;
+}
+
 bool renderer_begin_pass(renderer* renderer, camera_2d_handle camera) {
 	if (!renderer || _frame_state != FRAME_BEGUN) {
 		LOG_ERR("can't render: invalid frame state %d", _frame_state);
@@ -425,21 +447,12 @@ bool renderer_begin_pass(renderer* renderer, camera_2d_handle camera) {
 	gpu->cmd_begin_rendering(gpu, cmd, &render_state);
 
 	// Update uniforms
-	renderer_uniform_data* u = NULL;
-	if (renderer->cur_pass.index == 0) {
-		u = buffered_buffer_get_mapped(&renderer->uniform_buffer);
-	} else {
-		u = buffered_buffer_get_mapped(&renderer->second_uniform_buffer);
-	}
-	if (!u) {
-		LOG_ERR("couldn't get uniform for frame %u", renderer->cur_frame->frame_index); // NOLINT
-		return false;
-	}
+	renderer_uniform_data* u = _get_current_cpu_uniform(renderer);
 
 	uint32_t index = pool_handle_index(camera.handle);
 	u->view_from_world = renderer->camera_matrices[index].view_from_world;
 	u->clip_from_view = renderer->camera_matrices[index].clip_from_view;
-	u->draw_items = buffered_buffer_get_addr(&renderer->quad_instances_buffer);
+	u->draw_items = buffered_buffer_get_addr(&renderer->gpu_draw_items);
 
 	_frame_state = FRAME_RENDERING;
 
@@ -501,24 +514,27 @@ bool renderer_end_pass(renderer* renderer) {
 
 	{ // Update instances buffer
 		renderer_draw_item* items =
-			buffered_buffer_get_mapped(&renderer->quad_instances_buffer);
+			buffered_buffer_get_mapped(&renderer->gpu_draw_items);
 		size_t items_size =
 			renderer->cur_pass.draw_count * sizeof(renderer_draw_item);
 
+		renderer_draw_item* first_draw;
+		renderer_draw_item_array_at(renderer->cpu_draw_items, &first_draw,
+									renderer->cur_pass.first_instance);
+		if (!first_draw) { return false; }
+
 		// Use UMA if available
 		if (items) {
-			memcpy(&items[first_inst], &renderer->cpu_draw_items[first_inst],
-				   items_size);
+			memcpy(&items[first_inst], first_draw, items_size);
 		} else {
 			transfer_queue_upload up = {0};
 			{
 				up.type = TRQ_UPLOAD_BUFFER;
 				up.upload.buffer.acess = GPU_BUFFER_ACCESS_VERTEX_SHADER_READ;
 				up.upload.buffer.dest =
-					buffered_buffer_get(&renderer->quad_instances_buffer);
+					buffered_buffer_get(&renderer->gpu_draw_items);
 				up.payload.data_format = GPU_DATA_SPAN;
-				up.payload.data.span.data =
-					&renderer->cpu_draw_items[first_inst];
+				up.payload.data.span.data = first_draw;
 				up.payload.data.span.size = items_size;
 				up.payload.dst_offset = first_inst * sizeof(renderer_draw_item);
 			}
@@ -529,10 +545,7 @@ bool renderer_end_pass(renderer* renderer) {
 	// submit this pass's transfer tasks
 	transfer_queue_batch_process(renderer->transfer_queue);
 
-	gpu_device_address uniform_addr =
-		pass_idx == 0
-			? buffered_buffer_get_addr(&renderer->uniform_buffer)
-			: buffered_buffer_get_addr(&renderer->second_uniform_buffer);
+	gpu_device_address uniform_addr = _get_current_gpu_uniform(renderer);
 
 	gpu->cmd_bind_pipeline(gpu, cmd, renderer->pipeline,
 						   &(gpu_per_frame_data){
@@ -571,8 +584,7 @@ bool renderer_end_frame(renderer* renderer) {
 	bool ret = gpu->end_frame(gpu, frame);
 
 	buffered_buffer_advance(&renderer->uniform_buffer);
-	buffered_buffer_advance(&renderer->second_uniform_buffer);
-	buffered_buffer_advance(&renderer->quad_instances_buffer);
+	buffered_buffer_advance(&renderer->gpu_draw_items);
 	buffered_buffer_advance(&renderer->draw_buffer);
 
 	renderer->draw_count = 0;
@@ -589,21 +601,21 @@ void renderer_draw_quad(renderer* renderer, vec2 position, vec3 color,
 		return;
 	}
 
-	if (renderer->draw_count == 5) {
-		// axis
-		// return;
-		renderer_end_pass(renderer);
-		renderer_begin_pass(renderer, renderer->default_camera_handle);
-	}
-
 	renderer_draw_item draw_item = {
 		.color = {.r = color.r, .g = color.g, .b = color.b, .a = 1.f},
 		.position = {{position.x, position.y}},
 		.scale = scale,
 	};
 
-	renderer->cpu_draw_items[renderer->draw_count++] = draw_item;
+	renderer_draw_item* draw = NULL;
+	renderer_draw_item_array_at(renderer->cpu_draw_items, &draw,
+								renderer->draw_count++);
+	*draw = draw_item;
 	renderer->cur_pass.draw_count++;
+}
+
+renderer_draw_item_array renderer_get_draw_buffer(renderer* renderer) {
+	return renderer->cpu_draw_items;
 }
 
 bool renderer_load_texture(UNUSED renderer* renderer,
