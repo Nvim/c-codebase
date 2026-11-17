@@ -1,7 +1,10 @@
 struct DrawItem {
+	float2 pos;
+	float2 size;
+	float2 uv;
 	float4 color;
-	float2 position;
-	float2 scale;
+	int texture_index;
+	int _pad;
 };
 
 struct Camera {
@@ -65,7 +68,7 @@ Vertex_Out vertMain(uint vertexID : SV_VulkanVertexID, uint instanceId: SV_Vulka
 	float4x4 view = constants.uniform.view_from_world;
 	float4 baseCoord = float4(Quad[vertexID], float2(1.f));
 
-	float4x4 model = mul(translatePosition(item.position), scaleMatrix(item.scale));
+	float4x4 model = mul(translatePosition(item.pos), scaleMatrix(item.size));
 	float4x4 viewproj = mul(proj, view);
 	float4x4 mvp = mul(viewproj, model);
 

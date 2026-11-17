@@ -9,80 +9,6 @@
 
 #define SHADER_ROOT "./shaders/"
 
-/* ***************************[ BUFFERED BUFFER ]**************************** */
-
-bool buffered_buffer_init(buffered_buffer* out, gpu_api* gpu, gpu_buffer_ci* ci,
-						  uint8_t count, bool get_addresses) {
-	if (!count || count > GPU_MAX_BUFFERING) { return false; }
-	memset(out, 0, sizeof(*out));
-
-	bool good = true;
-	uint8_t i = 0;
-	for (; i < count; i++) {
-		gpu_buffer b = gpu->create_buffer(gpu, ci);
-		if (!check_handle(b.handle)) {
-			good = false;
-			break;
-		}
-
-		if (get_addresses) {
-			gpu_buffer_device_address_result ret =
-				gpu->buffer_get_device_address(gpu, b);
-			if (!ret.ok) {
-				good = false;
-				break;
-			}
-			out->addresses[i] = ret.address;
-		}
-
-		if (ci->map) {
-			gpu_buffer_map_result mret = gpu->buffer_get_mapped(gpu, b);
-			if (!mret.ok) {
-				good = false;
-				break;
-			}
-			out->maps[i] = mret.ptr;
-		}
-
-		out->buffers[i] = b;
-	}
-
-	if (!good) {
-		for (uint8_t j = 0; j < i; j++) {
-			gpu->destroy_buffer(gpu, out->buffers[i]);
-		}
-		memset(out, 0, sizeof(*out));
-		return false;
-	}
-
-	out->count = count;
-	return true;
-}
-
-void buffered_buffer_advance(buffered_buffer* bufs) {
-	bufs->current = (bufs->current + 1) % bufs->count;
-}
-
-gpu_buffer buffered_buffer_get(buffered_buffer* bufs) {
-	return bufs->buffers[bufs->current];
-}
-
-gpu_device_address buffered_buffer_get_addr(buffered_buffer* bufs) {
-	return bufs->addresses[bufs->current];
-}
-
-void* buffered_buffer_get_mapped(buffered_buffer* bufs) {
-	return bufs->maps[bufs->current];
-}
-
-void buffered_buffer_destroy(buffered_buffer* bufs, gpu_api* gpu) {
-	for (uint8_t i = 0; i < bufs->count; ++i) {
-		gpu->destroy_buffer(gpu, bufs->buffers[i]);
-	}
-}
-
-/* *******************************[ RENDERER ]******************************* */
-
 typedef enum renderer_frame_state {
 	FRAME_BEGUN,	   // begun, should render
 	FRAME_SHOULD_SKIP, // begun, should skip
@@ -91,6 +17,21 @@ typedef enum renderer_frame_state {
 } renderer_frame_state;
 
 renderer_frame_state _frame_state = FRAME_ENDED;
+
+static int const TEX_IDX_INVALID = -1;
+
+static vec4 _color_to_vec4(gpu_color* col) {
+	return (vec4){.r = col->r, .g = col->g, .b = col->b, .a = col->a};
+}
+
+static void _convert_draw_items(renderer_draw_item* src,
+								internal_draw_item* dst) {
+	dst->pos = (vec2){{src->position.x, src->position.y}};
+	dst->size = src->scale;
+	dst->color = _color_to_vec4(&src->color);
+	dst->texture_index = TEX_IDX_INVALID;
+	dst->uv = (vec2){{0.f, 0.f}};
+}
 
 renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 						gpu_api* gpu, gpu_image_extent logical_resolution) {
@@ -187,7 +128,7 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 			ci.memory_preference =
 				GPU_BUFFER_MEMORY_MUST_GPU; // this one should be fast
 			ci.map = uma; // upload with staging when no unified memory
-			ci.size = 8 * MEMORY_MIB; // TODO: from renderer CI
+			ci.size = sizeof(gpu_indirect_draw_command) * RENDERER_MAX_DRAWS;
 			ci.usage = GPU_BUFFER_USAGE_INDIRECT;
 		}
 		if (!buffered_buffer_init(&draw_buffer, gpu, &ci,
@@ -197,16 +138,16 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		}
 	}
 
-	buffered_buffer instances_buffer = {0};
+	buffered_buffer gpu_draw_items = {0};
 	{ // Draw items buffer
 		gpu_buffer_ci ci = {0};
 		{
 			ci.memory_preference = GPU_BUFFER_MEMORY_MUST_GPU;
 			ci.map = uma; // upload with staging when no unified memory
-			ci.size = 8 * MEMORY_MIB; // TODO: from renderer CI
+			ci.size = sizeof(internal_draw_item) * RENDERER_MAX_DRAWS;
 			ci.usage = GPU_BUFFER_USAGE_STORAGE;
 		}
-		if (!buffered_buffer_init(&instances_buffer, gpu, &ci,
+		if (!buffered_buffer_init(&gpu_draw_items, gpu, &ci,
 								  gpu->config.frames_in_flight, true)) {
 			LOG_ERR("couldn't init quad instances buffers");
 			return NULL;
@@ -255,10 +196,10 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		}
 	}
 
-	renderer_draw_item_array cpu_draw_items;
+	internal_draw_item_array cpu_draw_items;
 	{ // CPU draws array
 		cpu_draw_items =
-			renderer_draw_item_array_create(arena, RENDERER_MAX_DRAWS);
+			internal_draw_item_array_create(arena, RENDERER_MAX_DRAWS);
 		if (!cpu_draw_items.raw) {
 			LOG_ERR("couldn't allocate draw items array");
 			return NULL;
@@ -272,7 +213,7 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		ret->pipeline = pipeline;
 		ret->transfer_queue = transfer_queue;
 		ret->quad_index_buffer = quad_index_buffer;
-		ret->gpu_draw_items = instances_buffer;
+		ret->gpu_draw_items = gpu_draw_items;
 		ret->uniform_buffer = uniform_buffer;
 		ret->cpu_draw_items = cpu_draw_items;
 		ret->draw_buffer = draw_buffer;
@@ -513,13 +454,12 @@ bool renderer_end_pass(renderer* renderer) {
 	}
 
 	{ // Update instances buffer
-		renderer_draw_item* items =
+		internal_draw_item* items =
 			buffered_buffer_get_mapped(&renderer->gpu_draw_items);
-		size_t items_size =
-			renderer->cur_pass.draw_count * sizeof(renderer_draw_item);
+		size_t items_size = renderer->cur_pass.draw_count * sizeof(*items);
 
-		renderer_draw_item* first_draw;
-		renderer_draw_item_array_at(renderer->cpu_draw_items, &first_draw,
+		internal_draw_item* first_draw;
+		internal_draw_item_array_at(renderer->cpu_draw_items, &first_draw,
 									renderer->cur_pass.first_instance);
 		if (!first_draw) { return false; }
 
@@ -536,7 +476,7 @@ bool renderer_end_pass(renderer* renderer) {
 				up.payload.data_format = GPU_DATA_SPAN;
 				up.payload.data.span.data = first_draw;
 				up.payload.data.span.size = items_size;
-				up.payload.dst_offset = first_inst * sizeof(renderer_draw_item);
+				up.payload.dst_offset = first_inst * sizeof(*first_draw);
 			}
 			transfer_queue_push_upload(renderer->transfer_queue, up);
 		}
@@ -601,21 +541,45 @@ void renderer_draw_quad(renderer* renderer, vec2 position, vec3 color,
 		return;
 	}
 
-	renderer_draw_item draw_item = {
+	internal_draw_item draw_item = {
 		.color = {.r = color.r, .g = color.g, .b = color.b, .a = 1.f},
-		.position = {{position.x, position.y}},
-		.scale = scale,
+		.pos = {{position.x, position.y}},
+		.size = scale,
 	};
 
-	renderer_draw_item* draw = NULL;
-	renderer_draw_item_array_at(renderer->cpu_draw_items, &draw,
+	internal_draw_item* draw = NULL;
+	internal_draw_item_array_at(renderer->cpu_draw_items, &draw,
 								renderer->draw_count++);
 	*draw = draw_item;
 	renderer->cur_pass.draw_count++;
 }
 
-renderer_draw_item_array renderer_get_draw_buffer(renderer* renderer) {
-	return renderer->cpu_draw_items;
+bool renderer_draw(renderer* renderer, renderer_draw_item_array draw_items,
+				   uint64_t draw_count) {
+	if (!renderer || _frame_state != FRAME_RENDERING) {
+		LOG_ERR("invalid frame state %d", _frame_state);
+		return false;
+	}
+
+	for (uint64_t i = 0; i < draw_count; ++i) {
+		renderer_draw_item* external = NULL;
+		renderer_draw_item_array_at(draw_items, &external,
+									renderer->draw_count);
+
+		internal_draw_item* internal = NULL;
+		internal_draw_item_array_at(renderer->cpu_draw_items, &internal,
+									renderer->draw_count);
+		if (!internal || !external) {
+			LOG_ERR("couldn't get draw_item #%u", i);
+			return false;
+		}
+
+		_convert_draw_items(external, internal);
+		renderer->cur_pass.draw_count++;
+		renderer->draw_count++;
+	}
+
+	return true;
 }
 
 bool renderer_load_texture(UNUSED renderer* renderer,

@@ -1,6 +1,7 @@
 #ifndef RENDERER_H
 #define RENDERER_H
 
+#include "buffered_buffer.h"
 #include "transfer_queue.h"
 #include <engine/render_interface.h>
 
@@ -8,14 +9,6 @@
 #include <graphics/graphics.h>
 
 POOL_DEFINE_TYPE(camera_2d_props, camera_2d_pool)
-
-typedef struct buffered_buffer {
-	gpu_buffer buffers[GPU_MAX_BUFFERING];
-	gpu_device_address addresses[GPU_MAX_BUFFERING];
-	void* maps[GPU_MAX_BUFFERING];
-	uint8_t count;
-	uint8_t current;
-} buffered_buffer;
 
 typedef struct camera_2d_matrices {
 	mat4 view_from_world; // view
@@ -39,6 +32,17 @@ typedef struct render_pass {
 	// pipeline, render target, viewport & scissor things?
 } render_pass;
 
+typedef struct internal_draw_item {
+	vec2 pos;
+	vec2 size;
+	vec2 uv;
+	vec4 color;
+	int texture_index;
+	int _pad;
+} internal_draw_item;
+
+ARRAY_DEFINE_TYPE(internal_draw_item, internal_draw_item_array)
+
 typedef struct renderer {
 	arena_t* arena;		  // permanent allocs
 	arena_t* frame_arena; // frame allocs
@@ -48,9 +52,10 @@ typedef struct renderer {
 	transfer_queue* transfer_queue;
 	gpu_buffer quad_index_buffer;
 	buffered_buffer draw_buffer;	// gpu_indirect_draw_command
-	buffered_buffer gpu_draw_items; // renderer_draw_item
+	buffered_buffer gpu_draw_items; // internal_draw_item
+	internal_draw_item_array cpu_draw_items;
 	buffered_buffer uniform_buffer; // renderer_uniform_data
-	renderer_draw_item_array cpu_draw_items;
+	// renderer_draw_item_array cpu_draw_items;
 
 	// TODO: safe array with bounds checking
 	camera_2d_matrices camera_matrices[RENDERER_MAX_CAMERAS];
@@ -122,9 +127,8 @@ bool renderer_end_frame(renderer* renderer);
 void renderer_draw_quad(renderer* renderer, vec2 position, vec3 color,
 						vec2 scale);
 
-// [NOTE]: Getter for this as i might want to return mapped buffer directly when
-// uma
-renderer_draw_item_array renderer_get_draw_buffer(renderer* renderer);
+bool renderer_draw(renderer* renderer, renderer_draw_item_array draw_items,
+				   uint64_t draw_count);
 
 /* == Resource creation == */
 bool renderer_load_texture(renderer* renderer, renderer_texture* out,

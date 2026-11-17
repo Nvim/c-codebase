@@ -93,7 +93,7 @@ static uint32_t _get_queue_family(VkPhysicalDevice dev, arena_t* scratch) {
 	vkGetPhysicalDeviceQueueFamilyProperties2(dev, &qf_count, NULL);
 
 	if (!qf_count) { return UINT32_MAX; }
-	LOG_DEBUG("enumerating %zu qf properties", qf_count);
+	LOG_DEBUG("enumerating %u qf properties", qf_count);
 
 	// Create array with the right size:
 	vk_qf_props_array props_arr = vk_qf_props_array_create(scratch, qf_count);
@@ -150,7 +150,7 @@ _find_device(vulkan_init_info* pf_info, VkInstance instance, arena_t* scratch) {
 	check_result(vkEnumeratePhysicalDevices(
 		instance, &device_count, vk_physical_device_array_begin(arr)));
 
-	LOG_DEBUG("%zu physical devices", device_count);
+	LOG_DEBUG("%u physical devices", device_count);
 
 	VkPhysicalDevice* dev = vk_physical_device_array_begin(arr);
 	VkPhysicalDeviceProperties2 device_props = {

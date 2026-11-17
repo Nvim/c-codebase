@@ -377,8 +377,8 @@ bool engine_run(void) {
 		// Game draws only once per frame
 		if (renderer_should_draw(_state->renderer)) {
 			renderer_draw_item_array draw_items =
-				renderer_get_draw_buffer(_state->renderer);
-
+				renderer_draw_item_array_create(_state->frame_arena,
+												RENDERER_MAX_DRAWS);
 			if (!draw_items.raw) {
 				LOG_ERR("couldn't allocate frame draw items array");
 				break;
@@ -389,20 +389,11 @@ bool engine_run(void) {
 			game_funcs.game_draw(&packet);
 
 			renderer_begin_pass(_state->renderer, packet.camera);
-			// LOG_INFO("%u draws from game", packet.draw_count);
 
-			for (uint64_t i = 0; i < packet.draw_count; ++i) {
-				renderer_draw_item* draw = NULL;
-				renderer_draw_item_array_at(draw_items, &draw, i);
-				if (draw) {
-					renderer_draw_quad(_state->renderer, draw->position,
-									   (vec3){
-										   .r = draw->color.r,
-										   .g = draw->color.g,
-										   .b = draw->color.b,
-									   },
-									   draw->scale);
-				}
+			if (!renderer_draw(_state->renderer, draw_items,
+							   packet.draw_count)) {
+				LOG_ERR("couldn't draw");
+				break;
 			}
 
 			renderer_end_pass(_state->renderer);
