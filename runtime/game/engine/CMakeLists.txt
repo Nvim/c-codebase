@@ -63,3 +63,12 @@ endforeach()
 add_custom_target(${SLANG_TARGET_NAME} DEPENDS ${OUTPUT_FILES})
 set_property(TARGET ${SLANG_TARGET_NAME} PROPERTY FOLDER "Shaders-SLANG")
 add_dependencies(engine_exe ${SLANG_TARGET_NAME})
+
+# == Other assets == #
+add_custom_target(copy_engine_assets ALL
+    COMMENT "Copying engine assets to ${GAME_RUNTIME_DIR}/engine_assets"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets
+        ${GAME_RUNTIME_DIR}/engine_assets
+)
+add_dependencies(engine_exe copy_engine_assets)

@@ -35,13 +35,22 @@ typedef struct render_pass {
 typedef struct internal_draw_item {
 	vec2 pos;
 	vec2 size;
-	vec2 uv;
+	vec2 uv0;
+	vec2 uv1;
 	vec4 color;
 	int texture_index;
-	int _pad;
+	int sampler_index;
 } internal_draw_item;
 
 ARRAY_DEFINE_TYPE(internal_draw_item, internal_draw_item_array)
+
+typedef struct font_atlas_info {
+	vec2 glyph_size;
+	uint8_t first_char;
+	uint8_t last_char;
+	uint8_t pad_x;
+	uint8_t pad_y;
+} font_atlas_info;
 
 typedef struct renderer {
 	arena_t* arena;		  // permanent allocs
@@ -55,7 +64,6 @@ typedef struct renderer {
 	buffered_buffer gpu_draw_items; // internal_draw_item
 	internal_draw_item_array cpu_draw_items;
 	buffered_buffer uniform_buffer; // renderer_uniform_data
-	// renderer_draw_item_array cpu_draw_items;
 
 	// TODO: safe array with bounds checking
 	camera_2d_matrices camera_matrices[RENDERER_MAX_CAMERAS];
@@ -63,6 +71,15 @@ typedef struct renderer {
 	camera_2d_handle default_camera_handle;
 	gpu_image_extent logical_resolution;
 	float scale;
+
+	// Text rendering things:
+	gpu_image font_atlas;
+	gpu_image_view font_atlas_texture;
+	gpu_image_extent font_atlas_size;
+	gpu_sampler font_sampler;
+	uint32_t font_atlas_binding;
+	uint32_t font_sampler_binding;
+	font_atlas_info font_atlas_info;
 
 	/**
 	 * If false, device doesn't have (enough) unified memory and we must upload
@@ -129,6 +146,9 @@ void renderer_draw_quad(renderer* renderer, vec2 position, vec3 color,
 
 bool renderer_draw(renderer* renderer, renderer_draw_item_array draw_items,
 				   uint64_t draw_count);
+
+bool renderer_draw_ui(renderer* renderer, renderer_ui_item_array items,
+					  uint64_t draw_count);
 
 /* == Resource creation == */
 bool renderer_load_texture(renderer* renderer, renderer_texture* out,

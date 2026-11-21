@@ -383,8 +383,17 @@ bool engine_run(void) {
 				LOG_ERR("couldn't allocate frame draw items array");
 				break;
 			}
+
+			renderer_ui_item_array ui_items = renderer_ui_item_array_create(
+				_state->frame_arena, RENDERER_MAX_UI_DRAWS);
+
+			if (!ui_items.raw) {
+				LOG_ERR("couldn't allocate frame ui items array");
+				break;
+			}
 			renderer_packet packet = {0};
 			packet.draw_items = draw_items;
+			packet.ui_items = ui_items;
 
 			game_funcs.game_draw(&packet);
 
@@ -393,6 +402,12 @@ bool engine_run(void) {
 			if (!renderer_draw(_state->renderer, draw_items,
 							   packet.draw_count)) {
 				LOG_ERR("couldn't draw");
+				break;
+			}
+
+			if (!renderer_draw_ui(_state->renderer, ui_items,
+								  packet.ui_draw_count)) {
+				LOG_ERR("couldn't draw ui");
 				break;
 			}
 

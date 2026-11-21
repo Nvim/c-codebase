@@ -4,10 +4,12 @@
 #include <engine/render_interface.h>
 
 #include <filesystem/filesystem.h>
+#include <loaders/qoi_loader.h>
 
 #include <string.h>
 
 #define SHADER_ROOT "./shaders/"
+#define FONT_ATLAS_PATH "./engine_assets/oldschool.qoi"
 
 typedef enum renderer_frame_state {
 	FRAME_BEGUN,	   // begun, should render
@@ -26,11 +28,15 @@ static vec4 _color_to_vec4(gpu_color* col) {
 
 static void _convert_draw_items(renderer_draw_item* src,
 								internal_draw_item* dst) {
+	*dst = (internal_draw_item){0};
 	dst->pos = (vec2){{src->position.x, src->position.y}};
 	dst->size = src->scale;
 	dst->color = _color_to_vec4(&src->color);
 	dst->texture_index = TEX_IDX_INVALID;
-	dst->uv = (vec2){{0.f, 0.f}};
+
+	// dst->texture_index = atlas_bind;
+	// dst->uv1 = (vec2){{1.f, 1.f}};
+	// TODO: texture for regular draws
 }
 
 renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
@@ -48,12 +54,12 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 
 	bool uma = false;
 	{ // Detect host visible unified memory
-		gpu_memory_info mem_info = gpu->get_memory_info(gpu);
-		if (mem_info.device_memory < 1 * MEMORY_GIB) {
-			LOG_ERR("not enough gpu memory");
-			return NULL;
-		}
-		if (mem_info.ratio > 0.8) { uma = true; }
+	  // gpu_memory_info mem_info = gpu->get_memory_info(gpu);
+	  // if (mem_info.device_memory < 1 * MEMORY_GIB) {
+	  // 	LOG_ERR("not enough gpu memory");
+	  // 	return NULL;
+	  // }
+	  // if (mem_info.ratio > 0.8) { uma = true; }
 	}
 
 	gpu_shader shader = {0};
@@ -190,10 +196,6 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 			LOG_ERR("couldn't enqueue indices upload");
 			return NULL;
 		}
-		if (!transfer_queue_batch_process(transfer_queue)) {
-			LOG_ERR("couldn't start processing indices upload");
-			return NULL;
-		}
 	}
 
 	internal_draw_item_array cpu_draw_items;
@@ -204,6 +206,118 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 			LOG_ERR("couldn't allocate draw items array");
 			return NULL;
 		}
+	}
+
+	gpu_image atlas_img = {0};
+	gpu_image_view atlas_view = {0};
+	gpu_sampler atlas_sampler = {0};
+	uint32_t atlas_bind = 0;
+	uint32_t atlas_sampler_bind = 0;
+	font_atlas_info atlas_info = {0};
+	gpu_image_extent atlas_size = {0};
+	{ // font
+		scratch_arena scratch2;
+		arena_get_scratch(scratch, &scratch2);
+		image_read_result img_read =
+			load_qoi(scratch, scratch2.arena, str(FONT_ATLAS_PATH), false);
+		if (!img_read.ok) {
+			LOG_ERR("couldn't load font atlas image");
+			return false;
+		}
+		arena_clear_scratch(scratch2);
+
+		atlas_size = (gpu_image_extent){.width = img_read.width,
+										.height = img_read.height};
+		gpu_image_ci img_ci = {0};
+		{
+			img_ci.dimensions = atlas_size;
+			img_ci.format = IMAGE_FORMAT_R_UNORM;
+			img_ci.type = GPU_IMAGE_TYPE_2D;
+			img_ci.usage = GPU_IMAGE_USAGE_SAMPLED;
+			img_ci.array_layers = 1;
+			img_ci.mip_levels = 1;
+		}
+
+		atlas_img = gpu->create_image(gpu, &img_ci);
+		if (!check_handle(atlas_img.handle)) {
+			LOG_ERR("coudn't create gpu image");
+			return false;
+		}
+		// Create array with only R channel:
+		uint64_t pixel_count =
+			u8_array_size(img_read.bytes) / img_read.channels;
+		u8_array pixel_data = u8_array_create(scratch, pixel_count);
+		uint8_t* rgb = u8_array_begin(img_read.bytes);
+		uint8_t* p = u8_array_begin(pixel_data);
+		for (uint64_t i = 0; i < pixel_count; ++i) {
+			p[i] = rgb[i * img_read.channels];
+		}
+
+		gpu_image_region_array regions =
+			gpu_image_region_array_create(scratch, 1);
+		ASSERT(regions.raw);
+		gpu_image_region* reg = gpu_image_region_array_begin(regions);
+		{
+			reg->layer = 0;
+			reg->level = 0;
+		}
+
+		transfer_queue_upload up = {
+			.type = TRQ_UPLOAD_IMAGE,
+			.upload.image = {.dest = atlas_img,
+							 .usage = GPU_IMAGE_USAGE_SAMPLED,
+							 .regions = regions},
+			.payload =
+				{
+					.data_format = GPU_DATA_ARRAY,
+					.data.array = pixel_data,
+				},
+		};
+
+		if (!transfer_queue_push_upload(transfer_queue, up)) {
+			LOG_ERR("couldn't enqueue font atlas upload");
+			return NULL;
+		}
+
+		// Get image view
+		gpu_image_view_ci view_ci = {0};
+		{
+			view_ci.image = atlas_img;
+			view_ci.type = GPU_IMAGE_VIEW_TEXTURE;
+			view_ci.base_layer = 0;
+			view_ci.base_level = 0;
+			view_ci.layer_count = GPU_COUNT_REMAINING;
+			view_ci.level_count = GPU_COUNT_REMAINING;
+		}
+		atlas_view = gpu->create_image_view(gpu, &view_ci);
+		if (!gpu->get_image_view_shader_index(gpu, atlas_view, &atlas_bind)) {
+			LOG_ERR("couldn't create texture");
+			return false;
+		}
+
+		// sampler
+		gpu_sampler_ci ci = {0};
+		{
+			ci.address_mode_u = GPU_SAMPLER_ADRESS_CLAMP;
+			ci.address_mode_v = GPU_SAMPLER_ADRESS_CLAMP;
+		}
+		atlas_sampler = gpu->create_sampler(gpu, &ci, &atlas_sampler_bind);
+		if (!check_handle(atlas_sampler.handle)) {
+			LOG_ERR("couldn't create font sampler");
+		}
+
+		{
+			atlas_info.glyph_size = (vec2){{10, 14}};
+			atlas_info.pad_x = 2;
+			atlas_info.pad_y = 2;
+			atlas_info.first_char = ' ';
+			atlas_info.last_char = '~';
+		}
+	}
+
+	if (!transfer_queue_batch_process(transfer_queue)) {
+		LOG_ERR("couldn't start processing inital uploads");
+		return NULL;
 	}
 
 	{
@@ -221,6 +335,14 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		ret->draw_count = 0;
 		ret->cameras = cameras;
 		ret->logical_resolution = logical_resolution;
+
+		ret->font_atlas = atlas_img;
+		ret->font_atlas_texture = atlas_view;
+		ret->font_sampler = atlas_sampler;
+		ret->font_atlas_binding = atlas_bind;
+		ret->font_sampler_binding = atlas_sampler_bind;
+		ret->font_atlas_info = atlas_info;
+		ret->font_atlas_size = atlas_size;
 	}
 
 	// Update default camera matrices
@@ -245,6 +367,8 @@ bool renderer_shutdown(renderer* renderer) {
 		gpu->wait_idle(gpu);
 		gpu->destroy_pipeline(gpu, renderer->pipeline);
 		gpu->destroy_buffer(gpu, renderer->quad_index_buffer);
+		gpu->destroy_image(gpu, renderer->font_atlas);
+		gpu->destroy_sampler(gpu, renderer->font_sampler);
 		buffered_buffer_destroy(&renderer->uniform_buffer, gpu);
 		buffered_buffer_destroy(&renderer->draw_buffer, gpu);
 		buffered_buffer_destroy(&renderer->gpu_draw_items, gpu);
@@ -441,12 +565,11 @@ bool renderer_end_pass(renderer* renderer) {
 				up.payload.data.span.size = sizeof(draw);
 				up.payload.dst_offset =
 					pass_idx * (sizeof(draw)); // assumes 1 draw per pass
-				/* [NOTE]: dst_offset could be 0 here. Since we flush transfer
-				 * queue on each pass, barrier happens so it's safe to
-				 * re-write in the same place.
-				 * We use a different offset to match the UMA path, where we
-				 * don't want to explicitly sync pass #1 needing to finish
-				 * before pass #2.
+				/* [NOTE]: dst_offset could be 0 here. Since we flush
+				 * transfer queue on each pass, barrier happens so it's safe
+				 * to re-write in the same place. We use a different offset
+				 * to match the UMA path, where we don't want to explicitly
+				 * sync pass #1 needing to finish before pass #2.
 				 */
 			}
 			transfer_queue_push_upload(renderer->transfer_queue, up);
@@ -577,6 +700,101 @@ bool renderer_draw(renderer* renderer, renderer_draw_item_array draw_items,
 		_convert_draw_items(external, internal);
 		renderer->cur_pass.draw_count++;
 		renderer->draw_count++;
+	}
+
+	return true;
+}
+
+static bool _draw_text(renderer* renderer, renderer_ui_item* item) {
+	font_atlas_info info = renderer->font_atlas_info;
+
+	uint32_t char_width = info.glyph_size.x + (info.pad_x * 2);
+	uint32_t char_height = info.glyph_size.y + (info.pad_y * 2);
+
+	uint32_t cols = renderer->font_atlas_size.width / char_width;
+	uint32_t x = item->position.x;
+	uint32_t y = item->position.y;
+
+	string text = item->msg;
+	float scale = 1.f; // todo
+
+	char c;
+	for (uint64_t i = 0; i < text.len; ++i) {
+		internal_draw_item* internal = NULL;
+		internal_draw_item_array_at(renderer->cpu_draw_items, &internal,
+									renderer->draw_count);
+		if (!internal) {
+			LOG_ERR("couldn't get ui_draw_item #%u", renderer->draw_count);
+			return false;
+		}
+		c = text.str[i];
+
+		if (c == '\n') {
+			x = item->position.x;
+			y = item->position.y + info.glyph_size.y * scale;
+			continue;
+		} else if (c < info.first_char || c > info.last_char) {
+				LOG_WARN("char isn't in atlas: %c (%u)", c, c); // clang-format-ignore
+			continue;
+		}
+
+		c = c - info.first_char;
+
+		// Coords in atlas:
+		uint32_t line = c / cols;
+		uint32_t col = c % cols;
+
+		uint32_t u0u = col * char_width + info.pad_x;
+		uint32_t v0u = line * char_height + info.pad_y;
+		uint32_t u1u = u0u + char_width - info.pad_x;
+		uint32_t v1u = v0u + char_height - info.pad_y;
+		float u0 = u0u / (float)renderer->font_atlas_size.width;
+		float v0 = v0u / (float)renderer->font_atlas_size.height;
+		float u1 = u1u / (float)renderer->font_atlas_size.width;
+		float v1 = v1u / (float)renderer->font_atlas_size.height;
+
+		x += 10.f;
+
+		internal->pos = (vec2){{x, y}};
+		internal->texture_index = renderer->font_atlas_binding;
+		internal->sampler_index = renderer->font_sampler_binding;
+		internal->size = (vec2){{10.f, 10.f}};
+		// TODO: figure out if all uvs need Y flipped or only this one
+		internal->uv0 = (vec2){{u0, v1}};
+		internal->uv1 = (vec2){{u1, v0}};
+
+		renderer->draw_count++;
+		renderer->cur_pass.draw_count++;
+	}
+	return true;
+}
+
+bool renderer_draw_ui(renderer* renderer, renderer_ui_item_array items,
+					  uint64_t draw_count) {
+	if (!renderer || _frame_state != FRAME_RENDERING) {
+		LOG_ERR("invalid frame state %d", _frame_state);
+		return false;
+	}
+	gpu_api* gpu = renderer->gpu;
+
+	for (uint64_t i = 0; i < draw_count; ++i) {
+		renderer_ui_item* external = NULL;
+		renderer_ui_item_array_at(items, &external, i);
+
+		if (!external) {
+			LOG_ERR("couldn't get draw_item #%u", i);
+			return false;
+		}
+
+		if (external->space == RENDERER_SPACE_UV) {
+			// [TODO]: use the pass's render target instead
+			gpu_image fb = renderer->cur_frame->framebuffer;
+			UNUSED gpu_image_extent extent = gpu->get_image_extent(gpu, fb);
+
+			// convert [0;1] to world space
+		}
+
+		_draw_text(renderer, external);
 	}
 
 	return true;

@@ -150,6 +150,16 @@ static void game_draw(renderer_packet* out) {
 		out->draw_count++;
 	}
 
+	string msg = str("Hello from game");
+	renderer_ui_item* ui = NULL;
+	ASSERT(renderer_ui_item_array_at(out->ui_items, &ui, 0));
+	{
+		ui->position = (vec2){{30.f, 30.f}};
+		ui->space = RENDERER_SPACE_WORLD;
+		ui->msg = msg;
+	}
+	out->ui_draw_count = 1;
+
 	_state->frames++;
 }
 

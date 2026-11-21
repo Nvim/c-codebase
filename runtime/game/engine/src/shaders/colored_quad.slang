@@ -2,9 +2,10 @@ struct DrawItem {
 	float2 pos;
 	float2 size;
 	float2 uv;
+	float2 uv1;
 	float4 color;
 	int texture_index;
-	int _pad;
+	int sampler_index;
 };
 
 struct Camera {
@@ -39,7 +40,10 @@ float4x4 scaleMatrix(float2 scale) {
 
 struct Vertex_Out {
 	float4 pos : SV_Position;
-	float4 color : SV_Target1;
+	float4 color;
+	float2 uv;
+	int texture_index;
+	int sampler_index;
 };
 
 // Push constants
@@ -72,6 +76,12 @@ Vertex_Out vertMain(uint vertexID : SV_VulkanVertexID, uint instanceId: SV_Vulka
 	float4x4 viewproj = mul(proj, view);
 	float4x4 mvp = mul(viewproj, model);
 
+	// uv trick works for coords in range [0, 1]
+	float2 base = baseCoord.xy + .5f;
+	ret.uv = ((1.f - base) * item.uv) + (item.uv1 * base);
+
+	ret.texture_index = item.texture_index;
+	ret.sampler_index = item.sampler_index;
 	ret.pos = mul(mvp, baseCoord);
 	ret.color = item.color;
 	return ret;
@@ -81,11 +91,26 @@ struct Fragment_Out {
 	float4 color : SV_Target0;
 };
 
+[[vk::binding(0, 0)]]
+Texture2D[] textures;
+
+[[vk::binding(1, 0)]]
+RWTexture2D<float4>[] images;
+
+[[vk::binding(2, 0)]]
+SamplerState[] samplers;
+
 [[shader("pixel")]]
 Fragment_Out fragMain(Vertex_Out input, uniform ShaderInput constants) {
 	Fragment_Out ret;
+	SamplerState sampler = samplers[input.sampler_index];
 
-	ret.color = input.color;
+	if(input.texture_index != -1) {
+		Texture2D tex = textures[input.texture_index];
+		ret.color = tex.Sample(sampler, input.uv).rrrr;
+	} else {
+		ret.color = input.color;
+	}
 
 	return ret;
 }
