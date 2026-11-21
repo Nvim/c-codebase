@@ -334,12 +334,14 @@ _memory_lookup(UNUSED arena_t* scratch,
 
 		// Logging:
 		if (device_local && host_visible) {
-			LOG_DEBUG("[#%u](DEVICE_LOCAL|HOST_VISIBLE): " STR_FMT " - coherent: %u, cached: %u", mem.heapIndex, STR_FMT_ARGS(fs_format_memory_size(scratch, heap.size)), host_coherent, host_cached); // clang-format-ignore
+			LOG_DEBUG("[type #%.2u][heap #%.2u](DEVICE_LOCAL|HOST_VISIBLE): " STR_FMT " - coherent: %u, cached: %u", i, mem.heapIndex, STR_FMT_ARGS(fs_format_memory_size(scratch, heap.size)), host_coherent, host_cached); // clang-format-ignore
 		} else if (device_local) {
-			LOG_DEBUG("[#%u](DEVICE_LOCAL): " STR_FMT, mem.heapIndex,
-					  STR_FMT_ARGS(fs_format_memory_size(scratch, heap.size)));
+			LOG_DEBUG(
+				"[type #%.2u][heap #%.2u](DEVICE_LOCAL)             : " STR_FMT,
+				i, mem.heapIndex,
+				STR_FMT_ARGS(fs_format_memory_size(scratch, heap.size)));
 		} else {
-			LOG_DEBUG("[#%u](HOST_LOCAL): " STR_FMT " - coherent: %u, cached: %u", mem.heapIndex, STR_FMT_ARGS(fs_format_memory_size(scratch, heap.size)), host_coherent, host_cached);  // clang-format-ignore
+			LOG_DEBUG("[type #%.2u][heap #%.2u](HOST_LOCAL)               : " STR_FMT " - coherent: %u, cached: %u", i, mem.heapIndex, STR_FMT_ARGS(fs_format_memory_size(scratch, heap.size)), host_coherent, host_cached);  // clang-format-ignore
 		}
 	}
 
