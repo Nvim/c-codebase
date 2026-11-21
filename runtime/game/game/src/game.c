@@ -150,7 +150,7 @@ static void game_draw(renderer_packet* out) {
 		out->draw_count++;
 	}
 
-	string msg = str("Hello from game");
+	string msg = str("Hello from game\nNew line :)");
 	renderer_ui_item* ui = NULL;
 	ASSERT(renderer_ui_item_array_at(out->ui_items, &ui, 0));
 	{

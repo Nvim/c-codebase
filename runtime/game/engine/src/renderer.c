@@ -54,12 +54,12 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 
 	bool uma = false;
 	{ // Detect host visible unified memory
-	  // gpu_memory_info mem_info = gpu->get_memory_info(gpu);
-	  // if (mem_info.device_memory < 1 * MEMORY_GIB) {
-	  // 	LOG_ERR("not enough gpu memory");
-	  // 	return NULL;
-	  // }
-	  // if (mem_info.ratio > 0.8) { uma = true; }
+		gpu_memory_info mem_info = gpu->get_memory_info(gpu);
+		if (mem_info.device_memory < 1 * MEMORY_GIB) {
+			LOG_ERR("not enough gpu memory");
+			return NULL;
+		}
+		if (mem_info.ratio > 0.8) { uma = true; }
 	}
 
 	gpu_shader shader = {0};
@@ -81,7 +81,7 @@ renderer* renderer_init(arena_t* arena, arena_t* frame_arena, arena_t* scratch,
 		gpu_pipeline_builder_create(&builder);
 		set_vertex_shader(&builder, shader);
 		set_fragment_shader(&builder, shader);
-		add_color_target(&builder, gpu->config.target_image_format, false);
+		add_color_target(&builder, gpu->config.target_image_format, true);
 		pipeline = gpu_pipeline_build(gpu, &builder);
 		ensure_handle(pipeline.handle);
 	}
@@ -368,6 +368,7 @@ bool renderer_shutdown(renderer* renderer) {
 		gpu->destroy_pipeline(gpu, renderer->pipeline);
 		gpu->destroy_buffer(gpu, renderer->quad_index_buffer);
 		gpu->destroy_image(gpu, renderer->font_atlas);
+		gpu->destroy_image_view(gpu, renderer->font_atlas_texture);
 		gpu->destroy_sampler(gpu, renderer->font_sampler);
 		buffered_buffer_destroy(&renderer->uniform_buffer, gpu);
 		buffered_buffer_destroy(&renderer->draw_buffer, gpu);
@@ -731,7 +732,8 @@ static bool _draw_text(renderer* renderer, renderer_ui_item* item) {
 
 		if (c == '\n') {
 			x = item->position.x;
-			y = item->position.y + info.glyph_size.y * scale;
+			y = item->position.y -
+				info.glyph_size.y * scale; // [TODO]: figure this out
 			continue;
 		} else if (c < info.first_char || c > info.last_char) {
 				LOG_WARN("char isn't in atlas: %c (%u)", c, c); // clang-format-ignore
